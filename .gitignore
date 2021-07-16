@@ -1,0 +1,11 @@
+*~
+*.so
+*.txt
+!CMakeLists.txt
+*.cmake
+CMakeFiles/
+*.o
+Makefile
+*.bc
+a.out
+*.tmp
