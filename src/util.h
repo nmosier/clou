@@ -3,16 +3,79 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <sstream>
 
 #include <llvm/IR/Function.h>
 
-using PredecessorMap = std::unordered_map<
-   const llvm::Instruction *,
-   std::vector<const llvm::Instruction *>
-   >;
+extern const char *prog;
 
-void predecessor_map(const llvm::Function& F, PredecessorMap& preds);
+template <typename... Args>
+void log(const char *fmt, Args&&... args) {
+   fprintf(stderr, fmt, std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+[[noreturn]] void error(const char *fmt, Args&&... args) {
+   log(fmt, std::forward<Args>(args)...);
+   exit(1);
+}
 
 using BinaryInstRel = std::unordered_map<const llvm::Instruction *,
                                          std::unordered_set<const llvm::Instruction *>
                                          >;
+
+void predecessor_map(const llvm::Function& F, BinaryInstRel& preds);
+void successor_map(const llvm::Function& F, BinaryInstRel& succs);
+
+
+template <typename It>
+class Range {
+public:
+   constexpr Range(It begin, It end): begin_(begin), end_(end) {}
+   constexpr It begin() const { return begin_; }
+   constexpr It end() const { return end_; }
+private:
+   const It begin_;
+   const It end_;
+};
+
+template <typename It>
+constexpr Range<It> make_range(It begin, It end) { return Range {begin, end}; }
+
+inline const char *getenvs(const char *name) {
+   if (char *value = getenv(name)) {
+      return value;
+   } else {
+      error("key '%s' does not exist", name);
+   }
+}
+
+inline const char *getenvs(const char *name, const char *dfl) {
+   if (const char *value = getenv(name)) {
+      dfl = value;
+   }
+   return dfl;
+}
+
+template <typename Int>
+Int getenvi(const char *name) {
+   const char *s = getenvs(name);
+   std::stringstream ss {s};
+   Int res;
+   ss >> res;
+   return res;
+}
+
+template <typename Int>
+Int getenvi(const char *name, Int dfl) {
+   if (const char *s = getenv(name)) {
+      std::stringstream ss {s};
+      ss >> dfl;
+   }
+   return dfl;
+}
+
+inline bool getenvb(const char *name) {
+   return getenvs(name) != nullptr;
+}
+

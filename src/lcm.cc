@@ -12,6 +12,8 @@
 #include "util.h"
 #include "lcm.h"
 #include "addr.h"
+#include "mcfg.h"
+#include "graph.h"
 
 using llvm::errs;
 
@@ -32,27 +34,6 @@ struct LCMPass : public llvm::FunctionPass {
          
       errs() << "Function body:\n";
       F.print(llvm::errs());
-
-#if 0
-      for (auto &B : F) {
-         errs() << "Basic block:\n";
-         B.print(llvm::errs());
-
-#if 0
-         for (auto &I : B) {
-            errs() << "Instruction: \n";
-            I.print(llvm::errs());
-            errs() << "\n";
-#if 0
-            for (auto& U : I.operands()) {
-               errs() << *U.get() << "\n";
-            }
-            errs() << "\n";
-#endif
-         }
-#endif
-      }
-#endif
 
       /* Gather all pointers */
       std::vector<const llvm::Instruction *> pointers;
@@ -104,38 +85,7 @@ struct LCMPass : public llvm::FunctionPass {
 
       /* Construct addr relation */
       BinaryInstRel addr;
-
-      /* For each (dst) load'S OUT, we're looking for a pair that maps a (src) load to
-       * a set containing dst. 
-       * Need special case when src == dst -- look at IN to see if any operands in set.
-       */
-      for (const auto& B : F) {
-         for (const auto& I : B) {
-            if (const auto *dst = llvm::dyn_cast<llvm::LoadInst>(&I)) {
-               const auto& out = addr_analysis.get_out(*dst);
-               for (const auto& pair : out) {
-                  const auto *src = pair.first;
-                  const auto& taint = pair.second;
-                  if (src == dst) {
-                     /* check if any of dst's operands are in taint set */
-                     for (const auto& U : dst->operands()) {
-                        if (const auto *inst_op = llvm::dyn_cast<llvm::Instruction>(U.get())) {
-                           if (taint.find(inst_op) != taint.end()) {
-                              addr[src].insert(dst);
-                              break;
-                           }
-                        }
-                     }
-                     
-                  } else {
-                     if (taint.find(dst) != taint.end()) {
-                        addr[src].insert(dst);
-                     }
-                  }
-               }
-            }
-         }
-      }
+      addr_analysis.getResult(F, addr);
 
       errs() << "Address Relation:\n";
       for (const auto& pair : addr) {
@@ -144,6 +94,31 @@ struct LCMPass : public llvm::FunctionPass {
             errs() << *src << "  ->  " << *dst << "\n";
          }
       }
+
+
+      MemoryCFG mcfg {F};
+      errs() << "\n\n\nMemory Control Flow Graph\n";
+      for (const auto& src_pair : mcfg.graph()) {
+         const auto *src = src_pair.first;
+         for (const auto *dst : src_pair.second) {
+            if (src) {
+               errs() << *src;
+            } else {
+               errs() << "TOP";
+            }
+            errs() << "  ---->  ";
+            if (dst) {
+               errs() << *dst;
+            } else {
+               errs() << "BOT";
+            }
+            errs() << "\n";
+         }
+      }
+
+
+      /* Construct AEG */
+      
       
       return false;
    }

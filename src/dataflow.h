@@ -42,7 +42,7 @@ void DataflowAnalysis<Value>::run(const llvm::Function& F) {
    entry(in.at(&F.front().front()));
 
    /* Construct predecessor map */
-   PredecessorMap preds;
+   BinaryInstRel preds;
    predecessor_map(F, preds);
    
    /* Do analysis */

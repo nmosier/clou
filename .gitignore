@@ -9,3 +9,5 @@ Makefile
 *.bc
 a.out
 *.tmp
+\#*
+.\#*
