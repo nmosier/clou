@@ -6,7 +6,10 @@
 
 #include "util.h"
 
-template <typename Value>
+constexpr bool DA_FORWARD = true;
+constexpr bool DA_BACKWARD = false;
+
+template <typename T, typename Value, bool dir>
 class DataflowAnalysis {
 public:
    using State = std::unordered_map<const llvm::Instruction *, Value>;
@@ -19,31 +22,44 @@ public:
    const Value& get_out(const llvm::BasicBlock& B) const { return out.at(&B.back()); }
    
 protected:
-   virtual void transfer(const llvm::Instruction *inst, const Value& in, Value& out) = 0;
-   virtual void meet(const Value& a, const Value& b, Value& res) = 0;
-   virtual const Value& top() = 0;
-   virtual void entry(Value& res) = 0;
+   void transfer_(const llvm::Instruction *inst, const Value& in, Value& out) {
+      static_cast<T *>(this)->transfer(inst, in, out);
+   }
+   void meet_(const Value& a, const Value& b, Value& res) {
+      static_cast<T *>(this)->meet(a, b, res);
+   }
+   const Value& top_() { return static_cast<T *>(this)->top(); }
+   void entry_(Value& res) { static_cast<T *>(this)->entry(res); }
+   bool direction_() const { return static_cast<const T *>(this)->direction(); }
    
 private:
    State in;
    State out;
+
+   const State& din() const { return dir == DA_FORWARD ? in : out; }
+   State& din() { return dir == DA_FORWARD ? in : out; }
+   const State& dout() const { return dir == DA_FORWARD ? out : in; }
+   State& dout() { return dir == DA_FORWARD ? out : in; }
 };
 
 
-template <typename Value>
-void DataflowAnalysis<Value>::run(const llvm::Function& F) {
+template <typename T, typename Value, bool dir>
+void DataflowAnalysis<T, Value, dir>::run(const llvm::Function& F) {
    /* Initialize state */
-   in.clear();
+   din().clear();
    for (const llvm::BasicBlock& B : F) {
       for (const llvm::Instruction& I : B) {
-         in.emplace(&I, top());
+         din().emplace(&I, top_());
       }
    }
-   entry(in.at(&F.front().front()));
+   entry_(in.at(&F.front().front()));
 
    /* Construct predecessor map */
-   BinaryInstRel preds;
-   predecessor_map(F, preds);
+   const auto meet_map_f = dir == DA_FORWARD ? predecessor_map : successor_map;
+   BinaryInstRel meet_map; 
+   meet_map_f(F, meet_map);
+   
+   predecessor_map(F, meet_map);
    
    /* Do analysis */
    bool changed = true;   
@@ -53,7 +69,7 @@ void DataflowAnalysis<Value>::run(const llvm::Function& F) {
       /* 1. Compute OUT from IN */
       for (const llvm::BasicBlock& B : F) {
          for (const llvm::Instruction& I : B) {
-            transfer(&I, in.at(&I), out[&I]);
+            transfer_(&I, din().at(&I), dout()[&I]);
          }
       }
 
@@ -65,14 +81,14 @@ void DataflowAnalysis<Value>::run(const llvm::Function& F) {
          /* Meet predecessors */
          for (auto I_it = B.begin(); I_it != B.end(); ++I_it) {
             const llvm::Instruction *dst = &*I_it;
-            Value res = top();
-            for (const llvm::Instruction *src : preds[dst]) {
+            Value res = top_();
+            for (const llvm::Instruction *src : meet_map[dst]) {
                const Value a = res;
-               const Value& b = out.at(src);
-               meet(a, b, res);
+               const Value& b = dout().at(src);
+               meet_(a, b, res);
             }
 
-            Value& inval = in.at(dst);
+            Value& inval = din().at(dst);
             if (inval != res) {
                changed = true;
             }

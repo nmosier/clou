@@ -2,8 +2,8 @@
 
 #include "addr.h"
 
-void AddressDependencyAnalysis::transfer(const llvm::Instruction *inst, const Value& in, Value& out)
-{
+void AddressDependencyAnalysis::transfer(const llvm::Instruction *inst,
+                                         const Value& in, Value& out) const {
    /* If it's a load instruction, then we kill the input set and make the single output the result
     * of the load (i.e. the instruction).
     * Otherwise, we check whether any operands use a value in the input set. If so, we add the result
@@ -33,15 +33,15 @@ void AddressDependencyAnalysis::transfer(const llvm::Instruction *inst, const Va
          }
       }
    }
-
+   
    /* If load, then add */
    if (isload) {
       out[inst] = {inst};
    }
 }
 
-   
-void AddressDependencyAnalysis::meet(const Value& a, const Value& b, Value& res) {
+
+void AddressDependencyAnalysis::meet(const Value& a, const Value& b, Value& res) const {
    res = a;
    for (const auto& pair : b) {
       res[pair.first].insert(pair.second.begin(), pair.second.end());
@@ -49,7 +49,7 @@ void AddressDependencyAnalysis::meet(const Value& a, const Value& b, Value& res)
 }
 
 
-void AddressDependencyAnalysis::getResult(const llvm::Function& F, BinaryInstRel& addr) {
+void AddressDependencyAnalysis::getResult(const llvm::Function& F, BinaryInstRel& addr) const {
    for (const auto& B : F) {
       for (const auto& I : B) {
          if (const auto *dst = llvm::dyn_cast<llvm::LoadInst>(&I)) {
@@ -79,17 +79,3 @@ void AddressDependencyAnalysis::getResult(const llvm::Function& F, BinaryInstRel
    }   
 }
 
-
-/* DATA DEPENDENCY ANALYSIS 
- * Values map source values to a set of values that transitively depend on the source value
- * (including the source value itself).
- */
-#if 0
-void DataDependencyAnalysis::transfer(const llvm::Instruction *inst, const Value& in, Value& out) {
-   out = in;
-
-   const auto opcode = inst->getOpcode();
-   
-   
-}
-#endif

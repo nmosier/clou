@@ -24,23 +24,28 @@ using BinaryInstRel = std::unordered_map<const llvm::Instruction *,
                                          std::unordered_set<const llvm::Instruction *>
                                          >;
 
+
+
 void predecessor_map(const llvm::Function& F, BinaryInstRel& preds);
 void successor_map(const llvm::Function& F, BinaryInstRel& succs);
 
+namespace util {
 
-template <typename It>
-class Range {
-public:
-   constexpr Range(It begin, It end): begin_(begin), end_(end) {}
-   constexpr It begin() const { return begin_; }
-   constexpr It end() const { return end_; }
-private:
-   const It begin_;
-   const It end_;
-};
+   template <typename It>
+   class Range {
+   public:
+      constexpr Range(It begin, It end): begin_(begin), end_(end) {}
+      constexpr It begin() const { return begin_; }
+      constexpr It end() const { return end_; }
+   private:
+      const It begin_;
+      const It end_;
+   };
 
-template <typename It>
-constexpr Range<It> make_range(It begin, It end) { return Range {begin, end}; }
+   template <typename It>
+   constexpr Range<It> make_range(It begin, It end) { return Range {begin, end}; }
+
+}
 
 inline const char *getenvs(const char *name) {
    if (char *value = getenv(name)) {

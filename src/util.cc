@@ -40,3 +40,4 @@ void successor_map(const llvm::Function& F, BinaryInstRel& succs) {
       }
    }
 }
+

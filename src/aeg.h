@@ -14,7 +14,7 @@ class UHBContext {
 public:
    z3::context context;
 
-   z3::expr make_bool() { return context.bool_const(id_++); }
+   z3::expr make_bool() { return context.bool_const(std::to_string(id_++).c_str()); }
    
 private:
    unsigned id_ = 0;
