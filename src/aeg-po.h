@@ -15,6 +15,15 @@ class AEGPO {
 public:
    struct Node {
       const llvm::Instruction *I;
+
+      llvm::raw_ostream& dump(llvm::raw_ostream& os, const char *special) const {
+         if (I) {
+            os << *I;
+         } else {
+            os << special;
+         }
+         return os;
+      }
    };
 
    Node *entry;

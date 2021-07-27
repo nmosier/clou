@@ -190,6 +190,7 @@ void AEGPO::construct(const CFG& cfg) {
 
 
 llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
+#if 0
    os << "Nodes:\n";
 
    std::unordered_map<const Node *, unsigned> node_ids;
@@ -216,6 +217,106 @@ llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
          os << "  " << node_ids.at(src) << " " << node_ids.at(dst) << "\n";
       }
    }
+
+#elif 0
+
+   // print as basic blocks
+   std::unordered_map<const Node *, unsigned> node_ids;
+   size_t next_id = 0;
+   std::vector<Node *> stack {entry};
+
+   while (!stack.empty()) {
+      /* Get next node and ID it if necessary */
+      Node *node = stack.back();
+      stack.pop_back();
+      const auto id_it = node_ids.find(node);
+      if (id_it != node_ids.end()) {
+         continue;
+      }
+
+
+      const Rel::Set *succ_nodes;
+      while (true) {
+         const auto id_it = node_ids.find(node);
+         if (id_it != node_ids.end()) {
+            os << "  GOTO " << id_it->second << "\n";
+            goto end;
+         }
+         
+         const auto id = next_id++;
+         node_ids.emplace(node, id);
+         os << id << "  ";
+         node->dump(os, node == entry ? "<ENTRY>" : "<EXIT>") << "\n";
+         succ_nodes = &po.fwd.at(node);
+         if ((node->I && node->I == &node->I->getParent()->back()) ||
+             succ_nodes->size() != 1) {
+            
+            break;
+         }
+         node = *succ_nodes->begin();
+      }
+      
+      stack.insert(stack.end(), succ_nodes->begin(), succ_nodes->end());
+      
+   end:
+      os << "\n";
+   }
+
+
+#else
+
+   /* Approach: divide instructions into basic blocks.
+    * Basic blocks have the following characteristics:
+    *  - Start with an instruction that npreds != 1 or npreds == 1 and pred has != 1 successor.
+    *  - Start with an instruction with any number of predecessors.
+    *  - End with an instruction with any number of successors.
+    *  - Middle instructions have exactly 1 pred and 1 successors.
+    */
+
+   unsigned next_bb = 0;
+
+   std::unordered_map<Node *, unsigned> BB_starts;
+
+   for (const auto& node_ : nodes) {
+      Node *node = node_.get();
+      const auto& preds = po.rev.at(node);
+      if (preds.size() != 1 ||
+          po.fwd.at(*preds.begin()).size() != 1) {
+         /* Basic Block start */
+         BB_starts.emplace(node, next_bb++);
+      }
+   }
+
+   for (const auto& pair : BB_starts) {
+      os << "BB " << pair.second << "\n";
+      Node *node = pair.first;
+      const Rel::Set *succs;
+
+      while (true) {
+         os << "  ";
+         node->dump(os, node == entry ? "<ENTRY>" : "<EXIT>") << "\n";
+         succs = &po.fwd.at(node);
+         if (succs->size() != 1) {
+            break;
+         }
+         node = *succs->begin();
+         if (po.rev.at(node).size() != 1) {
+            break;
+         }
+      }
+         
+      /* list exits */
+      if (succs->size() > 0) {
+         os << "    GOTO";
+         for (Node *succ : *succs) {
+            os << " " << BB_starts.at(succ);
+         }
+         os << "\n";
+      }
+      os << "\n";
+   }
+   
+#endif
 
    return os;
 }
