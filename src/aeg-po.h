@@ -46,9 +46,13 @@ private:
    std::vector<std::unique_ptr<Node>> nodes;
    
    void add_edge(Node *src, Node *dst);
+#if 0
    bool check_loop(Node *node) const;
    bool check_loop_i(Node *node, size_t loopsize) const;
    bool check_loop_i_rec(std::vector<Node *>& trace, size_t loopsize) const;
+#else
+
+#endif
 
    template <typename InputIt, typename OutputIt>
    void predecessor_nodes(InputIt begin, InputIt end, OutputIt out) const;
@@ -58,8 +62,9 @@ private:
 
    size_t depth(Node *node) const;
 
-   using MergeMap = std::unordered_map<const llvm::Instruction *, std::unordered_set<Node *>>;   
-   void construct(const CFG& cfg, Node *node, MergeMap& merge_map);
+   using MergeMap = std::unordered_map<const llvm::Instruction *, std::unordered_set<Node *>>;
+   using RepMap = std::unordered_map<const llvm::Instruction *, unsigned>;
+   void construct(const CFG& cfg, Node *node, MergeMap& merge_map, RepMap reps);
 
    bool is_ancestor(Node *child, Node *parent) const;
 };

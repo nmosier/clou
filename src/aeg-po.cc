@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cassert>
 
+#include <llvm/IR/Instructions.h>
+
 #include "aeg-po.h"
 
 
@@ -21,11 +23,6 @@
  */
 
 void AEGPO::add_edge(Node *src, Node *dst) {
-   llvm::errs() << "adding edge:     ";
-   if (src->I) { llvm::errs() << *src->I; } else { llvm::errs() << "<entry>"; }
-   if (dst->I) { llvm::errs() << *dst->I; } else { llvm::errs() << "<exit>"; }
-   llvm::errs() << "\n";
-   
    /* anything that passes into source and out of dst is now transitively connected. */
    po.insert(src, dst);
 
@@ -59,6 +56,7 @@ void AEGPO::predecessor_nodes(Container& container) const {
    container = std::move(tmp);
 }
 
+#if 0
 bool AEGPO::check_loop(Node *node) const {
    /* Temporary algorithm: check each individual path recursively */
 
@@ -116,6 +114,7 @@ bool AEGPO::check_loop_i_rec(std::vector<Node *>& trace, size_t loopsize) const 
       return true;
    }
 }
+#endif
 
 size_t AEGPO::depth(Node *dst) const {
    size_t depth_ = 1;
@@ -125,22 +124,12 @@ size_t AEGPO::depth(Node *dst) const {
    return depth_;
 }
 
-void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map) {
+void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map, RepMap reps) {
    merge_map[node->I].insert(node);
    
    const auto& succs = cfg.fwd.at(node->I);
    assert(succs.size() > 0);
 
-   /* Branching approach:
-    * At each instruction, look for nodes with same instruction in merge map. 
-    * For each node, check whether it's an ancestor of the current node we're adding. 
-    * If it is, then add edge to that one and stop recursing. 
-    * Otherwise, proceed as normal.
-    */
-
-   /* This tracks which nodes we've created along all branches. If we find a node with a duplicate
-    * instruction along another branch, we can simply merge them.
-    */
    for (const llvm::Instruction *succ_I : succs) {
       const auto& merge_candidates = merge_map[succ_I];
       const auto merge_candidate_it =
@@ -148,19 +137,56 @@ void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map) {
                       [this, node] (Node *merge_candidate) {
                          return !this->is_ancestor(node, merge_candidate);
                       });
-      if (merge_candidate_it == merge_candidates.end()) {
-         /* node not mergeable */
-         Node *succ_node = new Node {succ_I};
-         nodes.emplace_back(succ_node);
-         add_edge(node, succ_node);
-         
-         /* recurse if not exit */
-         if (succ_I) {
-            construct(cfg, succ_node, merge_map);
+      const bool mergable = merge_candidate_it != merge_candidates.end();
+
+#if 0
+      if (succ_I && llvm::dyn_cast<llvm::SwitchInst>(succ_I)) {
+         llvm::errs() << "Original instruction:\n";
+         llvm::errs() << *succ_I << "\n";
+         llvm::errs() << "Merge candidates:\n";
+         for (Node *node : merge_candidates) {
+            llvm::errs() << *node->I << "\n";
          }
+      }
+#endif
+      llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
+      if (succ_I) {
+         llvm::errs() << *succ_I;
       } else {
-         /* node mergeable */
-         add_edge(node, *merge_candidate_it);
+         llvm::errs() << "<EXIT>";
+      }
+      llvm::errs() << "\n";
+
+      Node *succ_node;
+      if (mergable) {
+         succ_node = *merge_candidate_it;
+      } else {
+         const auto& po_succs = po.fwd.at(node);
+         const auto po_succ_it = std::find_if(po_succs.begin(), po_succs.end(),
+                                              [succ_I] (const Node *succ) {
+                                                 return succ_I == succ->I;
+                                              });
+         if (po_succ_it == po_succs.end()) {
+            succ_node = new Node {succ_I};
+            nodes.emplace_back(succ_node);
+         } else {
+            succ_node = *po_succ_it;
+         }
+      }
+      add_edge(node, succ_node);
+      
+      /* check for loops */
+      auto& count = reps[succ_I];
+      if (count == 2) {
+         count = 0;
+         llvm::errs() << "resetting count for " << *succ_I << "\n";
+         continue;
+      }
+      ++count;
+         
+      /* recurse if not exit */
+      if (succ_I) {
+         construct(cfg, succ_node, merge_map, reps);
       }
    }
 }
@@ -169,6 +195,14 @@ void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map) {
 
    
 bool AEGPO::is_ancestor(Node *child, Node *parent) const {
+#if 0
+   const auto it = po_trans.rev.find(child);
+   if (it == po_trans.rev.end()) {
+      return false;
+   } else {
+      return it->second.find(parent) != it->second.end(); 
+   }
+#elif 0
    using NodeSet = std::unordered_set<Node *>;
    NodeSet ancestors {child};
    while (!ancestors.empty()) {
@@ -181,90 +215,35 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
       ancestors = std::move(next);
    }
    return false;
+#else
+   // base case 
+   if (child == parent) {
+      return true;
+   }
+
+   // recursive case
+   const auto& preds = po.rev.at(child);
+   return std::any_of(preds.begin(), preds.end(),
+                      [parent, this] (Node *node) {
+                         return this->is_ancestor(node, parent);
+                      });
+#endif
 }
 
 void AEGPO::construct(const CFG& cfg) {
    MergeMap merge_map;
-   construct(cfg, entry, merge_map);
+   RepMap reps;
+   construct(cfg, entry, merge_map, reps);
+
+   const auto switches = std::count_if(nodes.begin(), nodes.end(), [] (const auto& node) {
+      return llvm::dyn_cast_or_null<llvm::SwitchInst>(node->I) != nullptr;
+   });
+   llvm::errs() << "switches " << switches << "\n";
+      
 }
 
 
 llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
-#if 0
-   os << "Nodes:\n";
-
-   std::unordered_map<const Node *, unsigned> node_ids;
-   size_t i = 0; 
-   for (const auto& node : nodes) {
-      node_ids.emplace(node.get(), i);
-      os << "  " << i << "  ";
-      if (node->I) {
-         os << *node->I;
-      } else if (node.get() == entry) {
-         os << "<entry>";
-      } else {
-         os << "<exit>";
-      }
-      os << "\n";
-      ++i;
-   }
-
-   os << "\n";
-   os << "Edges:\n";
-   for (const auto& pair : po.fwd) {
-      const Node *src = pair.first;
-      for (const Node *dst : pair.second) {
-         os << "  " << node_ids.at(src) << " " << node_ids.at(dst) << "\n";
-      }
-   }
-
-#elif 0
-
-   // print as basic blocks
-   std::unordered_map<const Node *, unsigned> node_ids;
-   size_t next_id = 0;
-   std::vector<Node *> stack {entry};
-
-   while (!stack.empty()) {
-      /* Get next node and ID it if necessary */
-      Node *node = stack.back();
-      stack.pop_back();
-      const auto id_it = node_ids.find(node);
-      if (id_it != node_ids.end()) {
-         continue;
-      }
-
-
-      const Rel::Set *succ_nodes;
-      while (true) {
-         const auto id_it = node_ids.find(node);
-         if (id_it != node_ids.end()) {
-            os << "  GOTO " << id_it->second << "\n";
-            goto end;
-         }
-         
-         const auto id = next_id++;
-         node_ids.emplace(node, id);
-         os << id << "  ";
-         node->dump(os, node == entry ? "<ENTRY>" : "<EXIT>") << "\n";
-         succ_nodes = &po.fwd.at(node);
-         if ((node->I && node->I == &node->I->getParent()->back()) ||
-             succ_nodes->size() != 1) {
-            
-            break;
-         }
-         node = *succ_nodes->begin();
-      }
-      
-      stack.insert(stack.end(), succ_nodes->begin(), succ_nodes->end());
-      
-   end:
-      os << "\n";
-   }
-
-
-#else
-
    /* Approach: divide instructions into basic blocks.
     * Basic blocks have the following characteristics:
     *  - Start with an instruction that npreds != 1 or npreds == 1 and pred has != 1 successor.
@@ -315,9 +294,6 @@ llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
       }
       os << "\n";
    }
-   
-#endif
-
    return os;
 }
 
