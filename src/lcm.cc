@@ -14,6 +14,7 @@
 #include "addr.h"
 #include "mcfg.h"
 #include "graph.h"
+#include "aeg-po.h"
 
 using llvm::errs;
 
@@ -118,7 +119,12 @@ struct LCMPass : public llvm::FunctionPass {
 
 
       /* Construct AEG */
-      
+      CFG cfg;
+      get_cfg(F, cfg);
+      AEGPO aeg;
+      aeg.construct(cfg);
+
+      errs() << aeg;
       
       return false;
    }

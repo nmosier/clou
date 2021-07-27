@@ -7,6 +7,8 @@
 
 #include <llvm/IR/Function.h>
 
+#include "binrel.h"
+
 extern const char *prog;
 
 template <typename... Args>
@@ -84,3 +86,20 @@ inline bool getenvb(const char *name) {
    return getenvs(name) != nullptr;
 }
 
+template <class T>
+inline void hash_combine(std::size_t& seed, const T& v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+}
+
+namespace util {
+   template <typename T, typename... Args>
+   auto do_hash(const T& val, Args&&... args) {
+      return std::hash<T>()(val);
+   }
+}
+
+
+using CFG = binrel<const llvm::Instruction *>;
+void get_cfg(const llvm::Function& F, CFG& cfg);

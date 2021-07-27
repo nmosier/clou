@@ -20,7 +20,22 @@ private:
    unsigned id_ = 0;
 };
 
-using UHBNode = const llvm::Instruction *;
+struct UHBNode {
+   const llvm::Instruction *inst;
+
+   bool operator==(const UHBNode& other) const { return inst == other.inst; }
+   bool operator!=(const UHBNode& other) const { return !(*this == other); }
+   bool operator<(const UHBNode& other) const { return inst < other.inst; }
+};
+
+namespace std {
+   template <>
+   struct hash<UHBNode> {
+      size_t operator()(const UHBNode& node) const {
+         return std::hash<const llvm::Instruction *>()(node.inst);
+      }
+   };
+}
 
 class UHBEdge {
 public:
@@ -59,11 +74,14 @@ private:
 class AEG {
 public:
    using graph_t = Graph<UHBNode, UHBEdge>;
-   void construct(const MemoryCFG& mcfg);
+   void construct(const MemoryCFG& mcfg); // TODO: remove this.
    const graph_t& graph() const { return graph_; }
+
+   void construct_full(const llvm::Function& F);
 
 private:
    Graph<UHBNode, UHBEdge> graph_;
    
-   void construct(const MemoryCFG& mcfg, const llvm::Instruction *I);
+   void construct(const MemoryCFG& mcfg, const llvm::Instruction *I); // TODO: remove this.
+   void construct_branch(const llvm::Instruction *inst);
 };

@@ -39,11 +39,11 @@ public:
    using NodeIterator_All = typename Nodes::const_iterator;
    NodeIterator_All nodes_all_begin() const { return nodes.begin(); }
    NodeIterator_All nodes_all_end() const { return nodes.end(); }
-   using NodeRange_All = Range<NodeIterator_All>;
+   using NodeRange_All = util::Range<NodeIterator_All>;
    NodeRange_All nodes_all() const { return make_range(nodes_all_begin(), nodes_all_end()); }
 
    class NodeIterator_Neighbors;
-   using NodeRange_Neighbors = Range<NodeIterator_Neighbors>;
+   using NodeRange_Neighbors = util::Range<NodeIterator_Neighbors>;
    NodeIterator_Neighbors nodes_srcs_begin(const Node& dst) const {
       return NodeIterator_Neighbors {rev.find(dst)};
    }

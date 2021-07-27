@@ -41,7 +41,6 @@ void AEG::construct(const MemoryCFG& mcfg, const llvm::Instruction *I) {
       for (const llvm::Instruction *succ : succs) {
          /* correct speculation arm */
          
-         
          /* misspeculation arm */
          // do simple loop?
          // what about sub branches?
@@ -54,4 +53,24 @@ void AEG::construct(const MemoryCFG& mcfg, const llvm::Instruction *I) {
 
    
    
+}
+
+
+
+void AEG::construct_full(const llvm::Function& F) {
+   /* How to detect loops when generating the full AEG?
+    * How to join those loops back to the main branch?
+    * - Perhaps loops can return a set of the next non-looping instructions.
+    *   Actually, no. Loops and branches are separate things.
+    *
+    * Branches: 
+    *  - Generate for each branch, depth-first. 
+    *  * How to join them?
+    *    1. Do a pre-pass that finds the closest common instruction.
+    *    2. The first pass is special.
+    */
+}
+
+void AEG::construct_branch(const llvm::Instruction *I) {
+   /* Find the closest common instruction of the branch arms */
 }
