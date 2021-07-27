@@ -3,7 +3,7 @@ add_library(lcm MODULE
   util.cc
   addr.cc
   mcfg.cc
-  aeg.cc
+  aeg-po.cc
   )
 
 target_compile_options(lcm PRIVATE -fno-rtti)
