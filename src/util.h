@@ -103,3 +103,19 @@ namespace util {
 
 using CFG = binrel<const llvm::Instruction *>;
 void get_cfg(const llvm::Function& F, CFG& cfg);
+
+
+namespace std {
+
+   template <typename... Args>
+   struct hash<std::unordered_set<Args...>> {
+      size_t operator()(const std::unordered_set<Args...>& set) const {
+         size_t res = 0;
+         for (const auto& x : set) {
+            res ^= set.hash_function()(x);
+         }
+         return res;
+      }
+   };
+   
+}

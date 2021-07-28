@@ -38,21 +38,17 @@ public:
    }
 
    void construct(const CFG& cfg);
-
+   void construct2(const CFG& cfg);
    
    llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
 
 private:
    std::vector<std::unique_ptr<Node>> nodes;
+   using Loop = std::unordered_set<const llvm::Instruction *>;
+   using Loops = std::unordered_set<Loop>;
+   Loops loops;
    
    void add_edge(Node *src, Node *dst);
-#if 0
-   bool check_loop(Node *node) const;
-   bool check_loop_i(Node *node, size_t loopsize) const;
-   bool check_loop_i_rec(std::vector<Node *>& trace, size_t loopsize) const;
-#else
-
-#endif
 
    template <typename InputIt, typename OutputIt>
    void predecessor_nodes(InputIt begin, InputIt end, OutputIt out) const;
@@ -68,6 +64,10 @@ private:
    void construct(const CFG& cfg, Node *node, MergeMap& merge_map, const RepMap& reps_,
                   NodeVec& trace);
 
+   template <typename OutputIt>
+   void construct2_rec(const CFG& cfg, Node *node, MergeMap& merge_map, const RepMap& reps_,
+                       NodeVec trace, OutputIt& out);
+
    bool is_ancestor(Node *child, Node *parent) const;
    bool is_sibling(Node *a, Node *b) const;
 
@@ -76,7 +76,12 @@ private:
       return max_reps(node, reps);
    }
    unsigned max_reps(Node *node, RepMap reps) const;
-   
+
+   size_t node_id(const Node *node) const {
+      return std::find_if(nodes.begin(), nodes.end(), [node] (const auto& ptr) {
+         return ptr.get() == node;
+      }) - nodes.begin();
+   }
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);
