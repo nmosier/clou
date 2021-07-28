@@ -124,39 +124,56 @@ size_t AEGPO::depth(Node *dst) const {
    return depth_;
 }
 
-void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map, RepMap reps) {
+void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map, const RepMap& reps_,
+                      NodeVec& trace) {
    merge_map[node->I].insert(node);
+   trace.push_back(node);
    
    const auto& succs = cfg.fwd.at(node->I);
    assert(succs.size() > 0);
 
    for (const llvm::Instruction *succ_I : succs) {
+      RepMap reps = reps_;
+      
       const auto& merge_candidates = merge_map[succ_I];
+      RepMap node_reps_tmp = {{succ_I, 1}};
+      const unsigned node_max_reps = max_reps(node, node_reps_tmp);
       const auto merge_candidate_it =
          std::find_if(merge_candidates.begin(), merge_candidates.end(),
-                      [this, node] (Node *merge_candidate) {
-                         return !this->is_ancestor(node, merge_candidate);
+                      [this, node, node_max_reps] (Node *merge_candidate) {
+                         return !this->is_ancestor(node, merge_candidate) &&
+                            (node_max_reps == max_reps(merge_candidate) || true);
                       });
       const bool mergable = merge_candidate_it != merge_candidates.end();
-
-#if 0
-      if (succ_I && llvm::dyn_cast<llvm::SwitchInst>(succ_I)) {
-         llvm::errs() << "Original instruction:\n";
-         llvm::errs() << *succ_I << "\n";
-         llvm::errs() << "Merge candidates:\n";
-         for (Node *node : merge_candidates) {
-            llvm::errs() << *node->I << "\n";
-         }
-      }
-#endif
+      
       llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
       if (succ_I) {
          llvm::errs() << *succ_I;
       } else {
          llvm::errs() << "<EXIT>";
       }
+      llvm::errs() << "     " << merge_candidates.size();
       llvm::errs() << "\n";
 
+      /* check for loops */
+      auto& count = reps[succ_I];
+      if (count == 2) {
+         llvm::errs() << "aborting loop at " << *succ_I << "\n";
+         continue;
+      }
+      ++count;
+      if (count == 2) {
+         // we just doubled back on a previous instruction, so clear the counts of all intervening
+         // instructions
+         const auto f = [succ_I] (const Node *node) { return node->I == succ_I; };
+         const auto first = std::find_if(trace.rbegin(), trace.rend(), f);
+         assert(first != trace.rend());
+         for (auto it = trace.rbegin(); it != first; ++it) {
+            llvm::errs() << "resetting " << *(**it).I << "\n";
+            reps[(**it).I] = 0;
+         }
+      }
+      
       Node *succ_node;
       if (mergable) {
          succ_node = *merge_candidate_it;
@@ -173,22 +190,15 @@ void AEGPO::construct(const CFG& cfg, Node *node, MergeMap& merge_map, RepMap re
             succ_node = *po_succ_it;
          }
       }
-      add_edge(node, succ_node);
+      add_edge(node, succ_node);      
       
-      /* check for loops */
-      auto& count = reps[succ_I];
-      if (count == 2) {
-         count = 0;
-         llvm::errs() << "resetting count for " << *succ_I << "\n";
-         continue;
-      }
-      ++count;
-         
       /* recurse if not exit */
       if (succ_I) {
-         construct(cfg, succ_node, merge_map, reps);
+         construct(cfg, succ_node, merge_map, reps, trace);
       }
    }
+
+   trace.pop_back();
 }
 
 
@@ -233,13 +243,28 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
 void AEGPO::construct(const CFG& cfg) {
    MergeMap merge_map;
    RepMap reps;
-   construct(cfg, entry, merge_map, reps);
+   NodeVec trace;
+   construct(cfg, entry, merge_map, reps, trace);
 
    const auto switches = std::count_if(nodes.begin(), nodes.end(), [] (const auto& node) {
       return llvm::dyn_cast_or_null<llvm::SwitchInst>(node->I) != nullptr;
    });
    llvm::errs() << "switches " << switches << "\n";
-      
+
+   const auto it = std::find_if(merge_map.begin(), merge_map.end(), [] (const auto& pair) {
+      return llvm::dyn_cast_or_null<llvm::SwitchInst>(pair.first) != nullptr;
+   });
+   if (it != merge_map.end()) {
+      const auto& set = it->second;
+      for (auto it1 = set.begin(); it1 != set.end(); ++it1) {
+         for (auto it2 = std::next(it1); it2 != set.end(); ++it2) {
+            if (!is_ancestor(*it1, *it2)) {
+               (*it1)->dump(llvm::errs(), "<ENTRY>") << "\n";
+            }
+         }
+      }
+   }
+   
 }
 
 
@@ -294,9 +319,56 @@ llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
       }
       os << "\n";
    }
+
+
+   // DEBUG: show mapping and graph
+   struct Printer {
+      const AEGPO& aeg;
+      
+      Printer(const AEGPO& aeg): aeg(aeg) {}
+      
+      void operator()(llvm::raw_ostream& os, const Node *node) const {
+         os << std::find_if(aeg.nodes.begin(), aeg.nodes.end(),
+                            [node] (const auto& ref) {
+                               return ref.get() == node;
+                            }) - aeg.nodes.begin() << "\n";
+         node->dump(os, "<ENTRY/EXIT>");
+      }
+   };
+   po.dump_graph("po.dot", Printer {*this});
+   
    return os;
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg) {
    return aeg.dump(os);
 }
+
+
+bool AEGPO::is_sibling(Node *a, Node *b) const {
+   return !is_ancestor(a, b) && !is_ancestor(b, a);
+}
+
+unsigned AEGPO::max_reps(Node *node, RepMap reps) const {
+   ++reps[node->I];
+   const auto& preds = po.rev.at(node);
+   
+   if (preds.size() == 0) {
+      /* base case */
+      assert(node == entry);
+      const auto it = std::max_element(reps.begin(), reps.end(),
+                                       [] (const auto& a, const auto& b) {
+                                          return a.second < b.second;
+                                       });
+      return it == reps.end() ? 0 : it->second;
+   }
+
+   std::vector<unsigned> maxes;
+   maxes.resize(preds.size());
+   std::transform(preds.begin(), preds.end(), maxes.begin(),
+                  [this, &reps] (Node *pred) {
+                     return this->max_reps(pred, reps);
+                  });
+   return *std::max_element(maxes.begin(), maxes.end());
+}
+

@@ -64,9 +64,19 @@ private:
 
    using MergeMap = std::unordered_map<const llvm::Instruction *, std::unordered_set<Node *>>;
    using RepMap = std::unordered_map<const llvm::Instruction *, unsigned>;
-   void construct(const CFG& cfg, Node *node, MergeMap& merge_map, RepMap reps);
+   using NodeVec = std::vector<Node *>;
+   void construct(const CFG& cfg, Node *node, MergeMap& merge_map, const RepMap& reps_,
+                  NodeVec& trace);
 
    bool is_ancestor(Node *child, Node *parent) const;
+   bool is_sibling(Node *a, Node *b) const;
+
+   unsigned max_reps(Node *node) const {
+      RepMap reps;
+      return max_reps(node, reps);
+   }
+   unsigned max_reps(Node *node, RepMap reps) const;
+   
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);
