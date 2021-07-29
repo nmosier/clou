@@ -18,7 +18,16 @@ public:
    void construct(const llvm::Function& F);
 
    void dump_graph(const std::string& path) const {
-      po.dump_graph(path);
+      po.group().dump_graph(path, [] (llvm::raw_ostream& os, const auto& bb) {
+         for (const llvm::Instruction *I : bb) {
+            if (I) {
+               os << *I;
+            } else {
+               os << "<ENTRY/EXIT>";
+            }
+            os << "\n";
+         }
+      });
    }
 
    struct CallSite {
@@ -35,6 +44,7 @@ public:
 private:
    using CallSites = std::unordered_set<CallSite>;
    void construct(const CallSite& site, CallSites& sites);
+   void remove_calls();
 };
 
 namespace std {

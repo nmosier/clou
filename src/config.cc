@@ -9,11 +9,16 @@
 
 #include "config.h"
 
+/* TODO
+ * [ ] Handle function names
+ */
+
 static char prog[] = "lcm";
 static std::vector<char *> args = {prog};
 
 std::string cfg_output_path;
 std::string aegpo_output_path;
+std::vector<std::string> function_names;
 
 static void usage(FILE *f = stderr) {
    const char *s = R"=(
@@ -21,6 +26,9 @@ usage: [option...]
 Options:
   --help, -h      show help
   --cfg <path>    output path to full po CFG
+  --aegpo <path>  output path to full po AEG 
+  --func, -f <name>[,<name>]...  
+                  only examine given functions
 )=";
    fprintf(f, s);
 }

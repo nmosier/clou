@@ -8,6 +8,7 @@ void CFG::construct(const llvm::Function& F) {
    CallSites sites;
    const CallSite site {F, {nullptr}, {nullptr}};
    construct(site, sites);
+   remove_calls();
 }
 
 void CFG::construct(const CallSite& site, CallSites& seen) {
@@ -47,5 +48,14 @@ void CFG::construct(const CallSite& site, CallSites& seen) {
    }
 }
 
+void CFG::remove_calls() {
+   std::unordered_set<const llvm::Instruction *> nodes;
+   po.get_nodes(std::inserter(nodes, nodes.end()));
+   for (const auto *I : nodes) {
+      if (const auto *C = llvm::dyn_cast_or_null<llvm::CallBase>(I)) {
+         po.erase(C);
+      }
+   }
+}
 
 #undef CFG

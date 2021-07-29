@@ -3,7 +3,14 @@
 #include <unordered_set>
 #include <unordered_map>
 
-template <typename T, typename Hash = std::hash<T>>
+#include "hash.h"
+#include "printer.h"
+
+/* TODO
+ * [ ] add Compare template parameter
+ */
+
+template <typename T, typename Hash = std::hash<T>, typename Printer = util::printer<T>>
 class binrel {
 public:
    using Set = std::unordered_set<T, Hash>;
@@ -63,17 +70,11 @@ public:
       f(rev, fwd);
    }
 
-   struct DefaultPrinter {
-      void operator()(llvm::raw_ostream& os, const T& value) const {
-         os << value;
-      }
-   };
-   
-   template <typename Printer = DefaultPrinter>
-   void dump_graph(llvm::raw_ostream& os, Printer printer = Printer()) const;
+   template <typename Printer_ = Printer>
+   void dump_graph(llvm::raw_ostream& os, Printer_ printer = Printer()) const;
 
-   template <typename Printer = DefaultPrinter>
-   void dump_graph(const std::string& path, Printer printer = Printer()) const {
+   template <typename Printer_ = Printer>
+   void dump_graph(const std::string& path, Printer_ printer = Printer()) const {
       std::error_code ec;
       llvm::raw_fd_ostream os {path, ec};
       if (ec) {
@@ -82,14 +83,39 @@ public:
       }
       dump_graph(os, printer);
    }
+
+   using Group = std::vector<T>;
+   struct GroupHash {
+      size_t operator()(const Group& g) const {
+         std::vector<size_t> hashes;
+         hashes.resize(g.size());
+         std::transform(g.begin(), g.end(), hashes.begin(), Hash {});
+         return hash_ordered_sequence(hashes.begin(), hashes.end());
+      }
+   };
+
+   struct GroupPrinter {
+      void operator()(llvm::raw_ostream& os, const Group& group) const {
+         for (const T& val : group) {
+            os << val << "\n";
+         }
+      }
+   };
+   
+   using GroupRel = binrel<Group, GroupHash, GroupPrinter>;
+   GroupRel group() const;
+
+   template <typename OutputIt>
+   void get_nodes(OutputIt out) const;
    
 private:
+   Group get_group(const T& val) const;
 };
 
 
-template <typename T, typename Hash>
-template <typename Printer>
-void binrel<T, Hash>::dump_graph(llvm::raw_ostream& os, Printer printer) const {
+template <typename T, typename Hash, typename Printer>
+template <typename Printer_>
+void binrel<T, Hash, Printer>::dump_graph(llvm::raw_ostream& os, Printer_ printer) const {
    os << R"=(
 digraph G {
   layout=neato;
@@ -140,4 +166,71 @@ digraph G {
    os << "}\n";
 }
 
+
+template <typename T, typename Hash, typename Printer>
+typename binrel<T, Hash, Printer>::Group binrel<T, Hash, Printer>::get_group(const T& node_) const {
+   const T *node = &node_;
+   Group g;
+
+   /* find entry */
+   std::unordered_set<const T *> seen;
+   while (true) {
+      const auto seen_res = seen.insert(node);
+      if (!seen_res.second) {
+         return Group {node_};
+      }
+      const auto& preds = rev.at(*node);
+      if (preds.size() != 1) { break; }
+      const T& pred = *preds.begin();
+      if (fwd.at(pred).size() != 1) { break; }
+      node = &pred;
+   }
+
+   /* construct BB */
+   while (true) {
+      g.push_back(*node);
+      const auto& succs = fwd.at(*node);
+      if (succs.size() != 1) { break; }
+      const T& succ = *succs.begin();
+      if (rev.at(succ).size() != 1) { break; }
+      node = &succ;
+   }
+
+   return g;
+}
+
+
+template <typename T, typename Hash, typename Printer>
+template <typename OutputIt>
+void binrel<T, Hash, Printer>::get_nodes(OutputIt out) const {
+   for (const auto& rel : std::array<const Map *, 2> {&fwd, &rev}) {
+      for (const auto& pair : *rel) {
+         *out++ = pair.first;
+      }
+   }
+}
+
+template <typename T, typename Hash, typename Printer>
+typename binrel<T, Hash, Printer>::GroupRel binrel<T, Hash, Printer>::group() const {
+   GroupRel rel;
+
+   std::unordered_set<T, Hash> nodes;
+   get_nodes(std::inserter(nodes, nodes.end()));
+
+   for (const T& node : nodes) {
+      rel.add_node(get_group(node));
+   }
+   
+   for (const T& src : nodes) {
+      const Group src_bb = get_group(src);
+      for (const T& dst : fwd.at(src)) {
+         const Group dst_bb = get_group(dst);
+         if (src_bb != dst_bb) {
+            rel.insert(src_bb, dst_bb);
+         }
+      }
+   }
+
+   return rel;
+}
 

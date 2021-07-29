@@ -122,24 +122,19 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
       RepMap reps = reps_;
       
       const auto& merge_candidates = merge_map[succ_I];
-      RepMap node_reps_tmp = {{succ_I, 1}};
-      const unsigned node_max_reps = max_reps(node, node_reps_tmp);
       const auto merge_candidate_it =
          std::find_if(merge_candidates.begin(), merge_candidates.end(),
-                      [this, node, node_max_reps] (Node *merge_candidate) {
+                      [&] (Node *merge_candidate) {
                          if (this->is_ancestor(node, merge_candidate)) {
+                            if (succ_I == nullptr) {
+                               std::abort();
+                            }
                             return false;
                          }
                          return true;
-
-                         /* Maybe a better approach is to do a breadth-first approach rather than
-                          * a depth-first approach. That way we will always merge with the first
-                          * iteration rather than the 2nd iteration.
-                          */
-                         
                       });
       const bool mergable = merge_candidate_it != merge_candidates.end();
-      
+
       llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
       llvm::errs() << node_id(node) << " {";
       for (Node *candidate : merge_candidates) {
@@ -188,8 +183,8 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
       add_edge(node, succ_node);      
       
       /* recurse if not exit */
+      merge_map[succ_node->I].insert(succ_node);
       if (succ_I) {
-         merge_map[succ_node->I].insert(succ_node);
          *out++ = [&, num_unrolls, succ_node, reps, trace] {
             construct2_rec(cfg, num_unrolls, succ_node, merge_map, reps, trace, out); 
          };
@@ -214,6 +209,23 @@ void AEGPO::construct2(const CFG2& cfg, unsigned num_unrolls) {
    }
 
    prune();
+
+   // check if exits
+   std::unordered_set<Node *> exits;
+   for (const auto& nodeptr : nodes) {
+      Node *node = nodeptr.get();
+      if (is_exit(node)) {
+         exits.insert(node);
+      }
+   }
+   llvm::errs() << "EXITS\n";
+   for (auto it1 = exits.begin(); it1 != exits.end(); ++it1) {
+      for (auto it2 = it1; it2 != exits.end(); ++it2) {
+         if (is_ancestor(*it1, *it2)) {
+            llvm::errs() << node_id(*it1) << " " << node_id(*it2) << "\n";
+         }
+      }
+   }
 }
    
 bool AEGPO::is_ancestor(Node *child, Node *parent) const {
@@ -225,8 +237,8 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
    // recursive case
    const auto& preds = po.rev.at(child);
    return std::any_of(preds.begin(), preds.end(),
-                      [parent, this] (Node *node) {
-                         return this->is_ancestor(node, parent);
+                      [=] (Node *node) {
+                         return is_ancestor(node, parent);
                       });
 }
 
@@ -414,4 +426,9 @@ AEGPO::BB AEGPO::get_bb(Node *node) const {
    }
 
    return bb;
+}
+
+
+bool AEGPO::is_exit(Node *node) const {
+   return node->I == nullptr && po.fwd.at(node).empty();
 }

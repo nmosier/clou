@@ -8,8 +8,8 @@ add_library(lcm MODULE
   cfg.cc
   )
 
-target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security)
-target_link_libraries(lcm PRIVATE z3)
+target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
+target_link_libraries(lcm PRIVATE z3 ${LIBPROFILER_LIBRARIES})
 
 if(APPLE)
   target_link_options(lcm PRIVATE -undefined dynamic_lookup)

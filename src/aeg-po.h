@@ -94,6 +94,8 @@ private:
    using BB = std::vector<Node *>;
    binrel<BB> get_bbs() const;
    BB get_bb(Node *node) const;
+
+   bool is_exit(Node *node) const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);

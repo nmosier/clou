@@ -9,6 +9,8 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 
+#include <gperftools/profiler.h>
+
 #include "util.h"
 #include "lcm.h"
 #include "addr.h"
@@ -118,13 +120,20 @@ struct LCMPass : public llvm::FunctionPass {
             errs() << "\n";
          }
       }
-
-
+      
+      
       /* Construct AEG */
       CFG2 cfg;
       cfg.construct(F);
       AEGPO aeg;
+      
+      ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
+      signal(SIGINT, [] (int sig) {
+         ProfilerStop();
+         std::exit(0);
+      });
       aeg.construct2(cfg);
+      ProfilerStop();
 
       aeg.dump(llvm::errs());
 
