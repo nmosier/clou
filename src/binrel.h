@@ -25,20 +25,17 @@ public:
    }
 
    void erase(const T& node) {
-      const auto fwd_it = fwd.find(node);
-      const auto rev_it = rev.find(node);
-      assert(fwd_it != fwd.end());
-      assert(rev_it != rev.end());
+      const auto f = [&] (Map& rel1, Map& rel2) {
+         auto it = rel1.find(node);
+         assert(it != rel1.end());
+         for (const T& other : it->second) {
+            rel2.at(other).erase(node);
+         }
+         rel1.erase(it);
+      };
 
-      for (const T& other : fwd_it->second) {
-         rev.at(other).erase(node);
-      }
-      for (const T& other : rev_it->second) {
-         fwd.at(other).erase(node);
-      }
-
-      fwd.erase(fwd_it);
-      rev.erase(rev_it);
+      f(fwd, rev);
+      f(rev, fwd);
    }
 
    struct DefaultPrinter {
@@ -89,9 +86,20 @@ digraph G {
       }
    }
    for (const auto& pair : nodes) {
-      os << pair.second << " [label=\"";
-      printer(os, pair.first);
-      os << "\"]\n";
+      os << pair.second << " [";
+      
+      std::string s;
+      llvm::raw_string_ostream ss {s};
+      printer(ss, pair.first);
+      for (char c : s) {
+         if (c == '\n') {
+            os << "\\l";
+         } else {
+            os << c;
+         }
+      }
+      
+      os << "]\n";
    }
    os << "\n";
    
@@ -106,3 +114,5 @@ digraph G {
    
    os << "}\n";
 }
+
+

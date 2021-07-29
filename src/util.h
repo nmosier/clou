@@ -108,8 +108,8 @@ void get_cfg(const llvm::Function& F, CFG& cfg);
 namespace std {
 
    template <typename... Args>
-   struct hash<std::unordered_set<Args...>> {
-      size_t operator()(const std::unordered_set<Args...>& set) const {
+   struct hash<unordered_set<Args...>> {
+      size_t operator()(const unordered_set<Args...>& set) const {
          size_t res = 0;
          for (const auto& x : set) {
             res ^= set.hash_function()(x);
@@ -117,5 +117,15 @@ namespace std {
          return res;
       }
    };
-   
+
+   template <typename... Args>
+   struct hash<vector<Args...>> {
+      size_t operator()(const vector<Args...>& vec) const {
+         size_t res = 0;
+         for (const auto& x : vec) {
+            hash_combine(res, x);
+         }
+         return res;
+      }
+   };
 }

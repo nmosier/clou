@@ -8,21 +8,6 @@
 #include "aeg-po.h"
 
 
-/* BRAINSTORMING
-
-   LOOP DETECTION / TERMINATION
-   If you try to add an instruction a 3rd time, then stop -- you're in a loop.
-   This only works for singly-nested loops. In doubly-nested loops, we would have 4 copies of the
-   instruction. 
-   Maintain a map from instructions to recurrence counts. Reset the recurrence count every time you
-   stop a loop (recurrence count would be > 2). 
-   
-   BRANCHES
-   Can merge with nodes that have a common anscestor but aren't an anscestor.
-   
-
- */
-
 void AEGPO::add_edge(Node *src, Node *dst) {
    /* anything that passes into source and out of dst is now transitively connected. */
    po.insert(src, dst);
@@ -254,12 +239,12 @@ void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, Mer
 
       /* check for loops */
       auto& count = reps[succ_I];
-      if (count == num_unrolls) {
+      if (count == num_unrolls + 1) {
          llvm::errs() << "aborting loop at " << *succ_I << "\n";
          continue;
       }
       ++count;
-      if (count == 2) {
+      if (count >= 2) {
          // we just doubled back on a previous instruction, so clear the counts of all intervening
          // instructions
          const auto f = [succ_I] (const Node *node) { return node->I == succ_I; };
@@ -317,30 +302,11 @@ void AEGPO::construct2(const CFG& cfg, unsigned num_unrolls) {
       queue.front()();
       queue.pop_front();
    }
+
+   prune();
 }
    
 bool AEGPO::is_ancestor(Node *child, Node *parent) const {
-#if 0
-   const auto it = po_trans.rev.find(child);
-   if (it == po_trans.rev.end()) {
-      return false;
-   } else {
-      return it->second.find(parent) != it->second.end(); 
-   }
-#elif 0
-   using NodeSet = std::unordered_set<Node *>;
-   NodeSet ancestors {child};
-   while (!ancestors.empty()) {
-      if (ancestors.find(parent) != ancestors.end()) { return true; }
-      NodeSet next;
-      for (Node *ancestor : ancestors) {
-         const auto& preds = po.rev.at(ancestor);
-         next.insert(preds.begin(), preds.end());
-      }
-      ancestors = std::move(next);
-   }
-   return false;
-#else
    // base case 
    if (child == parent) {
       return true;
@@ -352,7 +318,6 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
                       [parent, this] (Node *node) {
                          return this->is_ancestor(node, parent);
                       });
-#endif
 }
 
 void AEGPO::construct(const CFG& cfg, unsigned num_unrolls) {
@@ -419,20 +384,36 @@ llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
 }
 
 void AEGPO::dump_graph(const char *path) const {
-   struct Printer {
+   struct NodePrinter {
       const AEGPO& aeg;
       
-      Printer(const AEGPO& aeg): aeg(aeg) {}
+      NodePrinter(const AEGPO& aeg): aeg(aeg) {}
       
       void operator()(llvm::raw_ostream& os, const Node *node) const {
+#if 0
          os << std::find_if(aeg.nodes.begin(), aeg.nodes.end(),
                             [node] (const auto& ref) {
                                return ref.get() == node;
                             }) - aeg.nodes.begin() << "\n";
-         node->dump(os, "<ENTRY/EXIT>");
+#endif
+         node->dump(os, node == aeg.entry ? "<ENTRY>" : "<EXIT>") << "\n";
       }
    };
-   po.dump_graph(path, Printer {*this});
+
+   struct BBPrinter {
+      NodePrinter node_printer;
+      BBPrinter(const AEGPO& aeg): node_printer(aeg) {}
+      void operator()(llvm::raw_ostream& os, const BB& bb) const {
+         os << "label=\"";
+         for (const Node *node : bb) {
+            node_printer(os, node); 
+         }
+         os << "\";";
+      }
+   };
+
+   const auto bbrel = get_bbs(); 
+   bbrel.dump_graph(path, BBPrinter {*this});
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg) {
@@ -465,4 +446,67 @@ unsigned AEGPO::max_reps(Node *node, RepMap reps) const {
                      return this->max_reps(pred, reps);
                   });
    return *std::max_element(maxes.begin(), maxes.end());
+}
+
+void AEGPO::prune() {
+   // TODO: A faster way would be to find the set of leaves and then check leaves' parents.
+   for (auto it = nodes.begin(); it != nodes.end(); ) {
+      Node *node = it->get();
+      if (node->I && po.fwd.at(node).empty()) {
+            erase(node);
+            it = nodes.begin();
+      } else {
+         ++it;
+      }
+   }
+}
+
+void AEGPO::erase(Node *node) {
+   po.erase(node);
+   llvm::erase_if(nodes, [node] (const auto& nodep) {
+      return node == nodep.get();
+   });
+}
+
+binrel<AEGPO::BB> AEGPO::get_bbs() const {
+   binrel<BB> rel;
+
+   for (const auto& nodeptr : nodes) {
+      Node *src = nodeptr.get();
+      const BB src_bb = get_bb(src);
+      for (Node *dst : po.fwd.at(src)) {
+         const BB dst_bb = get_bb(dst);
+         if (src_bb != dst_bb) {
+            rel.insert(src_bb, dst_bb);
+         }
+      }
+   }
+
+   return rel;
+}
+
+
+AEGPO::BB AEGPO::get_bb(Node *node) const {
+   BB bb;
+
+   /* find entry */
+   while (true) {
+      const auto& preds = po.rev.at(node);
+      if (preds.size() != 1) { break; }
+      Node *pred = *preds.begin();
+      if (po.fwd.at(pred).size() != 1) { break; }
+      node = pred;
+   }
+
+   /* construct BB */
+   while (true) {
+      bb.push_back(node);
+      const auto& succs = po.fwd.at(node);
+      if (succs.size() != 1) { break; }
+      Node *succ = *succs.begin();
+      if (po.rev.at(succ).size() != 1) { break; }
+      node = succ;
+   }
+
+   return bb;
 }

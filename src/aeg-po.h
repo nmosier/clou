@@ -11,6 +11,12 @@
 #include "util.h"
 #include "binrel.h"
 
+/* TODO
+ * [ ] Clear out unused functions
+ * [ ] Remove po_trans.
+ * [ ] Merge nodes into basic blocks in output.
+ */
+
 class AEGPO {
 public:
    struct Node {
@@ -83,6 +89,13 @@ private:
          return ptr.get() == node;
       }) - nodes.begin();
    }
+
+   void prune();
+   void erase(Node *node);
+
+   using BB = std::vector<Node *>;
+   binrel<BB> get_bbs() const;
+   BB get_bb(Node *node) const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);
