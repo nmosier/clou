@@ -5,6 +5,7 @@ add_library(lcm MODULE
   mcfg.cc
   aeg-po.cc
   config.cc
+  cfg.cc
   )
 
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security)

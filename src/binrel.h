@@ -1,5 +1,8 @@
 #pragma once
 
+#include <unordered_set>
+#include <unordered_map>
+
 template <typename T, typename Hash = std::hash<T>>
 class binrel {
 public:
@@ -13,11 +16,33 @@ public:
       rev[dst].insert(src);
    }
 
+   template <typename InputIt>
+   void insert(InputIt src_begin, InputIt src_end, const T& dst) {
+      for (auto src_it = src_begin; src_it != src_end; ++src_it) {
+         insert(*src_it, dst);
+      }
+   }
+
+   template <typename InputIt>
+   void insert(const T& src, InputIt dst_begin, InputIt dst_end) {
+      for (auto dst_it = dst_begin; dst_it != dst_end; ++dst_it) {
+         insert(src, *dst_it);
+      }
+   }
+
+   template <typename InputIt1, typename InputIt2>
+   void insert(InputIt1 src_begin, InputIt1 src_end, InputIt2 dst_begin, InputIt2 dst_end) {
+      for (auto src_it = src_begin; src_it != src_end; ++src_it) {
+         for (auto dst_it = dst_begin; dst_it != dst_end; ++dst_it) {
+            insert(*src_it, *dst_it); 
+         }
+      }
+   }
+   
    void add_node(const T& node) {
       fwd[node];
       rev[node];
    }
-      
 
    void erase(const T& src, const T& dst) {
       fwd[src].erase(dst);
@@ -86,7 +111,7 @@ digraph G {
       }
    }
    for (const auto& pair : nodes) {
-      os << pair.second << " [";
+      os << pair.second << " [label=\"";
       
       std::string s;
       llvm::raw_string_ostream ss {s};
@@ -99,7 +124,7 @@ digraph G {
          }
       }
       
-      os << "]\n";
+      os << "\"]\n";
    }
    os << "\n";
    

@@ -86,11 +86,55 @@ inline bool getenvb(const char *name) {
    return getenvs(name) != nullptr;
 }
 
-template <class T>
-inline void hash_combine(std::size_t& seed, const T& v)
-{
+
+inline void hash_combine_ordered(std::size_t& seed) {}
+
+template <typename T, typename... Args>
+inline void hash_combine_ordered(std::size_t& seed, const T& v, Args&&... tail) {
     std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    seed ^= hasher(v) + 0xa9e3779b9 + (seed<<6) + (seed>>2);
+    hash_combine_ordered(seed, std::forward<Args>(tail)...);
+}
+
+template <typename... Args>
+std::size_t hash_ordered_tuple(Args&&... args) {
+   std::size_t seed = 0;
+   hash_combine_ordered(seed, std::forward<Args>(args)...);
+   return seed;
+}
+
+template <typename InputIt>
+std::size_t hash_ordered_sequence(InputIt begin, InputIt end) {
+   std::size_t seed = 0;
+   for (auto it = begin; it != end; ++it) {
+      hash_combine_ordered(seed, *it);
+   }
+   return seed;
+}
+
+inline void hash_combine_unordered(std::size_t& seed) {}
+
+template <typename T, typename... Args>
+inline void hash_combine_unordered(std::size_t& seed, const T& v, Args&&... tail) {
+   std::hash<T> hasher;
+   seed ^= hasher(v);
+   hash_combine_unordered(seed, std::forward<Args>(tail)...);
+}
+
+template <typename... Args>
+std::size_t hash_unordered_tuple(Args&&... args) {
+   std::size_t seed = 0;
+   hash_combine_unordered(seed, std::forward<Args>(args)...);
+   return seed;
+}
+
+template <typename InputIt>
+std::size_t hash_unordered_sequence(InputIt begin, InputIt end) {
+   std::size_t seed = 0;
+   for (auto it = begin; it != end; ++it) {
+      hash_combine_unordered(seed, *it);
+   }
+   return seed;
 }
 
 namespace util {
@@ -102,6 +146,9 @@ namespace util {
 
 
 using CFG = binrel<const llvm::Instruction *>;
+
+
+
 void get_cfg(const llvm::Function& F, CFG& cfg);
 
 
@@ -110,22 +157,31 @@ namespace std {
    template <typename... Args>
    struct hash<unordered_set<Args...>> {
       size_t operator()(const unordered_set<Args...>& set) const {
-         size_t res = 0;
-         for (const auto& x : set) {
-            res ^= set.hash_function()(x);
-         }
-         return res;
+         return hash_unordered_sequence(set.begin(), set.end());
       }
    };
 
    template <typename... Args>
    struct hash<vector<Args...>> {
       size_t operator()(const vector<Args...>& vec) const {
-         size_t res = 0;
-         for (const auto& x : vec) {
-            hash_combine(res, x);
-         }
-         return res;
+         return hash_ordered_sequence(vec.begin(), vec.end());
       }
    };
+}
+
+
+template <typename... Args>
+std::string format(const std::string& fmt, Args&&... args) {
+   char *s;
+   if (asprintf(&s, fmt.c_str(), std::forward<Args>(args)...) < 0) {
+      throw std::system_error(errno, std::generic_category(), "asprintf");
+   }
+   std::string res {s};
+   free(s);
+   return res;
+}
+
+
+inline std::string format_graph_path(const std::string& fmt, const llvm::Function& F) {
+   return format(fmtcheck(fmt.c_str(), "%s.dot"), F.getName().str().c_str());
 }

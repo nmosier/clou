@@ -60,3 +60,25 @@ void get_cfg(const llvm::Function& F, CFG& cfg) {
       }
    }
 }
+
+void get_cfg(const llvm::Function& F, CFG& cfg,
+             const llvm::Instruction *entry, const llvm::Instruction *exit) {
+   cfg.insert(entry, &F.front().front());
+
+   for (const llvm::BasicBlock& B : F) {
+      for (auto cur = B.begin(), next = std::next(cur); next != B.end(); cur = next, ++next) {
+         cfg.insert(&*cur, &*next);
+      }
+      const llvm::Instruction *term = &B.back();
+      const auto num_succs = term->getNumSuccessors();
+      if (num_succs == 0) {
+         cfg.insert(term, exit);
+      } else {
+         for (size_t i = 0; i < num_succs; ++i) {
+            const llvm::Instruction *succ = &term->getSuccessor(i)->front();
+            cfg.insert(term, succ);
+         }
+      }
+   }
+
+}

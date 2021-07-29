@@ -110,102 +110,12 @@ size_t AEGPO::depth(Node *dst) const {
    return depth_;
 }
 
-void AEGPO::construct(const CFG& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
-                      const RepMap& reps_, NodeVec& trace) {
-   merge_map[node->I].insert(node);
-   trace.push_back(node);
-   
-   const auto& succs = cfg.fwd.at(node->I);
-   assert(succs.size() > 0);
-
-   for (const llvm::Instruction *succ_I : succs) {
-      RepMap reps = reps_;
-      
-      const auto& merge_candidates = merge_map[succ_I];
-      RepMap node_reps_tmp = {{succ_I, 1}};
-      const unsigned node_max_reps = max_reps(node, node_reps_tmp);
-      const auto merge_candidate_it =
-         std::find_if(merge_candidates.begin(), merge_candidates.end(),
-                      [this, node, node_max_reps] (Node *merge_candidate) {
-                         if (this->is_ancestor(node, merge_candidate)) {
-                            return false;
-                         }
-                         return true;
-
-                         /* Maybe a better approach is to do a breadth-first approach rather than
-                          * a depth-first approach. That way we will always merge with the first
-                          * iteration rather than the 2nd iteration.
-                          */
-                         
-                      });
-      const bool mergable = merge_candidate_it != merge_candidates.end();
-      
-      llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
-      if (succ_I) {
-         llvm::errs() << *succ_I;
-      } else {
-         llvm::errs() << "<EXIT>";
-      }
-      llvm::errs() << "     " << merge_candidates.size();
-      llvm::errs() << "\n";
-
-      /* check for loops */
-      auto& count = reps[succ_I];
-      if (count == num_unrolls) {
-         llvm::errs() << "aborting loop at " << *succ_I << "\n";
-         continue;
-      }
-      ++count;
-      if (count == 2) {
-         // we just doubled back on a previous instruction, so clear the counts of all intervening
-         // instructions
-         const auto f = [succ_I] (const Node *node) { return node->I == succ_I; };
-         const auto first = std::find_if(trace.rbegin(), trace.rend(), f);
-         assert(first != trace.rend());
-         Loop loop = {(**first).I}; // also include first instruction 
-         for (auto it = trace.rbegin(); it != first; ++it) {
-            const llvm::Instruction *I = (**it).I;
-            reps[I] = 0;
-            loop.insert(I);
-         }
-         loops.insert(std::move(loop));
-      }
-      
-      Node *succ_node;
-      if (mergable) {
-         succ_node = *merge_candidate_it;
-      } else {
-         const auto& po_succs = po.fwd.at(node);
-         const auto po_succ_it = std::find_if(po_succs.begin(), po_succs.end(),
-                                              [succ_I] (const Node *succ) {
-                                                 return succ_I == succ->I;
-                                              });
-         if (po_succ_it == po_succs.end()) {
-            succ_node = new Node {succ_I};
-            nodes.emplace_back(succ_node);
-         } else {
-            succ_node = *po_succ_it;
-         }
-      }
-      add_edge(node, succ_node);      
-      
-      /* recurse if not exit */
-      if (succ_I) {
-         construct(cfg, num_unrolls, succ_node, merge_map, reps, trace);
-      }
-   }
-
-   trace.pop_back();
-}
-
-
-
 template <typename OutputIt>
-void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
+void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
                            const RepMap& reps_, NodeVec trace, OutputIt& out) {
    trace.push_back(node);
    
-   const auto& succs = cfg.fwd.at(node->I);
+   const auto& succs = cfg.po.fwd.at(node->I);
    assert(succs.size() > 0);
 
    for (const llvm::Instruction *succ_I : succs) {
@@ -288,7 +198,7 @@ void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, Mer
 }
 
 
-void AEGPO::construct2(const CFG& cfg, unsigned num_unrolls) {
+void AEGPO::construct2(const CFG2& cfg, unsigned num_unrolls) {
    MergeMap merge_map;
    RepMap reps;
    NodeVec trace;
@@ -319,14 +229,6 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
                          return this->is_ancestor(node, parent);
                       });
 }
-
-void AEGPO::construct(const CFG& cfg, unsigned num_unrolls) {
-   MergeMap merge_map;
-   RepMap reps;
-   NodeVec trace;
-   construct(cfg, num_unrolls, entry, merge_map, reps, trace);
-}
-
 
 llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
    /* Approach: divide instructions into basic blocks.
@@ -383,7 +285,7 @@ llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {
    return os;
 }
 
-void AEGPO::dump_graph(const char *path) const {
+void AEGPO::dump_graph(const std::string& path) const {
    struct NodePrinter {
       const AEGPO& aeg;
       
@@ -404,11 +306,9 @@ void AEGPO::dump_graph(const char *path) const {
       NodePrinter node_printer;
       BBPrinter(const AEGPO& aeg): node_printer(aeg) {}
       void operator()(llvm::raw_ostream& os, const BB& bb) const {
-         os << "label=\"";
          for (const Node *node : bb) {
             node_printer(os, node); 
          }
-         os << "\";";
       }
    };
 
@@ -470,6 +370,11 @@ void AEGPO::erase(Node *node) {
 
 binrel<AEGPO::BB> AEGPO::get_bbs() const {
    binrel<BB> rel;
+
+   for (const auto& nodeptr : nodes) {
+      Node *node = nodeptr.get();
+      rel.add_node(get_bb(node));
+   }
 
    for (const auto& nodeptr : nodes) {
       Node *src = nodeptr.get();

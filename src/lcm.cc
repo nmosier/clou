@@ -16,6 +16,7 @@
 #include "graph.h"
 #include "aeg-po.h"
 #include "config.h"
+#include "cfg.h"
 
 using llvm::errs;
 
@@ -120,13 +121,19 @@ struct LCMPass : public llvm::FunctionPass {
 
 
       /* Construct AEG */
-      CFG cfg;
-      get_cfg(F, cfg);
+      CFG2 cfg;
+      cfg.construct(F);
       AEGPO aeg;
       aeg.construct2(cfg);
 
-      if (po_output_path) {
-         aeg.dump_graph(po_output_path);
+      aeg.dump(llvm::errs());
+
+      if (!cfg_output_path.empty()) {
+         cfg.dump_graph(format_graph_path(cfg_output_path, F));
+      }
+
+      if (!aegpo_output_path.empty()) {
+         aeg.dump_graph(format_graph_path(aegpo_output_path, F));
       }
 
       return false;

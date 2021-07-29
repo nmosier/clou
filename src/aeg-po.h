@@ -9,6 +9,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include "util.h"
+#include "cfg.h"
 #include "binrel.h"
 
 /* TODO
@@ -43,11 +44,10 @@ public:
       po.add_node(entry);
    }
 
-   void construct(const CFG& cfg, unsigned num_unrolls = 2);
-   void construct2(const CFG& cfg, unsigned num_unrolls = 2);
+   void construct2(const CFG2& cfg, unsigned num_unrolls = 2);
    
    llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
-   void dump_graph(const char *path) const;
+   void dump_graph(const std::string& path) const;
 
 private:
    std::vector<std::unique_ptr<Node>> nodes;
@@ -68,11 +68,9 @@ private:
    using MergeMap = std::unordered_map<const llvm::Instruction *, std::unordered_set<Node *>>;
    using RepMap = std::unordered_map<const llvm::Instruction *, unsigned>;
    using NodeVec = std::vector<Node *>;
-   void construct(const CFG& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
-                  const RepMap& reps_, NodeVec& trace);
 
    template <typename OutputIt>
-   void construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
+   void construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
                        const RepMap& reps_, NodeVec trace, OutputIt& out);
 
    bool is_ancestor(Node *child, Node *parent) const;
