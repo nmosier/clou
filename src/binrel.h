@@ -24,6 +24,23 @@ public:
       rev[dst].erase(src);
    }
 
+   void erase(const T& node) {
+      const auto fwd_it = fwd.find(node);
+      const auto rev_it = rev.find(node);
+      assert(fwd_it != fwd.end());
+      assert(rev_it != rev.end());
+
+      for (const T& other : fwd_it->second) {
+         rev.at(other).erase(node);
+      }
+      for (const T& other : rev_it->second) {
+         fwd.at(other).erase(node);
+      }
+
+      fwd.erase(fwd_it);
+      rev.erase(rev_it);
+   }
+
    struct DefaultPrinter {
       void operator()(llvm::raw_ostream& os, const T& value) const {
          os << value;

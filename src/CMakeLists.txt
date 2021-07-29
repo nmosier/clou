@@ -4,9 +4,10 @@ add_library(lcm MODULE
   addr.cc
   mcfg.cc
   aeg-po.cc
+  config.cc
   )
 
-target_compile_options(lcm PRIVATE -fno-rtti)
+target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security)
 target_link_libraries(lcm PRIVATE z3)
 
 if(APPLE)
