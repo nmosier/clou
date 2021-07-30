@@ -2,16 +2,15 @@
 
 #include <utility>
 
-template <typename Key, typename T, typename Hash = std::hash<Key>,
+template <typename Key, typename T, size_t N, typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>>
 class cache_map {
 public:
-   cache_map(size_t size = 0x1000, Hash hasher = Hash(), KeyEqual equal = KeyEqual()):
-      vec(size), hasher(hasher), equal(equal) {}
+   cache_map(Hash hasher = Hash(), KeyEqual equal = KeyEqual()): hasher(hasher), equal(equal) {}
 
 private:
    using Entry = std::optional<std::pair<Key, T>>;
-   using Vec = std::vector<Entry>;
+   using Vec = std::array<Entry, N>;
    Vec vec;
    Hash hasher;
    KeyEqual equal;
@@ -29,7 +28,7 @@ private:
    }
    
 public:
-   size_t size() const { return vec.size(); }
+   constexpr size_t size() const { return N; }
    
    const T *read(const Key& key) const {
       const Entry& e = entry(key);
@@ -58,7 +57,7 @@ public:
 };
 
 
-template <typename T, typename Hash = std::hash<T>, typename KeyEqual = std::equal_to<T>>
+template <typename T, size_t N, typename Hash = std::hash<T>, typename KeyEqual = std::equal_to<T>>
 class cache_set {
 public:
    template <typename... Args>
@@ -87,5 +86,5 @@ public:
    void erase(const T& val) { map.write(val, false); }
    
 private:
-   cache_map<T, bool, Hash, KeyEqual> map;
+   cache_map<T, bool, N, Hash, KeyEqual> map;
 };

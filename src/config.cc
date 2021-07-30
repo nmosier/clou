@@ -19,6 +19,7 @@ static std::vector<char *> args = {prog};
 std::string cfg_output_path;
 std::string aegpo_output_path;
 std::vector<std::string> function_names;
+unsigned verbose = 0;
 
 static void usage(FILE *f = stderr) {
    const char *s = R"=(
@@ -29,6 +30,7 @@ Options:
   --aegpo <path>  output path to full po AEG 
   --func, -f <name>[,<name>]...  
                   only examine given functions
+  --verbose, -v   verbosity++
 )=";
    fprintf(f, s);
 }
@@ -55,6 +57,7 @@ static int parse_args() {
       {"help", no_argument, nullptr, 'h'},
       {"cfg", required_argument, nullptr, CFG},
       {"aegpo", required_argument, nullptr, AEGPO},
+      {"verbose", no_argument, nullptr, 'v'},
       {0},
    };
    
@@ -70,6 +73,10 @@ static int parse_args() {
 
       case AEGPO:
          aegpo_output_path = optarg;
+         break;
+
+      case 'v':
+         ++verbose;
          break;
 
       default:

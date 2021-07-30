@@ -7,6 +7,7 @@
 
 #include "aeg-po.h"
 #include "cache.h"
+#include "config.h"
 
 /* Node Merging
  * Note that there should be a total ordering among all merge candidates.
@@ -146,17 +147,21 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
                       });
       const bool mergable = merge_candidate_it != merge_candidates.end();
 
-      llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
-      llvm::errs() << node_id(node) << " {";
-      for (Node *candidate : merge_candidates) {
-         llvm::errs() << " " << node_id(candidate);
+      if (verbose > 0) { 
+         llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
+         llvm::errs() << node_id(node) << " {";
+         for (Node *candidate : merge_candidates) {
+            llvm::errs() << " " << node_id(candidate);
+         }
+         llvm::errs() << "}\n";
       }
-      llvm::errs() << "}\n";
 
       /* check for loops */
       auto& count = reps[succ_I];
       if (count == num_unrolls + 1) {
-         llvm::errs() << "aborting loop at " << *succ_I << "\n";
+         if (verbose > 0) {
+            llvm::errs() << "aborting loop at " << *succ_I << "\n";
+         }
          continue;
       }
       ++count;
@@ -255,33 +260,47 @@ bool AEGPO::is_ancestor_a(Node *child, Node *parent) const {
 }
 
 bool AEGPO::is_ancestor_d(Node *child, Node *parent) const {
-   std::vector<Node *> todo {child};
-   std::vector<Node *> todo_next;
+   const Rel::Set init_set = {child};
+   if (child == parent) { return true; }
+   std::vector<const Rel::Set *> todo {&init_set};
+   cache_set<Node *, 0x1000> seen;
 #if 0
-   std::unordered_set<Node *> seen;
-#else
-   cache_set<Node *> seen;
-#endif
    while (!todo.empty()) {
       for (Node *node : todo) {
          if (node == parent) {
             return true;
          }
-#if 0
-         if (!seen.insert(node).second) {
-            continue;
-         }
-#else
-         if (seen.contains(node) == cache_set<Node *>::YES) {
+         if (seen.contains(node) == seen.YES) {
             continue;
          }
          seen.insert(node);
-#endif
          const auto& preds = po.rev.at(node);
          std::copy(preds.begin(), preds.end(), std::back_inserter(todo_next));
       }
       todo = std::move(todo_next);
    }
+#elif 0
+   while (!todo.empty()) {
+      Node *node = todo.back();
+      todo.pop_back();
+      if (node == parent) { return true; }
+      if (seen.contains(node) == seen.YES) { continue; }
+      seen.insert(node);
+      const auto& preds = po.rev.at(node);
+      std::copy(preds.begin(), preds.end(), std::back_inserter(todo));
+   }
+#else
+   while (!todo.empty()) {
+      const Rel::Set& nodes = *todo.back();
+      todo.pop_back();
+      for (Node *node : nodes) {
+         if (node == parent) { return true; }
+         if (seen.contains(node) == seen.YES) { continue; }
+         seen.insert(node);
+         todo.push_back(&po.rev.at(node));
+      }
+   }
+#endif
    return false;
 }
 
