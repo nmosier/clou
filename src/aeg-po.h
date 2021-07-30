@@ -36,6 +36,7 @@ public:
    using Rel = binrel<Node *>;
    Rel po; // simple po
    Rel po_trans; // transitive po
+   Rel po_children;
 
    AEGPO(): entry(new Node {nullptr}) {
       /* insert entry and exit into po */
@@ -62,8 +63,6 @@ private:
    template <typename Container>
    void predecessor_nodes(Container& container) const;
 
-   size_t depth(Node *node) const;
-
    using MergeMap = std::unordered_map<const llvm::Instruction *, std::unordered_set<Node *>>;
    using RepMap = std::unordered_map<const llvm::Instruction *, unsigned>;
    using NodeVec = std::vector<Node *>;
@@ -75,6 +74,37 @@ private:
    bool is_ancestor(Node *child, Node *parent) const;
    bool is_ancestor_a(Node *child, Node *parent) const;
    bool is_ancestor_b(Node *child, Node *parent) const;
+   bool is_ancestor_c(Node *child, Node *parent) const {
+      const auto it = po_children.fwd.find(parent);
+      if (it == po_children.fwd.end()) {
+         return false;
+      }
+      const auto& children = it->second;
+#if 0      
+      std::unordered_set<Node *> children_;
+      std::vector<Node *> todo {parent};
+      while (!todo.empty()) {
+         Node *node = todo.back();
+         todo.pop_back();
+         children_.insert(node);
+         const auto& succs = po.fwd.at(node);
+         std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
+      }
+      children_.erase(parent);
+      if (children_ != children) {
+         for (Node *node : children_) {
+            llvm::errs() << node_id(node) << " ";
+         }
+         llvm::errs() << "\n";
+         for (Node *node : children) {
+            llvm::errs() << node_id(node) << " ";
+         }
+         llvm::errs() << "\n";
+      }
+      assert(children_ == children);
+#endif
+      return children.find(child) != children.end();
+   }
 
    bool is_sibling(Node *a, Node *b) const;
 
@@ -92,12 +122,12 @@ private:
 
    void prune();
    void erase(Node *node);
-
    using BB = std::vector<Node *>;
    binrel<BB> get_bbs() const;
    BB get_bb(Node *node) const;
-
    bool is_exit(Node *node) const;
+   void add_children(Node *src, Node *dst);
+   unsigned depth(Node *node) const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);

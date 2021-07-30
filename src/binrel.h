@@ -118,7 +118,6 @@ template <typename Printer_>
 void binrel<T, Hash, Printer>::dump_graph(llvm::raw_ostream& os, Printer_ printer) const {
    os << R"=(
 digraph G {
-  layout=neato;
   overlap=scale;
   splines=true;
   

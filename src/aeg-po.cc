@@ -11,13 +11,29 @@
 void AEGPO::add_edge(Node *src, Node *dst) {
    /* anything that passes into source and out of dst is now transitively connected. */
    po.insert(src, dst);
+#if 0
    po_trans.insert(src, src);
    po_trans.insert(dst, dst);
    const auto srcs = po_trans.rev[src];
    const auto dsts = po_trans.fwd[dst];
    po_trans.insert(srcs.begin(), srcs.end(), dsts.begin(), dsts.end());
-
    assert(po_trans.fwd.at(src).find(dst) != po_trans.fwd.at(src).end());
+#endif
+   add_children(src, dst);
+   
+}
+
+void AEGPO::add_children(Node *src, Node *dst) {
+   std::unordered_set<Node *> newchildren = po_children.fwd[dst];
+   newchildren.insert(dst);
+   std::vector<Node *> nodes {src};
+   while (!nodes.empty()) {
+      Node *node = nodes.back();
+      nodes.pop_back();
+      po_children.insert(node, newchildren.begin(), newchildren.end());
+      const auto& preds = po.rev.at(node);
+      std::copy(preds.begin(), preds.end(), std::back_inserter(nodes));
+   }
 }
 
 template <typename InputIt, typename OutputIt>
@@ -95,14 +111,6 @@ bool AEGPO::check_loop_i_rec(std::vector<Node *>& trace, size_t loopsize) const 
    }
 }
 #endif
-
-size_t AEGPO::depth(Node *dst) const {
-   size_t depth_ = 1;
-   for (Node *src : po.rev.at(dst)) {
-      depth_ = std::max(depth_, depth(src));
-   }
-   return depth_;
-}
 
 template <typename OutputIt>
 void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
@@ -233,7 +241,7 @@ bool AEGPO::is_ancestor_a(Node *child, Node *parent) const {
    const auto& preds = po.rev.at(child);
    return std::any_of(preds.begin(), preds.end(),
                       [=] (Node *node) {
-                         return is_ancestor(node, parent);
+                         return is_ancestor_a(node, parent);
                       });
 }
 
@@ -247,7 +255,9 @@ bool AEGPO::is_ancestor_b(Node *child, Node *parent) const {
 
 bool AEGPO::is_ancestor(Node *child, Node *parent) const {
    // const bool a = is_ancestor_a(child, parent);
-   const bool b = is_ancestor_b(child, parent);
+   // const bool b = is_ancestor_b(child, parent);
+   const bool b = is_ancestor_c(child, parent);
+   // assert(a == b);
    return b;
 #if 0
    if (a != b) {
@@ -255,7 +265,7 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
       po.dump_graph("po.dot", [] (llvm::raw_ostream& os, const Node *node) {
          node->dump(os, "<ENTRY/EXIT>") << "\n";
       });
-      po_trans.dump_graph("po_trans.dot", [] (llvm::raw_ostream& os, const Node *node) {
+      po_children.dump_graph("po_trans.dot", [] (llvm::raw_ostream& os, const Node *node) {
          node->dump(os, "<ENTRY/EXIT>") << "\n";
       });
    }
@@ -454,4 +464,18 @@ AEGPO::BB AEGPO::get_bb(Node *node) const {
 
 bool AEGPO::is_exit(Node *node) const {
    return node->I == nullptr && po.fwd.at(node).empty();
+}
+
+
+unsigned AEGPO::depth(Node *node) const {
+   const auto& preds = po.rev.at(node);
+   if (preds.empty()) {
+      return 0;
+   }
+   std::vector<unsigned> subdepths(preds.size());
+   std::transform(preds.begin(), preds.end(), subdepths.begin(),
+                  [&] (Node *pred) {
+                     return depth(pred);
+                  });
+   return *std::max_element(subdepths.begin(), subdepths.end());
 }
