@@ -129,15 +129,13 @@ bool AEGPO::check_loop_i_rec(std::vector<Node *>& trace, size_t loopsize) const 
 
 template <typename OutputIt>
 void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
-                           const RepMap& reps_, NodeVec trace, OutputIt& out) {
+                           RepMap reps, NodeVec trace, OutputIt& out) {
    trace.push_back(node);
-   
+
    const auto& succs = cfg.po.fwd.at(node->I);
    assert(succs.size() > 0);
 
    for (const llvm::Instruction *succ_I : succs) {
-      RepMap reps = reps_;
-      
       const auto& merge_candidates = merge_map[succ_I];
       const auto merge_candidate_it =
          // TODO: Parallelize this.
@@ -158,6 +156,7 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
 
       /* check for loops */
       auto& count = reps[succ_I];
+      const auto oldcount = count;
       if (count == num_unrolls + 1) {
          if (verbose > 0) {
             llvm::errs() << "aborting loop at " << *succ_I << "\n";
@@ -171,13 +170,13 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
          const auto f = [succ_I] (const Node *node) { return node->I == succ_I; };
          const auto first = std::find_if(trace.rbegin(), trace.rend(), f);
          assert(first != trace.rend());
-         Loop loop = {(**first).I}; // also include first instruction 
+         // Loop loop = {(**first).I}; // also include first instruction 
          for (auto it = trace.rbegin(); it != first; ++it) {
             const llvm::Instruction *I = (**it).I;
             reps[I] = 0;
-            loop.insert(I);
+            // loop.insert(I);
          }
-         loops.insert(std::move(loop));
+         // loops.insert(std::move(loop));
       }
       
       Node *succ_node;
@@ -206,6 +205,8 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
             construct2_rec(cfg, num_unrolls, succ_node, merge_map, reps, trace, out); 
          };
       }
+
+      count = oldcount;
    }
 }
 
@@ -263,7 +264,8 @@ bool AEGPO::is_ancestor_d(Node *child, Node *parent) const {
    const Rel::Set init_set = {child};
    if (child == parent) { return true; }
    std::vector<const Rel::Set *> todo {&init_set};
-   cache_set<Node *, 0x1000> seen;
+   static cache_set<Node *, 0x1000> seen;
+   seen.clear();
 #if 0
    while (!todo.empty()) {
       for (Node *node : todo) {

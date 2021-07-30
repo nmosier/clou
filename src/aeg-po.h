@@ -51,10 +51,12 @@ public:
 
 private:
    std::vector<std::unique_ptr<Node>> nodes;
+#if 0
    using Loop = std::unordered_set<const llvm::Instruction *>;
    using Loops = std::unordered_set<Loop>;
    Loops loops;
    std::unordered_map<Node *, unsigned> depths;
+#endif
    
    void add_edge(Node *src, Node *dst);
 
@@ -70,7 +72,7 @@ private:
 
    template <typename OutputIt>
    void construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
-                       const RepMap& reps_, NodeVec trace, OutputIt& out);
+                       RepMap reps, NodeVec trace, OutputIt& out);
 
    bool is_ancestor(Node *child, Node *parent) const;
    bool is_ancestor_a(Node *child, Node *parent) const;
