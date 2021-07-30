@@ -11,19 +11,13 @@
 void AEGPO::add_edge(Node *src, Node *dst) {
    /* anything that passes into source and out of dst is now transitively connected. */
    po.insert(src, dst);
+   po_trans.insert(src, src);
+   po_trans.insert(dst, dst);
+   const auto srcs = po_trans.rev[src];
+   const auto dsts = po_trans.fwd[dst];
+   po_trans.insert(srcs.begin(), srcs.end(), dsts.begin(), dsts.end());
 
-   po_trans.insert(src, dst);
-   for (Node *dst_out : po.fwd[dst]) {
-      po_trans.insert(src, dst_out);
-   }
-   for (Node *src_in : po.fwd[src]) {
-      po_trans.insert(src_in, dst);
-   }
-   for (Node *src_in : po.fwd[src]) {
-      for (Node *dst_out : po.fwd[dst]) {
-         po_trans.insert(src_in, dst_out);
-      }
-   }
+   assert(po_trans.fwd.at(src).find(dst) != po_trans.fwd.at(src).end());
 }
 
 template <typename InputIt, typename OutputIt>
@@ -176,11 +170,12 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
          if (po_succ_it == po_succs.end()) {
             succ_node = new Node {succ_I};
             nodes.emplace_back(succ_node);
+            po.add_node(succ_node);
          } else {
             succ_node = *po_succ_it;
          }
       }
-      add_edge(node, succ_node);      
+      add_edge(node, succ_node);
       
       /* recurse if not exit */
       merge_map[succ_node->I].insert(succ_node);
@@ -228,7 +223,7 @@ void AEGPO::construct2(const CFG2& cfg, unsigned num_unrolls) {
    }
 }
    
-bool AEGPO::is_ancestor(Node *child, Node *parent) const {
+bool AEGPO::is_ancestor_a(Node *child, Node *parent) const {
    // base case 
    if (child == parent) {
       return true;
@@ -240,6 +235,34 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
                       [=] (Node *node) {
                          return is_ancestor(node, parent);
                       });
+}
+
+bool AEGPO::is_ancestor_b(Node *child, Node *parent) const {
+   const auto it = po_trans.fwd.find(parent);
+   if (it == po_trans.fwd.end()) {
+      return false;
+   }
+   return it->second.find(child) != it->second.end();
+}
+
+bool AEGPO::is_ancestor(Node *child, Node *parent) const {
+   // const bool a = is_ancestor_a(child, parent);
+   const bool b = is_ancestor_b(child, parent);
+   return b;
+#if 0
+   if (a != b) {
+      // dump po, po_trans
+      po.dump_graph("po.dot", [] (llvm::raw_ostream& os, const Node *node) {
+         node->dump(os, "<ENTRY/EXIT>") << "\n";
+      });
+      po_trans.dump_graph("po_trans.dot", [] (llvm::raw_ostream& os, const Node *node) {
+         node->dump(os, "<ENTRY/EXIT>") << "\n";
+      });
+   }
+   
+   assert(a == b);
+   return a;
+#endif
 }
 
 llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {

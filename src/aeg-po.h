@@ -14,7 +14,6 @@
 
 /* TODO
  * [ ] Clear out unused functions
- * [ ] Remove po_trans.
  * [ ] Merge nodes into basic blocks in output.
  */
 
@@ -74,6 +73,9 @@ private:
                        const RepMap& reps_, NodeVec trace, OutputIt& out);
 
    bool is_ancestor(Node *child, Node *parent) const;
+   bool is_ancestor_a(Node *child, Node *parent) const;
+   bool is_ancestor_b(Node *child, Node *parent) const;
+
    bool is_sibling(Node *a, Node *b) const;
 
    unsigned max_reps(Node *node) const {
