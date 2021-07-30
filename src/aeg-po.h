@@ -37,7 +37,7 @@ public:
    Rel po; // simple po
    Rel po_trans; // transitive po
    Rel po_children;
-
+   
    AEGPO(): entry(new Node {nullptr}) {
       /* insert entry and exit into po */
       nodes.push_back(std::unique_ptr<Node> {entry});
@@ -54,6 +54,7 @@ private:
    using Loop = std::unordered_set<const llvm::Instruction *>;
    using Loops = std::unordered_set<Loop>;
    Loops loops;
+   std::unordered_map<Node *, unsigned> depths;
    
    void add_edge(Node *src, Node *dst);
 
@@ -74,7 +75,9 @@ private:
    bool is_ancestor(Node *child, Node *parent) const;
    bool is_ancestor_a(Node *child, Node *parent) const;
    bool is_ancestor_b(Node *child, Node *parent) const;
+   bool is_ancestor_d(Node *child, Node *parent) const;
    bool is_ancestor_c(Node *child, Node *parent) const {
+      if (child == parent) { return true; }
       const auto it = po_children.fwd.find(parent);
       if (it == po_children.fwd.end()) {
          return false;
@@ -106,7 +109,7 @@ private:
       return children.find(child) != children.end();
    }
 
-   bool is_sibling(Node *a, Node *b) const;
+   Node *nearest_common_ancestor(Node *a, Node *b) const;
 
    unsigned max_reps(Node *node) const {
       RepMap reps;
@@ -128,6 +131,8 @@ private:
    bool is_exit(Node *node) const;
    void add_children(Node *src, Node *dst);
    unsigned depth(Node *node) const;
+
+   bool is_mergable(Node *node, Node *merge_candidate, const NodeVec& trace) const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);

@@ -6,6 +6,16 @@
 #include <llvm/IR/Instructions.h>
 
 #include "aeg-po.h"
+#include "cache.h"
+
+/* Node Merging
+ * Note that there should be a total ordering among all merge candidates.
+ * But this assumption might be easy to break later on. Might not even hold now.
+ *
+ *
+ * Heuristics for merging.
+ * - Check whether the merge candidate is in the execution trace. If it is, it isn't mergable.
+ */
 
 
 void AEGPO::add_edge(Node *src, Node *dst) {
@@ -19,7 +29,11 @@ void AEGPO::add_edge(Node *src, Node *dst) {
    po_trans.insert(srcs.begin(), srcs.end(), dsts.begin(), dsts.end());
    assert(po_trans.fwd.at(src).find(dst) != po_trans.fwd.at(src).end());
 #endif
+#if 0
    add_children(src, dst);
+#endif
+
+   // update depths
    
 }
 
@@ -125,15 +139,10 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
       
       const auto& merge_candidates = merge_map[succ_I];
       const auto merge_candidate_it =
+         // TODO: Parallelize this.
          std::find_if(merge_candidates.begin(), merge_candidates.end(),
                       [&] (Node *merge_candidate) {
-                         if (this->is_ancestor(node, merge_candidate)) {
-                            if (succ_I == nullptr) {
-                               std::abort();
-                            }
-                            return false;
-                         }
-                         return true;
+                         return is_mergable(node, merge_candidate, trace);
                       });
       const bool mergable = merge_candidate_it != merge_candidates.end();
 
@@ -245,6 +254,37 @@ bool AEGPO::is_ancestor_a(Node *child, Node *parent) const {
                       });
 }
 
+bool AEGPO::is_ancestor_d(Node *child, Node *parent) const {
+   std::vector<Node *> todo {child};
+   std::vector<Node *> todo_next;
+#if 0
+   std::unordered_set<Node *> seen;
+#else
+   cache_set<Node *> seen;
+#endif
+   while (!todo.empty()) {
+      for (Node *node : todo) {
+         if (node == parent) {
+            return true;
+         }
+#if 0
+         if (!seen.insert(node).second) {
+            continue;
+         }
+#else
+         if (seen.contains(node) == cache_set<Node *>::YES) {
+            continue;
+         }
+         seen.insert(node);
+#endif
+         const auto& preds = po.rev.at(node);
+         std::copy(preds.begin(), preds.end(), std::back_inserter(todo_next));
+      }
+      todo = std::move(todo_next);
+   }
+   return false;
+}
+
 bool AEGPO::is_ancestor_b(Node *child, Node *parent) const {
    const auto it = po_trans.fwd.find(parent);
    if (it == po_trans.fwd.end()) {
@@ -256,9 +296,9 @@ bool AEGPO::is_ancestor_b(Node *child, Node *parent) const {
 bool AEGPO::is_ancestor(Node *child, Node *parent) const {
    // const bool a = is_ancestor_a(child, parent);
    // const bool b = is_ancestor_b(child, parent);
-   const bool b = is_ancestor_c(child, parent);
-   // assert(a == b);
-   return b;
+   const bool d = is_ancestor_d(child, parent);
+   // assert(a == d);
+   return d;
 #if 0
    if (a != b) {
       // dump po, po_trans
@@ -365,10 +405,6 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg) {
    return aeg.dump(os);
 }
 
-
-bool AEGPO::is_sibling(Node *a, Node *b) const {
-   return !is_ancestor(a, b) && !is_ancestor(b, a);
-}
 
 unsigned AEGPO::max_reps(Node *node, RepMap reps) const {
    ++reps[node->I];
@@ -478,4 +514,21 @@ unsigned AEGPO::depth(Node *node) const {
                      return depth(pred);
                   });
    return *std::max_element(subdepths.begin(), subdepths.end());
+}
+
+AEGPO::Node *AEGPO::nearest_common_ancestor(Node *a, Node *b) const {
+   // TODO
+   std::abort();
+}
+
+bool AEGPO::is_mergable(Node *node, Node *merge_candidate, const NodeVec& trace) const {
+   // look in execution trace (heuristic)
+#if 0
+   if (std::find(trace.rbegin(), trace.rend(), merge_candidate) != trace.rend()) {
+      return false;
+   }
+#endif
+
+   // slow fallback: is_ancestor_a
+   return !is_ancestor(node, merge_candidate);
 }
