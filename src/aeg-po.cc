@@ -8,6 +8,7 @@
 #include "aeg-po.h"
 #include "cache.h"
 #include "config.h"
+#include "cow.h"
 
 /* Node Merging
  * Note that there should be a total ordering among all merge candidates.
@@ -137,13 +138,17 @@ void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, Mer
 
    for (const llvm::Instruction *succ_I : succs) {
       const auto& merge_candidates = merge_map[succ_I];
+      Node *merge_candidate = is_any_not_ancestor(node, merge_candidates);
+      const bool mergable = merge_candidate != nullptr;
+#if 0
+      // TODO: Parallelize this.
       const auto merge_candidate_it =
-         // TODO: Parallelize this.
-         std::find_if(merge_candidates.begin(), merge_candidates.end(),
-                      [&] (Node *merge_candidate) {
-                         return is_mergable(node, merge_candidate, trace);
-                      });
-      const bool mergable = merge_candidate_it != merge_candidates.end();
+      std::find_if(merge_candidates.begin(), merge_candidates.end(),
+                   [&] (Node *merge_candidate) {
+                      return is_mergable(node, merge_candidate, trace);
+                   });
+      assert(mergable == merge_candidate_it != merge_candidates.end());
+#endif
 
       if (verbose > 0) { 
          llvm::errs() << (mergable ? "mergable" : "not mergable") << " ";
@@ -178,7 +183,7 @@ void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, Mer
       
       Node *succ_node;
       if (mergable) {
-         succ_node = *merge_candidate_it;
+         succ_node = merge_candidate;
       } else {
          const auto& po_succs = po.fwd.at(node);
          const auto po_succ_it = std::find_if(po_succs.begin(), po_succs.end(),
@@ -189,6 +194,7 @@ void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, Mer
             succ_node = new Node {succ_I};
             nodes.emplace_back(succ_node);
             po.add_node(succ_node);
+            llvm::errs() << nodes.size() << " nodes\n";
          } else {
             succ_node = *po_succ_it;
          }
@@ -267,12 +273,56 @@ bool AEGPO::is_ancestor_d(Node *child, Node *parent) const {
       const Rel::Set& nodes = *todo.back();
       todo.pop_back();
       for (Node *node : nodes) {
-         if (node == parent) { return true; }
+         if (node == parent) {
+            return true;
+         }
          if (seen.contains(node) == seen.YES) { continue; }
          seen.insert(node);
          todo.push_back(&po.rev.at(node));
       }
    }
+   return false;
+}
+
+AEGPO::Node *AEGPO::is_any_not_ancestor(Node *child, Rel::Set parents) const {
+   const Rel::Set init_set = {child};
+   std::vector<const Rel::Set *> todo {&init_set};
+   static cache_set<Node *, 0x1000> seen;
+   seen.clear();
+
+   while (true) {
+      if (parents.empty()) { return nullptr; }
+      if (todo.empty()) { return *parents.begin(); }
+      
+      const Rel::Set& nodes = *todo.back();
+      todo.pop_back();
+      for (Node *node : nodes) {
+         parents.erase(node);
+         if (seen.contains(node) == seen.YES) { continue; }
+         seen.insert(node);
+         todo.push_back(&po.rev.at(node));
+      }
+   }
+}
+
+bool AEGPO::is_ancestor_e(Node *child, Node *parent) const {
+   std::unordered_set<Node *> seen;
+   const Rel::Set init_child_set = {child};
+   const Rel::Set init_parent_set = {parent};
+   std::vector<std::pair<bool, const Rel::Set *>> todo = {{true, &init_child_set},
+                                                          {false, &init_parent_set}};
+   while (!todo.empty()) {
+      const auto& pair = todo.back();
+      todo.pop_back();
+      const auto& rel = pair.first ? po.rev : po.fwd;
+      for (Node *node : *pair.second) {
+         if (!seen.insert(node).second) {
+            return true;
+         }
+         todo.emplace_back(pair.first, &rel.at(node));
+      }
+   }
+   
    return false;
 }
 
@@ -288,6 +338,7 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
    // const bool a = is_ancestor_a(child, parent);
    // const bool b = is_ancestor_b(child, parent);
    const bool d = is_ancestor_d(child, parent);
+   // const bool e = is_ancestor_e(child, parent);
    // assert(a == d);
    return d;
 }
@@ -500,7 +551,7 @@ AEGPO::Node *AEGPO::nearest_common_ancestor(Node *a, Node *b) const {
 
 bool AEGPO::is_mergable(Node *node, Node *merge_candidate, const NodeVec& trace) const {
    // look in execution trace (heuristic)
-#if 0
+#if 1
    if (std::find(trace.rbegin(), trace.rend(), merge_candidate) != trace.rend()) {
       return false;
    }

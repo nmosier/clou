@@ -78,39 +78,9 @@ private:
    bool is_ancestor_a(Node *child, Node *parent) const;
    bool is_ancestor_b(Node *child, Node *parent) const;
    bool is_ancestor_d(Node *child, Node *parent) const;
-   bool is_ancestor_c(Node *child, Node *parent) const {
-      if (child == parent) { return true; }
-      const auto it = po_children.fwd.find(parent);
-      if (it == po_children.fwd.end()) {
-         return false;
-      }
-      const auto& children = it->second;
-#if 0      
-      std::unordered_set<Node *> children_;
-      std::vector<Node *> todo {parent};
-      while (!todo.empty()) {
-         Node *node = todo.back();
-         todo.pop_back();
-         children_.insert(node);
-         const auto& succs = po.fwd.at(node);
-         std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
-      }
-      children_.erase(parent);
-      if (children_ != children) {
-         for (Node *node : children_) {
-            llvm::errs() << node_id(node) << " ";
-         }
-         llvm::errs() << "\n";
-         for (Node *node : children) {
-            llvm::errs() << node_id(node) << " ";
-         }
-         llvm::errs() << "\n";
-      }
-      assert(children_ == children);
-#endif
-      return children.find(child) != children.end();
-   }
-
+   bool is_ancestor_e(Node *child, Node *parent) const;
+   Node *is_any_not_ancestor(Node *child, Rel::Set parents) const;
+   
    Node *nearest_common_ancestor(Node *a, Node *b) const;
 
    unsigned max_reps(Node *node) const {

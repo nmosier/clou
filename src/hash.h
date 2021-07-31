@@ -72,4 +72,11 @@ namespace std {
          return hash_ordered_sequence(vec.begin(), vec.end());
       }
    };
+
+   template <typename First, typename Second>
+   struct hash<pair<First, Second>> {
+      size_t operator()(const pair<First, Second>& pair) const {
+         return hash_ordered_tuple(pair.first, pair.second);
+      }
+   };
 }
