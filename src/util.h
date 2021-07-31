@@ -86,16 +86,6 @@ inline bool getenvb(const char *name) {
    return getenvs(name) != nullptr;
 }
 
-
-
-
-using CFG = binrel<const llvm::Instruction *>;
-
-
-
-void get_cfg(const llvm::Function& F, CFG& cfg);
-
-
 template <typename... Args>
 std::string format(const std::string& fmt, Args&&... args) {
    char *s;

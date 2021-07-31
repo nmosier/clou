@@ -128,7 +128,7 @@ bool AEGPO::check_loop_i_rec(std::vector<Node *>& trace, size_t loopsize) const 
 #endif
 
 template <typename OutputIt>
-void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
+void AEGPO::construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
                            RepMap reps, NodeVec trace, OutputIt& out) {
    trace.push_back(node);
 
@@ -170,13 +170,10 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
          const auto f = [succ_I] (const Node *node) { return node->I == succ_I; };
          const auto first = std::find_if(trace.rbegin(), trace.rend(), f);
          assert(first != trace.rend());
-         // Loop loop = {(**first).I}; // also include first instruction 
          for (auto it = trace.rbegin(); it != first; ++it) {
             const llvm::Instruction *I = (**it).I;
             reps[I] = 0;
-            // loop.insert(I);
          }
-         // loops.insert(std::move(loop));
       }
       
       Node *succ_node;
@@ -211,7 +208,7 @@ void AEGPO::construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, Me
 }
 
 
-void AEGPO::construct2(const CFG2& cfg, unsigned num_unrolls) {
+void AEGPO::construct2(const CFG& cfg, unsigned num_unrolls) {
    MergeMap merge_map;
    RepMap reps;
    NodeVec trace;
@@ -266,32 +263,6 @@ bool AEGPO::is_ancestor_d(Node *child, Node *parent) const {
    std::vector<const Rel::Set *> todo {&init_set};
    static cache_set<Node *, 0x1000> seen;
    seen.clear();
-#if 0
-   while (!todo.empty()) {
-      for (Node *node : todo) {
-         if (node == parent) {
-            return true;
-         }
-         if (seen.contains(node) == seen.YES) {
-            continue;
-         }
-         seen.insert(node);
-         const auto& preds = po.rev.at(node);
-         std::copy(preds.begin(), preds.end(), std::back_inserter(todo_next));
-      }
-      todo = std::move(todo_next);
-   }
-#elif 0
-   while (!todo.empty()) {
-      Node *node = todo.back();
-      todo.pop_back();
-      if (node == parent) { return true; }
-      if (seen.contains(node) == seen.YES) { continue; }
-      seen.insert(node);
-      const auto& preds = po.rev.at(node);
-      std::copy(preds.begin(), preds.end(), std::back_inserter(todo));
-   }
-#else
    while (!todo.empty()) {
       const Rel::Set& nodes = *todo.back();
       todo.pop_back();
@@ -302,7 +273,6 @@ bool AEGPO::is_ancestor_d(Node *child, Node *parent) const {
          todo.push_back(&po.rev.at(node));
       }
    }
-#endif
    return false;
 }
 
@@ -320,20 +290,6 @@ bool AEGPO::is_ancestor(Node *child, Node *parent) const {
    const bool d = is_ancestor_d(child, parent);
    // assert(a == d);
    return d;
-#if 0
-   if (a != b) {
-      // dump po, po_trans
-      po.dump_graph("po.dot", [] (llvm::raw_ostream& os, const Node *node) {
-         node->dump(os, "<ENTRY/EXIT>") << "\n";
-      });
-      po_children.dump_graph("po_trans.dot", [] (llvm::raw_ostream& os, const Node *node) {
-         node->dump(os, "<ENTRY/EXIT>") << "\n";
-      });
-   }
-   
-   assert(a == b);
-   return a;
-#endif
 }
 
 llvm::raw_ostream& AEGPO::dump(llvm::raw_ostream& os) const {

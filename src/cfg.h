@@ -8,8 +8,6 @@
 #include "binrel.h"
 #include "util.h"
 
-#define CFG CFG2
-
 class CFG {
 public:   
    using Rel = binrel<const llvm::Instruction *>;
@@ -55,5 +53,3 @@ namespace std {
       }
    };
 }
-
-#undef CFG

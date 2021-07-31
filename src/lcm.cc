@@ -123,7 +123,7 @@ struct LCMPass : public llvm::FunctionPass {
       
       
       /* Construct AEG */
-      CFG2 cfg;
+      CFG cfg;
       cfg.construct(F);
       AEGPO aeg;
       

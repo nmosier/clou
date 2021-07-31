@@ -2,8 +2,6 @@
 
 #include "cfg.h"
 
-#define CFG CFG2
-
 void CFG::construct(const llvm::Function& F) {
    CallSites sites;
    const CallSite site {F, {nullptr}, {nullptr}};
@@ -57,5 +55,3 @@ void CFG::remove_calls() {
       }
    }
 }
-
-#undef CFG

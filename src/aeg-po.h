@@ -44,7 +44,7 @@ public:
       po.add_node(entry);
    }
 
-   void construct2(const CFG2& cfg, unsigned num_unrolls = 2);
+   void construct2(const CFG& cfg, unsigned num_unrolls = 2);
    
    llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -71,7 +71,7 @@ private:
    using NodeVec = std::vector<Node *>;
 
    template <typename OutputIt>
-   void construct2_rec(const CFG2& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
+   void construct2_rec(const CFG& cfg, unsigned num_unrolls, Node *node, MergeMap& merge_map,
                        RepMap reps, NodeVec trace, OutputIt& out);
 
    bool is_ancestor(Node *child, Node *parent) const;

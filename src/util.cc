@@ -41,7 +41,7 @@ void successor_map(const llvm::Function& F, BinaryInstRel& succs) {
    }
 }
 
-
+#if 0
 void get_cfg(const llvm::Function& F, CFG& cfg) {
    cfg.insert(nullptr, &F.front().front());
    for (const llvm::BasicBlock& B : F) {
@@ -82,3 +82,4 @@ void get_cfg(const llvm::Function& F, CFG& cfg,
    }
 
 }
+#endif
