@@ -105,3 +105,13 @@ inline std::string format_graph_path(const std::string& fmt, const llvm::Functio
 
 // const llvm::Instruction * constexpr ENTRY = reinterpret_cast<const llvm::Instruction *>(0);
 // const llvm::Instruction * constexpr EXIT = 
+
+namespace util {
+   // From https://en.cppreference.com/w/cpp/utility/variant/visit
+   // For constructing overloaded lambdas.
+   
+   // helper type for the visitor #4
+   template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+   // explicit deduction guide (not needed as of C++20)
+   template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+}

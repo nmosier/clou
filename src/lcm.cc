@@ -125,17 +125,20 @@ struct LCMPass : public llvm::FunctionPass {
       /* Construct AEG */
       CFG cfg;
       cfg.construct(F);
-      AEGPO aeg;
+
+      llvm::errs() << "CFG done\n";
+      
+      AEGPO aeg {cfg};
       
       ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
       signal(SIGINT, [] (int sig) {
          ProfilerStop();
          std::exit(0);
       });
-      aeg.construct2(cfg);
+      aeg.construct2();
       ProfilerStop();
 
-      aeg.dump(llvm::errs());
+      // aeg.dump(llvm::errs());
 
       if (!cfg_output_path.empty()) {
          cfg.dump_graph(format_graph_path(cfg_output_path, F));
