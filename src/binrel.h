@@ -86,10 +86,7 @@ public:
    using Group = std::vector<T>;
    struct GroupHash {
       size_t operator()(const Group& g) const {
-         std::vector<size_t> hashes;
-         hashes.resize(g.size());
-         std::transform(g.begin(), g.end(), hashes.begin(), Hash {});
-         return hash_ordered_sequence(hashes.begin(), hashes.end());
+         return Hash()(g.front());
       }
    };
 
