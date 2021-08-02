@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <string>
 #include <sstream>
+#include <type_traits>
 
 #include <llvm/IR/Function.h>
 
@@ -115,3 +116,9 @@ namespace util {
    // explicit deduction guide (not needed as of C++20)
    template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 }
+
+
+struct Empty {
+   bool operator==(const Empty& other) const { return true;  }
+   bool operator!=(const Empty& other) const { return false; }
+};

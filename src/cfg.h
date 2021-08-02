@@ -14,7 +14,7 @@ class CFG {
 public:
    using NodeRef = ::NodeRef<CFG>;
    struct Entry {};
-   struct Exit {};
+   struct Exit  {};
 
    struct Node {
       using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
@@ -24,6 +24,8 @@ public:
 
       bool is_exit() const { return std::holds_alternative<Exit>(v); }
       friend llvm::raw_ostream& operator<<(llvm::raw_ostream&, const Node&);
+      // bool operator==(const Node& other) const { return v == other.v; }
+      // bool operator!=(const Node& other) const { return !(*this == other); }
    };
 
    using Rel = binrel<NodeRef>;
@@ -43,10 +45,20 @@ public:
       const llvm::Function& F;
       Set entry;
       Set exit;
+#if 0
       friend struct std::hash<CallSite>;
       bool operator==(const CallSite& other) const {
          return &F == &other.F && entry == other.entry && exit == other.exit;
       }
+      bool operator!=(const CallSite& other) const {
+         return !(*this == other);
+      }
+#endif
+#if 0
+      CallSite(const llvm::Function& F): F(F) {}
+      CallSite(const llvm::Function& F, const Set& entry, const Set& exit):
+         F(F), entry(entry), exit(exit) {}
+#endif
    };
 
    void dump_graph(const std::string& path) const;
@@ -55,9 +67,13 @@ public:
    
 private:
    std::vector<Node> nodes;
-   
+
+#if 0
    using CallSites = std::unordered_set<CallSite>;
    void construct(const CallSite& site, CallSites& sites);
+#else
+   void construct_rec(const CallSite& site);
+#endif
    void remove_calls();
 
    NodeRef add_node(const llvm::Instruction *I);

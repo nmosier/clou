@@ -128,6 +128,10 @@ struct LCMPass : public llvm::FunctionPass {
 
       llvm::errs() << "CFG done\n";
       
+      if (!cfg_output_path.empty()) {
+         cfg.dump_graph(format_graph_path(cfg_output_path, F));
+      }
+
       AEGPO aeg {cfg};
       
       ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
@@ -139,10 +143,6 @@ struct LCMPass : public llvm::FunctionPass {
       ProfilerStop();
 
       // aeg.dump(llvm::errs());
-
-      if (!cfg_output_path.empty()) {
-         cfg.dump_graph(format_graph_path(cfg_output_path, F));
-      }
 
       if (!aegpo_output_path.empty()) {
          aeg.dump_graph(format_graph_path(aegpo_output_path, F));

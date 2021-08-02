@@ -38,16 +38,16 @@ CFG::NodeRef CFG::add_node(const llvm::Instruction *I) {
 }
 
 void CFG::construct(const llvm::Function& F) {
-   CallSites sites;
-   const CallSite site {F, {entry}, {exit}};
-   construct(site, sites);
+   construct_rec({F, {entry}, {exit}});
    remove_calls();
 }
 
-void CFG::construct(const CallSite& site, CallSites& seen) {
+void CFG::construct_rec(const CallSite& site) {
+#if 0
    // check if call site already seen; otherwise mark as seen
    const auto seen_res = seen.insert(site);
    if (!seen_res.second) { return; }
+#endif
 
    std::unordered_map<const llvm::Instruction *, NodeRef> refs;
 
@@ -85,7 +85,7 @@ void CFG::construct(const CallSite& site, CallSites& seen) {
          if (const auto *C = llvm::dyn_cast<llvm::CallBase>(&I)) {
             const NodeRef C_ref = refs.at(C);
             const CallSite newsite {*C->getCalledFunction(), po.rev.at(C_ref), po.fwd.at(C_ref)};
-            construct(newsite, seen);
+            construct_rec(newsite);
          }
       }
    }
