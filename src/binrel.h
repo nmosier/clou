@@ -4,13 +4,12 @@
 #include <unordered_map>
 
 #include "hash.h"
-#include "printer.h"
 
 /* TODO
  * [ ] add Compare template parameter
  */
 
-template <typename T, typename Hash = std::hash<T>, typename Printer = util::printer<T>>
+template <typename T, typename Hash = std::hash<T>>
 class binrel {
 public:
    using Set = std::unordered_set<T, Hash>;
@@ -70,11 +69,11 @@ public:
       f(rev, fwd);
    }
 
-   template <typename Printer_ = Printer>
-   void dump_graph(llvm::raw_ostream& os, Printer_ printer = Printer()) const;
+   template <typename Printer>
+   void dump_graph(llvm::raw_ostream& os, Printer printer) const;
 
-   template <typename Printer_ = Printer>
-   void dump_graph(const std::string& path, Printer_ printer = Printer()) const {
+   template <typename Printer>
+   void dump_graph(const std::string& path, Printer printer) const {
       std::error_code ec;
       llvm::raw_fd_ostream os {path, ec};
       if (ec) {
@@ -102,7 +101,7 @@ public:
       }
    };
    
-   using GroupRel = binrel<Group, GroupHash, GroupPrinter>;
+   using GroupRel = binrel<Group, GroupHash>;
    GroupRel group() const;
 
    template <typename OutputIt>
@@ -113,9 +112,9 @@ private:
 };
 
 
-template <typename T, typename Hash, typename Printer>
-template <typename Printer_>
-void binrel<T, Hash, Printer>::dump_graph(llvm::raw_ostream& os, Printer_ printer) const {
+template <typename T, typename Hash>
+template <typename Printer>
+void binrel<T, Hash>::dump_graph(llvm::raw_ostream& os, Printer printer) const {
    os << R"=(
 digraph G {
   overlap=scale;
@@ -166,8 +165,8 @@ digraph G {
 }
 
 
-template <typename T, typename Hash, typename Printer>
-typename binrel<T, Hash, Printer>::Group binrel<T, Hash, Printer>::get_group(const T& node_) const {
+template <typename T, typename Hash>
+typename binrel<T, Hash>::Group binrel<T, Hash>::get_group(const T& node_) const {
    const T *node = &node_;
    Group g;
 
@@ -199,9 +198,9 @@ typename binrel<T, Hash, Printer>::Group binrel<T, Hash, Printer>::get_group(con
 }
 
 
-template <typename T, typename Hash, typename Printer>
+template <typename T, typename Hash>
 template <typename OutputIt>
-void binrel<T, Hash, Printer>::get_nodes(OutputIt out) const {
+void binrel<T, Hash>::get_nodes(OutputIt out) const {
    for (const auto& rel : std::array<const Map *, 2> {&fwd, &rev}) {
       for (const auto& pair : *rel) {
          *out++ = pair.first;
@@ -209,8 +208,8 @@ void binrel<T, Hash, Printer>::get_nodes(OutputIt out) const {
    }
 }
 
-template <typename T, typename Hash, typename Printer>
-typename binrel<T, Hash, Printer>::GroupRel binrel<T, Hash, Printer>::group() const {
+template <typename T, typename Hash>
+typename binrel<T, Hash>::GroupRel binrel<T, Hash>::group() const {
    GroupRel rel;
 
    std::unordered_set<T, Hash> nodes;
