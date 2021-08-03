@@ -38,7 +38,8 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
 UHBNode::UHBNode(CFG::NodeRef ref, UHBContext& c):
-   cfg_ref(ref), po(c.make_bool()), tfo(c.make_bool()) {}
+   cfg_ref(ref), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
+   constraints(c) {}
 
 void AEG::construct(const AEGPO& po, unsigned spec_depth) {
    // initialize nodes
@@ -56,17 +57,23 @@ void AEG::construct_nodes_po(const AEGPO& po) {
    for (NodeRef ref : node_range()) {
       const auto& preds = po.po.rev.at(ref);
       const auto& succs = po.po.fwd.at(ref);
-      const Node& node = lookup(ref);
+      Node& node = lookup(ref);
+
+      if (preds.empty()) {
+         // program entry, require po
+         node.constraints(node.po);
+      }
 
       /* add po constraint: exactly one successor */
-      if (preds.empty()) {
-         constraints &= node.po;
-      } else if (!succs.empty()) {
-         constraints &= util::one_of(succs.begin(), succs.end(), [&] (NodeRef dstref) {
-            const Node& dst = lookup(dstref);
-            return z3::implies(node.po, dst.po);
+      if (!succs.empty()) {
+         // Not Program Exit
+         const z3::expr succ_po = util::one_of(succs.begin(), succs.end(), [&] (NodeRef dstref) {
+            return lookup(dstref).po;
          }, context.TRUE, context.FALSE);
+         node.constraints(z3::implies(node.po, succ_po));
       }
+      // po excludes tfo
+      node.constraints(z3::implies(node.po, !node.tfo));
    }
 }
 
@@ -84,16 +91,18 @@ void AEG::construct_nodes_tfo(const AEGPO& po, unsigned spec_depth) {
       /* set tfo_depth */
       Node& node = lookup(noderef);
       if (preds.size() != 1) {
-         node.tfo_depth = 0;
-         constraints &= !node.tfo; // force TFO to false
+         node.constraints(node.tfo_depth == context.context.int_val(0));
+         node.constraints(!node.tfo); // force TFO to false
       } else {
          const Node& pred = lookup(*preds.begin());
-         node.tfo_depth = pred.tfo_depth + 1;
-         if (node.tfo_depth > spec_depth) {
-            constraints &= !node.tfo;
-         } else {
-            constraints &= z3::implies(node.tfo, pred.tfo);
-         }
+         const z3::expr tfo_depth_expr =
+            z3::ite(node.po,
+                    context.context.int_val(0),
+                    pred.tfo_depth + context.context.int_val(1));
+         node.constraints(node.tfo_depth == tfo_depth_expr);
+         node.constraints(z3::implies(node.tfo_depth > context.context.int_val(spec_depth),
+                                      !node.tfo));
+         node.constraints(z3::implies(node.tfo, pred.tfo || pred.po));
       }
    }
 }
@@ -136,7 +145,8 @@ digraph G {
       }
       ss << "po: " << node.po << "\n"
          << "tfo: " << node.tfo << "\n"
-         << "tfo_depth: " << node.tfo_depth << "\n";
+         << "tfo_depth: " << node.tfo_depth << "\n"
+         << "constraints: " << node.constraints << "\n";
       
       dot::emit_kvs(os, "label", ss.str());
       os << ";\n";
@@ -169,5 +179,5 @@ digraph G {
 
 void AEG::simplify() {
    std::for_each(nodes.begin(), nodes.end(), [] (Node& node) { node.simplify(); });
-   constraints = constraints.simplify();
+   constraints.simplify();
 }

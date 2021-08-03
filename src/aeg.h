@@ -9,6 +9,7 @@
 #include "cfg.h"
 #include "aeg-po.h"
 #include "graph.h"
+#include "z3-util.h"
 
 class UHBContext {
 public:
@@ -17,19 +18,35 @@ public:
    z3::context context;
 
    z3::expr make_bool() { return context.bool_const(std::to_string(id_++).c_str()); }
+   z3::expr make_int() { return context.int_const(std::to_string(id_++).c_str()); }
 
    const z3::expr TRUE;
    const z3::expr FALSE;
-   
+
 private:
    unsigned id_ = 0;
 };
 
+struct UHBConstraints {
+   z3::expr e;
+
+   UHBConstraints(UHBContext& ctx): e(ctx.TRUE) {}
+   const z3::expr& operator()() { return e; }
+   void operator()(const z3::expr& clause) { e &= clause; }
+   void simplify() { e = e.simplify(); }
+};
+
+inline std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
+   os << c.e;
+   return os;
+}
+
 struct UHBNode {
    CFG::NodeRef cfg_ref;
-   z3::expr po;  // program order constraint
-   z3::expr tfo; // transient fetch order constraint
-   unsigned tfo_depth; 
+   z3::expr po;  // program order variable
+   z3::expr tfo; // transient fetch order variable
+   z3::expr tfo_depth; // transient depth
+   UHBConstraints constraints;
 
    bool operator==(const UHBNode& other) const { return cfg_ref == other.cfg_ref; }
    bool operator!=(const UHBNode& other) const { return !(*this == other); }
@@ -41,8 +58,10 @@ struct UHBNode {
    };
 
    void simplify() {
-      po.simplify();
-      tfo.simplify();
+      po = po.simplify();
+      tfo = tfo.simplify();
+      tfo_depth = tfo_depth.simplify();
+      constraints.simplify();
    }
 
    UHBNode(CFG::NodeRef ref, UHBContext& c);
@@ -103,7 +122,7 @@ public:
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
    
-   AEG(const CFG& cfg): cfg(cfg), context(), constraints(context.TRUE) {}
+   AEG(const CFG& cfg): cfg(cfg), context(), constraints(context) {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -113,7 +132,7 @@ public:
 private:
    const CFG& cfg;
    UHBContext context;
-   z3::expr constraints;
+   UHBConstraints constraints;
    std::vector<Node> nodes;
 
    void construct_nodes_po(const AEGPO& po);
