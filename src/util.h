@@ -5,6 +5,7 @@
 #include <string>
 #include <sstream>
 #include <type_traits>
+#include <numeric>
 
 #include <llvm/IR/Function.h>
 
@@ -122,3 +123,64 @@ struct Empty {
    bool operator==(const Empty& other) const { return true;  }
    bool operator!=(const Empty& other) const { return false; }
 };
+
+
+namespace util {
+   template <typename T>
+   struct identity {
+      constexpr T&& operator()(T&& t) const noexcept { return std::forward<T>(t); }
+      constexpr const T& operator()(const T& t) const noexcept { return t; }
+   };
+
+   struct Void {};
+}
+
+namespace util {
+   template <typename T, typename InputIt, typename UnaryPredicate>
+   T all_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val) {
+      return std::transform_reduce(begin, end, true_val, [] (const T& a, const T& b) -> T {
+         return a && b;
+      }, p);
+   }
+
+   // TODO: Rewrite using transform_reduce.
+   template <typename T, typename InputIt, typename UnaryPredicate>
+   T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
+      T disj = false_val;
+      for (auto it1 = begin; it1 != end; ++it1) {
+         const T conj = all_of(begin, end, [&] (const auto& val) {
+            auto pred = p(val);
+            if (&val != &*it1) {
+               pred = !pred;
+            }
+            return pred;
+         }, true_val);
+         disj |= conj;
+      }
+      return disj;
+   }
+
+   template <typename T, typename InputIt, typename UnaryPredicate>
+   T any_of(InputIt begin, InputIt end, UnaryPredicate p, T false_val) {
+      return std::transform_reduce(begin, end, false_val, std::logical_or<T>(), p);
+   }
+   
+   template <typename T>
+   class RangeIterator {
+   public:
+      const T& operator*() const { return val; }
+      const T *operator->() const { return &val; }
+      RangeIterator& operator++() { ++val; return *this; }
+      RangeIterator& operator++(int) { ++val; return *this; }
+      bool operator==(const RangeIterator& other) const { return val == other.val; }
+      bool operator!=(const RangeIterator& other) const { return !(*this == other); }
+      RangeIterator(const T& val): val(val) {}
+   private:
+      T val;
+   };
+
+   template <typename T>
+   using RangeContainer = llvm::iterator_range<RangeIterator<T>>;
+   
+}
+

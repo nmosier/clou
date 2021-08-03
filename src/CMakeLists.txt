@@ -6,6 +6,7 @@ add_library(lcm MODULE
   aeg-po.cc
   config.cc
   cfg.cc
+  aeg.cc
   )
 
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
@@ -19,3 +20,8 @@ endif()
 add_executable(cow_test
   cow_test.cc
   )
+
+add_executable(linear_test
+  linear_test.cc
+  )
+target_link_libraries(lcm ${LLVM_LIBRARIES})

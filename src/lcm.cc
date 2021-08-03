@@ -15,10 +15,10 @@
 #include "lcm.h"
 #include "addr.h"
 #include "mcfg.h"
-#include "graph.h"
 #include "aeg-po.h"
 #include "config.h"
 #include "cfg.h"
+#include "aeg.h"
 
 using llvm::errs;
 
@@ -142,12 +142,18 @@ struct LCMPass : public llvm::FunctionPass {
       aeg.construct2();
       ProfilerStop();
 
-      // aeg.dump(llvm::errs());
-
       if (!aegpo_output_path.empty()) {
          aeg.dump_graph(format_graph_path(aegpo_output_path, F));
       }
 
+      AEG aeg2 {cfg};
+      aeg2.construct(aeg, 2);
+      aeg2.simplify();
+
+      if (!aeg_output_path.empty()) {
+         aeg2.dump_graph(format_graph_path(aeg_output_path, F));
+      }
+      
       return false;
    }
 };

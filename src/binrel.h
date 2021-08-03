@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "hash.h"
+#include "dot.h"
 
 /* TODO
  * [ ] add Compare template parameter
@@ -137,14 +138,7 @@ digraph G {
       std::string s;
       llvm::raw_string_ostream ss {s};
       printer(ss, pair.first);
-      for (char c : s) {
-         if (c == '\n') {
-            os << "\\l";
-         } else {
-            os << c;
-         }
-      }
-      
+      dot::quote(os, s);
       os << "\"]\n";
    }
    os << "\n";

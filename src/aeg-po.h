@@ -38,8 +38,6 @@ public:
 
    using Rel = binrel<NodeRef>;
    Rel po; // simple po
-   Rel po_trans; // transitive po
-   Rel po_children;
    
    AEGPO(const CFG& cfg): cfg(cfg), nodes({Node {CFG::entry}}) {
       po.add_node(entry);
@@ -104,6 +102,8 @@ private:
    bool is_exit(NodeRef node) const {
       return cfg.is_exit(lookup(node).cfg_ref);
    }
+
+   friend class AEG;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO& aeg);

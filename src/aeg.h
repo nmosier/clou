@@ -6,36 +6,47 @@
 #include <llvm/IR/Instruction.h>
 #include <z3++.h>
 
+#include "cfg.h"
+#include "aeg-po.h"
 #include "graph.h"
-
-class MemoryCFG;
 
 class UHBContext {
 public:
+   UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
+   
    z3::context context;
 
    z3::expr make_bool() { return context.bool_const(std::to_string(id_++).c_str()); }
+
+   const z3::expr TRUE;
+   const z3::expr FALSE;
    
 private:
    unsigned id_ = 0;
 };
 
 struct UHBNode {
-   const llvm::Instruction *inst;
+   CFG::NodeRef cfg_ref;
+   z3::expr po;  // program order constraint
+   z3::expr tfo; // transient fetch order constraint
+   unsigned tfo_depth; 
 
-   bool operator==(const UHBNode& other) const { return inst == other.inst; }
+   bool operator==(const UHBNode& other) const { return cfg_ref == other.cfg_ref; }
    bool operator!=(const UHBNode& other) const { return !(*this == other); }
-   bool operator<(const UHBNode& other) const { return inst < other.inst; }
-};
 
-namespace std {
-   template <>
-   struct hash<UHBNode> {
+   struct Hash {
       size_t operator()(const UHBNode& node) const {
-         return std::hash<const llvm::Instruction *>()(node.inst);
+         return std::hash<CFG::NodeRef>()(node.cfg_ref);
       }
    };
-}
+
+   void simplify() {
+      po.simplify();
+      tfo.simplify();
+   }
+
+   UHBNode(CFG::NodeRef ref, UHBContext& c);
+};
 
 class UHBEdge {
 public:
@@ -65,23 +76,61 @@ public:
    UHBEdge(Kind kind, const z3::expr& constraint): kind_(kind), constraint_(constraint) {
       assert(constraint.is_bool());
    }
+
+   struct Hash {
+      size_t operator()(const UHBEdge& x) const { return std::hash<Kind>()(x.kind_); }
+   };
    
 private:
    Kind kind_;
    z3::expr constraint_;
+   friend class std::hash<UHBEdge>;
 };
 
 class AEG {
 public:
-   using graph_t = Graph<UHBNode, UHBEdge>;
-   void construct(const MemoryCFG& mcfg); // TODO: remove this.
-   const graph_t& graph() const { return graph_; }
+   using Node = UHBNode;
+   using NodeRef = AEGPO::NodeRef;
+   using Edge = UHBEdge;
+   using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
 
-   void construct_full(const llvm::Function& F);
+   static inline const NodeRef entry {0};
 
-private:
-   Graph<UHBNode, UHBEdge> graph_;
+   graph_type graph;
    
-   void construct(const MemoryCFG& mcfg, const llvm::Instruction *I); // TODO: remove this.
-   void construct_branch(const llvm::Instruction *inst);
+   void construct(const AEGPO& po, unsigned spec_depth);
+
+   const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
+   Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
+   
+   AEG(const CFG& cfg): cfg(cfg), context(), constraints(context.TRUE) {}
+
+   void dump_graph(llvm::raw_ostream& os) const;
+   void dump_graph(const std::string& path) const;
+
+   void simplify();
+   
+private:
+   const CFG& cfg;
+   UHBContext context;
+   z3::expr constraints;
+   std::vector<Node> nodes;
+
+   void construct_nodes_po(const AEGPO& po);
+   void construct_nodes_tfo(const AEGPO& po, unsigned spec_depth);
+   void construct_edges(); // TODO
+
+   using NodeRange = util::RangeContainer<NodeRef>;
+   NodeRange node_range() const {
+      return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}}; }
+   
+   
+#if 0
+   template <typename... Ts>
+   NodeRef add_node(Ts&&... ts) {
+      const NodeRef ref {static_cast<unsigned>(nodes.size())};
+      nodes.emplace_back(std::forward<Ts>(ts)...);
+      return ref;
+   }
+#endif
 };

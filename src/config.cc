@@ -18,6 +18,7 @@ static std::vector<char *> args = {prog};
 
 std::string cfg_output_path;
 std::string aegpo_output_path;
+std::string aeg_output_path;
 std::vector<std::string> function_names;
 unsigned verbose = 0;
 
@@ -51,6 +52,7 @@ static int parse_args() {
    enum Option {
       CFG = 256,
       AEGPO,
+      AEG,
    };
    
    struct option opts[] = {
@@ -58,6 +60,7 @@ static int parse_args() {
       {"cfg", required_argument, nullptr, CFG},
       {"aegpo", required_argument, nullptr, AEGPO},
       {"verbose", no_argument, nullptr, 'v'},
+      {"aeg", required_argument, nullptr, AEG},
       {0},
    };
    
@@ -73,6 +76,10 @@ static int parse_args() {
 
       case AEGPO:
          aegpo_output_path = optarg;
+         break;
+
+      case AEG:
+         aeg_output_path = optarg;
          break;
 
       case 'v':
