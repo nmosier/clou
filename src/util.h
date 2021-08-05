@@ -181,6 +181,39 @@ namespace util {
 
    template <typename T>
    using RangeContainer = llvm::iterator_range<RangeIterator<T>>;
+
+   template <typename T>
+   std::string to_string(const T& x) {
+      std::stringstream ss;
+      ss << x;
+      return ss.str();
+   }
+
+   template <typename InputIt>
+   std::string to_string(InputIt begin, InputIt end, const std::string& sep = " ") {
+      std::stringstream ss;
+      for (InputIt it = begin; it != end; ++it) {
+         if (it != begin) {
+            ss << sep;
+         }
+         ss << *it;
+      }
+      return ss.str();
+   }
+
+#if 0
+    /* Generalized for-each */
+   template <size_t N, typename Container, typename UnaryOp, typename... Args>
+   void for_each(const Container& c, UnaryFunction f) {
+      if constexpr (N == 0) {
+         f(c); 
+      } else {
+         std::for_each(c.begin(), c.end(), [f] (const auto& e) {
+            for_each<N-1>(e, f);
+         });
+      }
+   }
+#endif
    
 }
 

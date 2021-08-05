@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
 
 #include "util.h"
 
@@ -12,7 +13,7 @@ public:
    using node_type = Node;
    using edge_type = Edge;
 
-   using ESet = std::unordered_set<Edge, EdgeHash>;
+   using ESet = std::vector<std::shared_ptr<Edge>>;
    using NEMap = std::unordered_map<Node, ESet, NodeHash>;
    using NNEMap = std::unordered_map<Node, NEMap, NodeHash>;
 
@@ -20,8 +21,9 @@ public:
    NNEMap rev;
 
    void insert(const Node& src, const Node& dst, const Edge& edge) {
-      fwd[src].emplace(dst, edge);
-      rev[dst].emplace(src, edge);
+      std::shared_ptr<Edge> edgeptr = std::make_shared<Edge>(edge);
+      fwd[src][dst].push_back(edgeptr);
+      rev[dst][src].push_back(edgeptr);
    }
 
    template <typename InputIt>
@@ -49,6 +51,8 @@ public:
    }
 
    void add_node(const Node& node) {
+      // TODO: This can just be a no-op, since doing the below isn't useful.
+      llvm::errs() << "adding node " << node << "\n";
       fwd[node];
       rev[node];
    }
@@ -78,5 +82,42 @@ public:
       f(rev, fwd);
    }
 
+   template <typename Function>
+   void for_each_edge(Function f) const {
+      for (const auto& srcp : fwd) {
+         for (const auto& dstp : srcp.second) {
+            for (const auto& edge : dstp.second) {
+               f(srcp.first, dstp.first, *edge);
+            }
+         }
+      }
+   }
+
+   template <typename Function>
+   void for_each_edge(Function f) {
+      for (auto& srcp : fwd) {
+         for (auto& dstp : srcp.second) {
+            for (auto& edge : dstp.second) {
+               f(srcp.first, dstp.first, *edge);
+            }
+         }
+      }
+   }
+      
+
+#if 0
+   class edge_iterator {
+   public:
+
+   private:
+      NNEMap::iterator it1;
+      NEMap::iterator it2;
+      ESet::iterator it3; 
+   };
+#endif
+   
+   // using EdgeRange = util::RangeContainer<T> 
+   
+   
 private:
 };

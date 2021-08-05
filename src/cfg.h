@@ -64,6 +64,11 @@ public:
    void dump_graph(const std::string& path) const;
 
    bool is_exit(NodeRef node) const { return lookup(node).is_exit(); }
+
+   using NodeRange = util::RangeContainer<NodeRef>;
+   NodeRange node_range() const {
+      return NodeRange {entry, NodeRef {static_cast<unsigned>(nodes.size())}};
+   }
    
 private:
    std::vector<Node> nodes;

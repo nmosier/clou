@@ -63,7 +63,8 @@ public:
          for (const T& other : it->second) {
             rel2.at(other).erase(node);
          }
-         rel1.erase(it);
+         it->second.clear();
+         // rel1.erase(it);
       };
 
       f(fwd, rev);

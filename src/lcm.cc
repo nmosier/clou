@@ -147,12 +147,14 @@ struct LCMPass : public llvm::FunctionPass {
       }
 
       AEG aeg2 {cfg};
-      aeg2.construct(aeg, 2);
+      aeg2.construct(aeg, 2, AA);
       aeg2.simplify();
 
       if (!aeg_output_path.empty()) {
          aeg2.dump_graph(format_graph_path(aeg_output_path, F));
       }
+
+      aeg2.test();
       
       return false;
    }

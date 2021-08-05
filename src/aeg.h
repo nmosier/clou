@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include <llvm/IR/Instruction.h>
+#include <llvm/Analysis/AliasAnalysis.h>
 #include <z3++.h>
 
 #include "cfg.h"
@@ -28,18 +29,35 @@ private:
 };
 
 struct UHBConstraints {
-   z3::expr e;
+   const z3::expr TRUE;
+   std::vector<z3::expr> exprs;
 
-   UHBConstraints(UHBContext& ctx): e(ctx.TRUE) {}
-   const z3::expr& operator()() { return e; }
-   void operator()(const z3::expr& clause) { e &= clause; }
-   void simplify() { e = e.simplify(); }
+   UHBConstraints(const UHBContext& ctx): TRUE(ctx.TRUE) {}
+   
+   void add_to(z3::solver& solver) const {
+      for (const z3::expr& expr : exprs) {
+         solver.add(expr, util::to_string(expr).c_str());
+      }
+   }
+   void operator()(const z3::expr& clause) {
+      exprs.push_back(clause);
+   }
+   void simplify() {
+      std::for_each(exprs.begin(), exprs.end(), [] (z3::expr& e) {
+         e = e.simplify();
+      });
+   }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
-   os << c.e;
-   return os;
+   return os <<
+      std::reduce(c.exprs.begin(), c.exprs.end(), c.TRUE,
+                  [] (const z3::expr& a, const z3::expr& b) {
+                     return a && b;
+                  }).simplify();
 }
+
+using UHBAddress = unsigned;
 
 struct UHBNode {
    CFG::NodeRef cfg_ref;
@@ -47,6 +65,8 @@ struct UHBNode {
    z3::expr tfo; // transient fetch order variable
    z3::expr tfo_depth; // transient depth
    UHBConstraints constraints;
+   using AddrSet = std::unordered_set<UHBAddress>;
+   AddrSet addrs; // set of possible addresses
 
    bool operator==(const UHBNode& other) const { return cfg_ref == other.cfg_ref; }
    bool operator!=(const UHBNode& other) const { return !(*this == other); }
@@ -67,8 +87,7 @@ struct UHBNode {
    UHBNode(CFG::NodeRef ref, UHBContext& c);
 };
 
-class UHBEdge {
-public:
+struct UHBEdge {
 #define UHBEDGE_KIND_X(X)                       \
    X(FORK)                                      \
    X(PO)                                        \
@@ -86,25 +105,26 @@ public:
    };
 #undef UHBEDGE_KIND_E
 
-   Kind kind() const { return kind_; }
+   Kind kind;
+   z3::expr exists;
+   UHBConstraints constraints;
+
    static const char *kind_tostr(Kind kind);
-   const char *kind_tostr() const { return kind_tostr(kind()); }
+   const char *kind_tostr() const { return kind_tostr(kind); }
    static Kind kind_fromstr(const std::string& s);
 
-   UHBEdge(Kind kind, UHBContext& context): kind_(kind), constraint_(context.context) {} 
-   UHBEdge(Kind kind, const z3::expr& constraint): kind_(kind), constraint_(constraint) {
-      assert(constraint.is_bool());
-   }
+   UHBEdge(Kind kind, UHBContext& ctx):
+      kind(kind), exists(ctx.make_bool()), constraints(ctx) {} 
 
    struct Hash {
-      size_t operator()(const UHBEdge& x) const { return std::hash<Kind>()(x.kind_); }
+      size_t operator()(const UHBEdge& x) const { return std::hash<Kind>()(x.kind); }
    };
-   
-private:
-   Kind kind_;
-   z3::expr constraint_;
-   friend class std::hash<UHBEdge>;
+
+   bool operator==(const UHBEdge& other) const { return kind == other.kind; }
+   void simplify() { constraints.simplify(); }
 };
+
+std::ostream& operator<<(std::ostream& os, const UHBEdge& e);
 
 class AEG {
 public:
@@ -117,7 +137,7 @@ public:
 
    graph_type graph;
    
-   void construct(const AEGPO& po, unsigned spec_depth);
+   void construct(const AEGPO& po, unsigned spec_depth, llvm::AliasAnalysis& AA);
 
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
@@ -128,6 +148,8 @@ public:
    void dump_graph(const std::string& path) const;
 
    void simplify();
+
+   void test();
    
 private:
    const CFG& cfg;
@@ -137,12 +159,13 @@ private:
 
    void construct_nodes_po(const AEGPO& po);
    void construct_nodes_tfo(const AEGPO& po, unsigned spec_depth);
-   void construct_edges(); // TODO
-
+   void construct_edges_po_tfo(const AEGPO& po);
+   void construct_aliases(const CFG& cfg, llvm::AliasAnalysis& AA);
+   
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {
-      return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}}; }
-   
+      return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
+   }
    
 #if 0
    template <typename... Ts>

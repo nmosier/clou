@@ -103,8 +103,6 @@ OutputIt AEGPO::construct2_rec(unsigned num_unrolls,
                                               });
          if (po_succ_it == po_succs.end()) {
             succ_node = add_node(succ_I);
-            po.add_node(succ_node);
-            llvm::errs() << nodes.size() << " nodes\n";
          } else {
             succ_node = *po_succ_it;
          }
