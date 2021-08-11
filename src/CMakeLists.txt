@@ -7,6 +7,7 @@ add_library(lcm MODULE
   config.cc
   cfg.cc
   aeg.cc
+  inst.cc
   )
 
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
@@ -17,11 +18,11 @@ if(APPLE)
 endif()
 
 
-add_executable(cow_test
-  cow_test.cc
+add_library(alias MODULE
+  alias-main.cc
   )
 
-add_executable(linear_test
-  linear_test.cc
-  )
-target_link_libraries(lcm ${LLVM_LIBRARIES})
+target_compile_options(alias PRIVATE -fno-rtti)
+if(APPLE)
+  target_link_options(alias PRIVATE -undefined dynamic_lookup)
+endif()

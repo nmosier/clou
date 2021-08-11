@@ -22,7 +22,7 @@ struct Inst {
 
    const llvm::Instruction *I;
    Kind kind;
-   const llvm::Value *addr;
+   const llvm::Value *addr; // TODO: This should be able to hold multiple addresses.
 
    static const char *kind_tostr(Kind kind);
    const char *kind_tostr() const { return kind_tostr(kind); }

@@ -50,15 +50,17 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(CFG::NodeRef ref, UHBContext& c):
-   cfg_ref(ref), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
+UHBNode::UHBNode(CFG::NodeRef ref, const Inst& inst, UHBContext& c):
+   cfg_ref(ref), inst(inst), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
    constraints(c) {}
 
 void AEG::construct(const AEGPO& po, unsigned spec_depth, llvm::AliasAnalysis& AA) {
    // initialize nodes
    std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
                   [&] (const AEGPO::Node& node) {
-                     return Node {node.cfg_ref, context};
+                     const Inst inst =
+                        std::visit(util::creator<Inst>(), po.cfg.lookup(node.cfg_ref).v);
+                     return Node {node.cfg_ref, inst, context};
                   });
    for (NodeRef ref : node_range()) {
       graph.add_node(ref);
@@ -155,6 +157,7 @@ digraph G {
       os << name << " ";
 
       std::stringstream ss;
+      ss << node.inst.kind_tostr() << "\n";
       {
          std::string s;
          llvm::raw_string_ostream ss_ {s};
@@ -163,9 +166,11 @@ digraph G {
       }
       ss << "po: " << node.po << "\n"
          << "tfo: " << node.tfo << "\n"
-         << "tfo_depth: " << node.tfo_depth << "\n"
-         << "constraints: " << node.constraints << "\n"
-         << "addrs: " << util::to_string(node.addrs.begin(), node.addrs.end()) << "\n";
+         << "tfo_depth: " << node.tfo_depth << "\n";
+      if (node.addr) {
+         ss << "addr: " << *node.addr << "\n";
+      }
+      ss << "constraints: " << node.constraints << "\n";
       
       dot::emit_kvs(os, "label", ss.str());
       os << ";\n";
@@ -242,6 +247,9 @@ void AEG::test() {
       lookup(ref).constraints.add_to(solver);
    }
 
+   // add main constraints
+   constraints.add_to(solver);
+
    // check node 15
    // solver.add(lookup(NodeRef {15}).po);
    
@@ -260,59 +268,41 @@ void AEG::test() {
    
 }
 
-/* How to construct address elements?
- * We can get alias information for each node. 
- * 1. Compute alias information of all previous. This is O(n^2) total.
- * - Must alias: points-to set equal to aliasee.
- * - May alias: points-to superset of aliasee.
- * - Partial alias: points-to equal to 
+/* Using alias analysis to construct address variables. 
+ *
  */
 
 void AEG::construct_aliases(const CFG& cfg, llvm::AliasAnalysis& AA) {
-   using AddrMap = std::unordered_map<const llvm::Instruction *, UHBNode::AddrSet>;
-   UHBAddress next_id = 0;
-   AddrMap addrmap; // map CFG nodes to address sets
-
-   for (CFG::NodeRef ref : cfg.node_range()) {
-      const CFG::Node& node = cfg.lookup(ref);
-      std::visit(util::overloaded {
-            [] (CFG::Entry) {},
-            [] (CFG::Exit)  {},
-            [&] (const llvm::Instruction *I) {
-               if (I->getType()->isPointerTy()) {
-                  auto& pts = addrmap[I];
-                  for (const auto& pair : addrmap) {
-                     const llvm::Instruction *other = pair.first;
-                     const llvm::AliasResult res = AA.alias(I, other);
-                     switch (res) {
-                     case llvm::MustAlias:
-                        pts = addrmap[other];
-                        break;
-                     case llvm::MayAlias:
-                     case llvm::PartialAlias: {
-                        const auto& map = addrmap[other];
-                        pts.insert(map.begin(), map.end());
-                        break;
-                     }
-                     case llvm::NoAlias:
-                     default:
-                        break;
-                     } 
-                  }
-                  pts.insert(next_id++);
-               }
-            }
-         }, node.v);
-   }
-
+#if 0
+   // generate set of addresses
+   std::unordered_map<const llvm::Value *, z3::expr> addrs;
    for (NodeRef ref : node_range()) {
-      const CFG::NodeRef cfg_ref = lookup(ref).cfg_ref;
-      const CFG::Node& cfg_node = cfg.lookup(cfg_ref);
-      if (const auto I = std::get_if<const llvm::Instruction *>(&cfg_node.v)) {
-         Node& node = lookup(ref);
-         const auto& pts = addrmap[*I];
-         node.addrs.insert(pts.begin(), pts.end());
+      Node& node = lookup(ref);
+      if (node.inst.addr) {
+         assert(node.inst.kind != Inst::Kind::EXIT);
+         auto it = addrs.find(node.inst.I);
+         if (it == addrs.end()) {
+            it = addrs.emplace(node.inst.addr, context.make_int()).first;
+         }
+         node.addr = it->second;
       }
    }
-   
+
+   // generate constraints
+   for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
+      for (auto it2 = addrs.begin(); it2 != it1; ++it2) {
+         switch (AA.alias(it1->first, it2->first)) {
+         case llvm::MustAlias:
+            constraints(it1->second == it2->second);
+            break;
+         case llvm::MayAlias:
+         case llvm::PartialAlias:
+            break;
+         case llvm::NoAlias:
+            constraints(it1->second != it2->second);
+            break;
+         }
+      }
+   }
+#endif
 }

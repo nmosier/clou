@@ -8,7 +8,6 @@
 #include "aeg-po.h"
 #include "cache.h"
 #include "config.h"
-#include "cow.h"
 
 /* Node Merging
  * Note that there should be a total ordering among all merge candidates.

@@ -11,6 +11,7 @@
 #include "aeg-po.h"
 #include "graph.h"
 #include "z3-util.h"
+#include "inst.h"
 
 class UHBContext {
 public:
@@ -61,12 +62,12 @@ using UHBAddress = unsigned;
 
 struct UHBNode {
    CFG::NodeRef cfg_ref;
+   Inst inst;
    z3::expr po;  // program order variable
    z3::expr tfo; // transient fetch order variable
    z3::expr tfo_depth; // transient depth
+   std::optional<z3::expr> addr = std::nullopt;
    UHBConstraints constraints;
-   using AddrSet = std::unordered_set<UHBAddress>;
-   AddrSet addrs; // set of possible addresses
 
    bool operator==(const UHBNode& other) const { return cfg_ref == other.cfg_ref; }
    bool operator!=(const UHBNode& other) const { return !(*this == other); }
@@ -84,7 +85,7 @@ struct UHBNode {
       constraints.simplify();
    }
 
-   UHBNode(CFG::NodeRef ref, UHBContext& c);
+   UHBNode(CFG::NodeRef ref, const Inst& inst, UHBContext& c);
 };
 
 struct UHBEdge {

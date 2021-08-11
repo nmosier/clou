@@ -214,6 +214,12 @@ namespace util {
       }
    }
 #endif
+
+   template <typename T>
+   struct creator {
+      template <typename... Args>
+      T operator()(Args&&... args) const { return T {std::forward<Args>(args)...}; }
+   };
    
 }
 
