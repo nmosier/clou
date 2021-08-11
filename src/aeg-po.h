@@ -39,7 +39,7 @@ public:
    using Rel = binrel<NodeRef>;
    Rel po; // simple po
    
-   AEGPO(const CFG& cfg): cfg(cfg), nodes({Node {CFG::entry}}) {
+   explicit AEGPO(const CFG& cfg): cfg(cfg), nodes({Node {CFG::entry}}) {
       po.add_node(entry);
    }
 

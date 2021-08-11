@@ -12,7 +12,7 @@
 #define XM_ENUM_DEF(name, XM)                   \
    enum name {                                  \
       XM(XM_ENUM_DEF_ELT)                       \
-   };
+   }
 
 #define XM_ENUM_TOSTR_ELT(x) case x: return XSTR(x);
 #define XM_ENUM_TOSTR(XM, var, dfl)                 \

@@ -61,7 +61,7 @@ static int parse_args() {
       {"aegpo", required_argument, nullptr, AEGPO},
       {"verbose", no_argument, nullptr, 'v'},
       {"aeg", required_argument, nullptr, AEG},
-      {0},
+      {nullptr, 0, nullptr, 0}
    };
    
    while ((optc = getopt_long(argc, argv, "h", opts, nullptr)) >= 0) {

@@ -143,7 +143,7 @@ public:
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
    
-   AEG(const CFG& cfg): cfg(cfg), context(), constraints(context) {}
+   explicit AEG(const CFG& cfg): cfg(cfg), context(), constraints(context) {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -161,7 +161,7 @@ private:
    void construct_nodes_po(const AEGPO& po);
    void construct_nodes_tfo(const AEGPO& po, unsigned spec_depth);
    void construct_edges_po_tfo(const AEGPO& po);
-   void construct_aliases(const CFG& cfg, llvm::AliasAnalysis& AA);
+   void construct_aliases(const AEGPO& po, llvm::AliasAnalysis& AA);
    
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {

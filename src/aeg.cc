@@ -69,7 +69,7 @@ void AEG::construct(const AEGPO& po, unsigned spec_depth, llvm::AliasAnalysis& A
    construct_nodes_po(po);
    construct_nodes_tfo(po, spec_depth);
    construct_edges_po_tfo(po);
-   construct_aliases(po.cfg, AA);
+   construct_aliases(po, AA);
 }
 
 void AEG::construct_nodes_po(const AEGPO& po) {
@@ -269,40 +269,83 @@ void AEG::test() {
 }
 
 /* Using alias analysis to construct address variables. 
- *
+ * - Must alias: S = T
+ * - May alias:  (no constraint)
+ * - No alias:   S != T
+ * One important added rule to handle loops:
+ *  - Self-alias checks always returns 'may alias' to generalize across loops.
  */
 
-void AEG::construct_aliases(const CFG& cfg, llvm::AliasAnalysis& AA) {
-#if 0
-   // generate set of addresses
-   std::unordered_map<const llvm::Value *, z3::expr> addrs;
+void AEG::construct_aliases(const AEGPO& po, llvm::AliasAnalysis& AA) {
+   /* assign address variables (symbolic ints) to each node */
    for (NodeRef ref : node_range()) {
       Node& node = lookup(ref);
+      assert(!node.addr);
       if (node.inst.addr) {
          assert(node.inst.kind != Inst::Kind::EXIT);
-         auto it = addrs.find(node.inst.I);
-         if (it == addrs.end()) {
-            it = addrs.emplace(node.inst.addr, context.make_int()).first;
-         }
-         node.addr = it->second;
+         node.addr = context.make_int();
       }
    }
 
-   // generate constraints
-   for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
-      for (auto it2 = addrs.begin(); it2 != it1; ++it2) {
-         switch (AA.alias(it1->first, it2->first)) {
-         case llvm::MustAlias:
-            constraints(it1->second == it2->second);
-            break;
-         case llvm::MayAlias:
-         case llvm::PartialAlias:
-            break;
-         case llvm::NoAlias:
-            constraints(it1->second != it2->second);
-            break;
+   /* generate constraints for each node */
+   for (NodeRef ref1 : node_range()) {
+      Node& node1 = lookup(ref1);
+      if (node1.addr) {
+         for (NodeRef ref2 : node_range()) {
+            if (ref1 != ref2) {
+               const Node& node2 = lookup(ref2);
+               if (node2.addr) {
+                  if (node1.inst.I == node2.inst.I) { // same instruction, special case
+                  } else { // different instructions, default to builtin alias analysis results
+                     switch (AA.alias(node1.inst.addr, node2.inst.addr)) {
+                     case llvm::MustAlias:
+                        node1.constraints(*node1.addr == *node2.addr);
+                        break;
+                     case llvm::MayAlias:
+                     case llvm::PartialAlias:
+                        break;
+                     case llvm::NoAlias:
+                        node1.constraints(*node1.addr != *node2.addr);
+                     default: std::abort();
+                     }
+                  }
+               }
+            }
          }
       }
    }
+   
+   
+#if 0
+      // generate set of addresses
+      std::unordered_map<const llvm::Value *, z3::expr> addrs;
+      for (NodeRef ref : node_range()) {
+         Node& node = lookup(ref);
+         if (node.inst.addr) {
+            assert(node.inst.kind != Inst::Kind::EXIT);
+            auto it = addrs.find(node.inst.I);
+            if (it == addrs.end()) {
+               it = addrs.emplace(node.inst.addr, context.make_int()).first;
+            }
+            node.addr = it->second;
+         }
+      }
+
+      // generate constraints
+      for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
+         for (auto it2 = addrs.begin(); it2 != it1; ++it2) {
+            switch (AA.alias(it1->first, it2->first)) {
+            case llvm::MustAlias:
+               constraints(it1->second == it2->second);
+               break;
+            case llvm::MayAlias:
+            case llvm::PartialAlias:
+               break;
+            case llvm::NoAlias:
+               constraints(it1->second != it2->second);
+               break;
+            }
+         }
+      }
 #endif
 }

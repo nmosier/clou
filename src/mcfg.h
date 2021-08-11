@@ -15,7 +15,6 @@ public:
 private:
    BinaryInstRel fwd;
    BinaryInstRel rev;
-   const llvm::Instruction *entry_;
 
    void prune(const llvm::Function& F);
    void remove_node(const llvm::Instruction *inst);
