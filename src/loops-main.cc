@@ -30,6 +30,8 @@ struct LCMPass : public llvm::FunctionPass {
       const llvm::DominatorTree dom_tree {F};
       const llvm::LoopInfo loop_info {dom_tree};
 
+      llvm::errs() << "Loops:\n";
+
       for (const llvm::Loop *loop : loop_info) {
          llvm::errs() << *loop << "\n";
       }

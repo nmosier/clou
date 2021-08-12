@@ -19,6 +19,7 @@
 #include "config.h"
 #include "cfg.h"
 #include "aeg.h"
+#include "aeg-po2.h"
 
 using llvm::errs;
 
@@ -123,6 +124,8 @@ struct LCMPass : public llvm::FunctionPass {
       
       
       /* Construct AEG */
+
+#if 0
       CFG cfg;
       cfg.construct(F);
 
@@ -133,6 +136,7 @@ struct LCMPass : public llvm::FunctionPass {
       }
 
       AEGPO aeg {cfg};
+      
       
       ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
       signal(SIGINT, [] (int sig) {
@@ -155,6 +159,13 @@ struct LCMPass : public llvm::FunctionPass {
       }
 
       aeg2.test();
+#else
+
+      AEGPO2 aegpo {F};
+      if (!aegpo_output_path.empty()) {
+         aegpo.dump_graph(format_graph_path(aegpo_output_path, F));
+      }
+#endif
       
       return false;
    }

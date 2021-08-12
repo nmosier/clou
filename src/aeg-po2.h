@@ -27,16 +27,23 @@ public:
       static Node make(const llvm::Instruction *I) { return Node {I}; }
    };
 
-   static inline const NodeRef entry {0};
-   static inline const NodeRef exit {1};
-
    using Rel = binrel<NodeRef>;
    Rel po; // simple po
 
+   NodeRef entry;
+   NodeRef exit;
+   
    explicit AEGPO2(llvm::Function& F, unsigned num_unrolls = 2):
-      F(F), num_unrolls(num_unrolls) {
+      F(F),
+      num_unrolls(num_unrolls) {
       construct();
    }
+
+   llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
+   void dump_graph(const std::string& path) const;
+
+   Node& lookup(NodeRef ref) { return nodes.at(ref); }
+   const Node& lookup(NodeRef ref) const { return nodes.at(ref); }
    
 private:
    llvm::Function& F;
@@ -54,6 +61,13 @@ private:
    void construct_block(const llvm::BasicBlock *B, Port& port);
    void construct_loop(const llvm::Loop *L, Port& port);
    void construct_function(llvm::Function *F, Port& port);
+   struct LoopForest {
+      const llvm::BasicBlock *entry;
+      std::vector<const llvm::BasicBlock *> exits;
+      std::vector<const llvm::BasicBlock *> blocks;
+      std::vector<const llvm::Loop *> loops;
+   };
+   void construct_loop_forest(const LoopForest *LF, Port& port);
 
    template <typename InputIt>
    void connect(InputIt src_begin, InputIt src_end, NodeRef dst) {
@@ -66,11 +80,13 @@ private:
    NodeRef add_node(const Node& node) {
       const NodeRef res = nodes.size();
       nodes.push_back(node);
+      po.add_node(res);
       return res;
    }
    NodeRef add_node(Node&& node) {
       const NodeRef res = nodes.size();
       nodes.push_back(node);
+      po.add_node(res);
       return res;
    }
 };

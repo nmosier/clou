@@ -1,6 +1,7 @@
 #include <llvm/IR/Dominators.h>
 
 #include "aeg-po2.h"
+#include "util.h"
 
 /* Construction Algorithm
  * We will construct functions recursively. Constructing a function should return the
@@ -10,7 +11,14 @@
  */
 
 void AEGPO2::construct() {
-   std::abort(); // TODO
+   entry = add_node(Node::make_entry());
+   exit = add_node(Node::make_exit());
+   Port port;
+   construct_function(&F, port);
+   add_edge(entry, port.entry);
+   for (const auto& exit_pair : port.exits) {
+      add_edge(exit_pair.second, exit);
+   }
 }
 
 void AEGPO2::construct_instruction(const llvm::Instruction *I, Port& port) {
@@ -38,22 +46,11 @@ void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port) {
    port.exits = std::move(ports.back().exits);
 }
 
-void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
-   /* construct header */
-   Port header_port;
-   construct_block(L->getHeader(), header_port);
-   port.entry = header_port.entry;
-
-   /*
-    * We can't just have a vector of NodeRefs be the exits.
-    * It must be pairs of NodeRefs with their corresponding BASIC BLOCKS.
-    *
-    */
-
+void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
    /* construct loops */
    std::unordered_map<const llvm::BasicBlock *, const llvm::Loop *> block_to_loop;
    std::unordered_map<const llvm::Loop *, Port> loop_to_port;
-   for (const llvm::Loop *subL : L->getSubLoops()) {
+   for (const llvm::Loop *subL : LF->loops) {
       /* process loop */
       Port subL_port;
       construct_loop(subL, subL_port);
@@ -65,7 +62,7 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
 
    /* construct non-loop basic blocks */
    std::unordered_map<const llvm::BasicBlock *, Port> nonloop_block_to_port;
-   for (const llvm::BasicBlock *B : L->blocks()) {
+   for (const llvm::BasicBlock *B : LF->blocks) {
       if (block_to_loop.find(B) == block_to_loop.end()) {
          Port B_port;
          construct_block(B, B_port);
@@ -79,7 +76,12 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
       if (succ_loop_it != block_to_loop.end()) {
          return &loop_to_port.at(succ_loop_it->second);
       } else {
-         return &nonloop_block_to_port.at(succ);
+         const auto nonloop_it = nonloop_block_to_port.find(succ);
+         if (nonloop_it != nonloop_block_to_port.end()) {
+            return &nonloop_it->second;
+         } else {
+            return nullptr;
+         }
       }
    };
 
@@ -88,8 +90,9 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
       for (unsigned succ_i = 0; succ_i < T->getNumSuccessors(); ++succ_i) {
          /* get the successor and the successor port */
          const llvm::BasicBlock *dst = T->getSuccessor(succ_i);
-         const Port *dst_port = get_block_port(dst);
-         add_edge(src_port.exits.at(dst), dst_port->entry);
+         if (const Port *dst_port = get_block_port(dst)) {
+            add_edge(src_port.exits.at(src_B), dst_port->entry);
+         }
       }
    };
 
@@ -103,7 +106,7 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
       const llvm::Loop *src_L = loop_pair.first;
       const Port& src_port = loop_pair.second;
       llvm::SmallVector<llvm::BasicBlock *> src_Bs;
-      src_L->getExitBlocks(src_Bs);
+      src_L->getExitingBlocks(src_Bs);
       for (const llvm::BasicBlock *src_B : src_Bs) {
          do_connect(src_port, src_B);
       }
@@ -111,21 +114,64 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
 
 
    /* define functional ports for this component */
-   port.entry = get_block_port(L->getHeader())->entry;
+   port.entry = get_block_port(LF->entry)->entry;
+   assert(port.entry);
 
    port.exits.clear();
-   llvm::SmallVector<llvm::BasicBlock *> Bs;
-   L->getExitBlocks(Bs);
-   for (const llvm::BasicBlock *B : Bs) {
+   for (const llvm::BasicBlock *B : LF->exits) {
       port.exits.merge(std::move(get_block_port(B)->exits));
    }
 }
 
+
+void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
+   /* construct loop forest */
+   LoopForest LF;
+   LF.entry = L->getHeader();
+   llvm::SmallVector<llvm::BasicBlock *> exits;
+   L->getExitingBlocks(exits);
+   std::copy(exits.begin(), exits.end(), std::back_inserter(LF.exits));
+   std::copy(L->block_begin(), L->block_end(), std::back_inserter(LF.blocks));
+   std::copy(L->begin(), L->end(), std::back_inserter(LF.loops));
+   construct_loop_forest(&LF, port);
+}
 
 
 // NOTE: A function may be constructed multiple times.
 void AEGPO2::construct_function(llvm::Function *F, Port& port) {
    const llvm::DominatorTree dom_tree {*F};
    const llvm::LoopInfo loop_info {dom_tree};
-   
+   LoopForest LF;
+   LF.entry = &F->getEntryBlock();
+   // exits: need to find all blocks w/ no successors
+   for (const llvm::BasicBlock& B : *F) {
+      const llvm::Instruction *T = B.getTerminator();
+      if (T->getNumSuccessors() == 0) {
+         LF.exits.push_back(&B);
+      }
+   }
+   std::transform(F->begin(), F->end(), std::back_inserter(LF.blocks),
+                  [] (const llvm::BasicBlock& B) {
+                     return &B;
+                  });
+   std::copy(loop_info.begin(), loop_info.end(), std::back_inserter(LF.loops));
+   construct_loop_forest(&LF, port);
 }
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
+   std::visit(util::overloaded {
+         [&] (AEGPO2::Node::Entry) { os << "<ENTRY>"; },
+         [&] (AEGPO2::Node::Exit)  { os << "<EXIT>";  },
+         [&] (const llvm::Instruction *I) { os << *I; },
+      }, node());
+   return os;
+}
+
+void AEGPO2::dump_graph(const std::string& path) const {
+   po.group().dump_graph(path, [&] (auto& os, const auto& group) {
+      for (const NodeRef& ref : group) {
+         os << lookup(ref) << "\n";
+      }
+   });
+}
+

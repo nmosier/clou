@@ -6,6 +6,7 @@ add_library(lcm MODULE
   addr.cc
   mcfg.cc
   aeg-po.cc
+  aeg-po2.cc
   config.cc
   cfg.cc
   aeg.cc
