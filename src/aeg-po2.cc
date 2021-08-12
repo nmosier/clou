@@ -71,10 +71,14 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
    }
 
    /* connect ports */
-   const auto get_block_port = [&] (const llvm::BasicBlock *succ) -> Port * {
+   const auto get_block_port = [&] (const llvm::BasicBlock *succ, const llvm::Loop *L) -> Port * {
       const auto succ_loop_it = block_to_loop.find(succ);
       if (succ_loop_it != block_to_loop.end()) {
-         return &loop_to_port.at(succ_loop_it->second);
+         if (succ_loop_it->second == L) {
+            return nullptr; // would be within same loop
+         } else {
+            return &loop_to_port.at(succ_loop_it->second);
+         }
       } else {
          const auto nonloop_it = nonloop_block_to_port.find(succ);
          if (nonloop_it != nonloop_block_to_port.end()) {
@@ -85,13 +89,19 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
       }
    };
 
-   const auto do_connect = [&] (const Port& src_port, const llvm::BasicBlock *src_B) {
+   // BUG: You need to make sure that the basic blocks aren't w/i the same loop.
+
+   const auto do_connect = [&] (const Port& src_port, const llvm::BasicBlock *src_B,
+                                const llvm::Loop *L) {
       const llvm::Instruction *T = src_B->getTerminator();
       for (unsigned succ_i = 0; succ_i < T->getNumSuccessors(); ++succ_i) {
          /* get the successor and the successor port */
          const llvm::BasicBlock *dst = T->getSuccessor(succ_i);
-         if (const Port *dst_port = get_block_port(dst)) {
-            add_edge(src_port.exits.at(src_B), dst_port->entry);
+         if (const Port *dst_port = get_block_port(dst, L)) {
+            const auto src_range = src_port.exits.equal_range(src_B);
+            for (auto src_it = src_range.first; src_it != src_range.second; ++src_it) {
+               add_edge(src_it->second, dst_port->entry);
+            }
          }
       }
    };
@@ -99,7 +109,7 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
    for (const auto& nonloop_pair : nonloop_block_to_port) {
       const llvm::BasicBlock *src_B = nonloop_pair.first;
       const Port& src_port = nonloop_pair.second;
-      do_connect(src_port, src_B);
+      do_connect(src_port, src_B, nullptr);
    }
    
    for (const auto& loop_pair : loop_to_port) {
@@ -108,18 +118,18 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
       llvm::SmallVector<llvm::BasicBlock *> src_Bs;
       src_L->getExitingBlocks(src_Bs);
       for (const llvm::BasicBlock *src_B : src_Bs) {
-         do_connect(src_port, src_B);
+         do_connect(src_port, src_B, src_L);
       }
    }
 
 
    /* define functional ports for this component */
-   port.entry = get_block_port(LF->entry)->entry;
+   port.entry = get_block_port(LF->entry, nullptr)->entry;
    assert(port.entry);
 
    port.exits.clear();
    for (const llvm::BasicBlock *B : LF->exits) {
-      port.exits.merge(std::move(get_block_port(B)->exits));
+      port.exits.merge(std::move(get_block_port(B, nullptr)->exits));
    }
 }
 
@@ -146,8 +156,18 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
       // remove back-edges to header, remembering in iteration continuations
       const NodeRef iteration_header = iteration.port.entry;
       iteration.continuations = po.rev.at(iteration_header);
+
+      // DEBUG
+      llvm::errs() << "back edges to header " << iteration_header << ":";
+      for (NodeRef ref : iteration.continuations) {
+         llvm::errs() << " " << ref;
+      }
+      llvm::errs() << "\n";
+         
+      
       for (NodeRef continuation : iteration.continuations) {
          erase_edge(continuation, iteration_header);
+         llvm::errs() << "erasing edge " << continuation << " " << iteration_header << "\n";
       }
 
       iterations.push_back(iteration);
@@ -201,7 +221,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
 void AEGPO2::dump_graph(const std::string& path) const {
    po.group().dump_graph(path, [&] (auto& os, const auto& group) {
       for (const NodeRef& ref : group) {
-         os << lookup(ref) << "\n";
+         os << ref << " " << lookup(ref) << "\n";
       }
    });
 }

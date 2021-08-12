@@ -57,7 +57,7 @@ private:
 
    struct Port {
       NodeRef entry;
-      std::unordered_map<const llvm::BasicBlock *, NodeRef> exits;
+      std::unordered_multimap<const llvm::BasicBlock *, NodeRef> exits;
    };
    
    void construct_instruction(const llvm::Instruction *I, Port& port);
@@ -79,7 +79,10 @@ private:
       }
    }
 
-   void add_edge(NodeRef src, NodeRef dst) { po.insert(src, dst); }
+   void add_edge(NodeRef src, NodeRef dst) {
+      llvm::errs() << "adding edge " << src << " " << dst << "\n";
+      po.insert(src, dst);
+   }
    NodeRef add_node(const Node& node) {
       const NodeRef res = nodes.size();
       nodes.push_back(node);
