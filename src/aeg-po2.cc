@@ -19,6 +19,7 @@ void AEGPO2::construct() {
    for (const auto& exit_pair : port.exits) {
       add_edge(exit_pair.second, exit);
    }
+   prune();
 }
 
 void AEGPO2::construct_instruction(const llvm::Instruction *I, Port& port) {
@@ -149,7 +150,7 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
       typename Rel::Set continuations;
    };
    std::vector<Iteration> iterations;
-   for (unsigned i = 0; i < num_unrolls; ++i) {
+   for (unsigned i = 0; i < num_unrolls + 1; ++i) {
       Iteration iteration;
       construct_loop_forest(&LF, iteration.port);
 
@@ -174,7 +175,7 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
    }
 
    /* Glue iterations together */
-   for (unsigned i = 0; i < num_unrolls - 1; ++i) {
+   for (unsigned i = 0; i < num_unrolls - 1 + 1; ++i) {
       for (NodeRef continuation : iterations[i].continuations) {
          add_edge(continuation, iterations[i + 1].port.entry);
       }
@@ -226,3 +227,26 @@ void AEGPO2::dump_graph(const std::string& path) const {
    });
 }
 
+void AEGPO2::prune() {
+   std::unordered_set<NodeRef> todo;
+   for (NodeRef i = 0; i < nodes.size(); ++i) {
+      if (i != exit) {
+         todo.insert(i);
+      }
+   }
+   
+   while (!todo.empty()) {
+      // pop off next job
+      const auto it = todo.begin();
+      const NodeRef ref = *it;
+      todo.erase(it);
+
+      if (po.fwd.at(ref).empty()) {
+         // is leaf
+         const auto& preds = po.rev.at(ref);
+         std::copy(preds.begin(), preds.end(), std::inserter(todo, todo.end()));
+         po.erase(ref);
+      }
+   }
+
+}

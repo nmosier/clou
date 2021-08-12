@@ -97,6 +97,8 @@ private:
    }
 
    void erase_edge(NodeRef src, NodeRef dst) { po.erase(src, dst); }
+
+   void prune();
 };
 
 /* Functions and loops may have multiple exits.
