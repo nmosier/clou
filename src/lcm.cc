@@ -166,6 +166,14 @@ struct LCMPass : public llvm::FunctionPass {
          aegpo.dump_graph(format_graph_path(aegpo_output_path, F));
       }
 
+      AEG aeg {};
+      aeg.construct(aegpo, 2, AA);
+      aeg.simplify();
+      if (!aeg_output_path.empty()) {
+         aeg.dump_graph(format_graph_path(aeg_output_path, F));
+      }
+
+
 #endif
       
       return false;

@@ -42,7 +42,14 @@ void Inst::set_addr() {
    }
 }
 
-void Inst::set_base() {
-   set_kind();
-   set_addr();
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Inst& inst) {
+   os << inst.kind_tostr();
+   switch (inst.kind) {
+   case Inst::Kind::ENTRY:
+   case Inst::Kind::EXIT:
+      break;
+   default:
+      os << " " << *inst.I;
+   }
+   return os;
 }

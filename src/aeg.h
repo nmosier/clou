@@ -7,8 +7,7 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <z3++.h>
 
-#include "cfg.h"
-#include "aeg-po.h"
+#include "aeg-po2.h"
 #include "graph.h"
 #include "z3-util.h"
 #include "inst.h"
@@ -61,7 +60,6 @@ inline std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
 using UHBAddress = unsigned;
 
 struct UHBNode {
-   CFG::NodeRef cfg_ref;
    Inst inst;
    z3::expr po;  // program order variable
    z3::expr tfo; // transient fetch order variable
@@ -69,14 +67,16 @@ struct UHBNode {
    std::optional<z3::expr> addr = std::nullopt;
    UHBConstraints constraints;
 
-   bool operator==(const UHBNode& other) const { return cfg_ref == other.cfg_ref; }
+#if 0
+   bool operator==(const UHBNode& other) const { return ref == other.ref; }
    bool operator!=(const UHBNode& other) const { return !(*this == other); }
 
    struct Hash {
       size_t operator()(const UHBNode& node) const {
-         return std::hash<CFG::NodeRef>()(node.cfg_ref);
+         return std::hash<AEGPO2::NodeRef>()(node.ref);
       }
    };
+#endif
 
    void simplify() {
       po = po.simplify();
@@ -85,7 +85,7 @@ struct UHBNode {
       constraints.simplify();
    }
 
-   UHBNode(CFG::NodeRef ref, const Inst& inst, UHBContext& c);
+   UHBNode(const Inst& inst, UHBContext& c);
 };
 
 struct UHBEdge {
@@ -130,7 +130,7 @@ std::ostream& operator<<(std::ostream& os, const UHBEdge& e);
 class AEG {
 public:
    using Node = UHBNode;
-   using NodeRef = AEGPO::NodeRef;
+   using NodeRef = AEGPO2::NodeRef;
    using Edge = UHBEdge;
    using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
 
@@ -138,12 +138,12 @@ public:
 
    graph_type graph;
    
-   void construct(const AEGPO& po, unsigned spec_depth, llvm::AliasAnalysis& AA);
+   void construct(const AEGPO2& po, unsigned spec_depth, llvm::AliasAnalysis& AA);
 
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
    
-   explicit AEG(const CFG& cfg): cfg(cfg), context(), constraints(context) {}
+   explicit AEG(): context(), constraints(context) {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -153,15 +153,14 @@ public:
    void test();
    
 private:
-   const CFG& cfg;
    UHBContext context;
    UHBConstraints constraints;
    std::vector<Node> nodes;
 
-   void construct_nodes_po(const AEGPO& po);
-   void construct_nodes_tfo(const AEGPO& po, unsigned spec_depth);
-   void construct_edges_po_tfo(const AEGPO& po);
-   void construct_aliases(const AEGPO& po, llvm::AliasAnalysis& AA);
+   void construct_nodes_po(const AEGPO2& po);
+   void construct_nodes_tfo(const AEGPO2& po, unsigned spec_depth);
+   void construct_edges_po_tfo(const AEGPO2& po);
+   void construct_aliases(const AEGPO2& po, llvm::AliasAnalysis& AA);
    
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {

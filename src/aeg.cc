@@ -50,17 +50,18 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(CFG::NodeRef ref, const Inst& inst, UHBContext& c):
-   cfg_ref(ref), inst(inst), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
+UHBNode::UHBNode(const Inst& inst, UHBContext& c):
+   inst(inst), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
    constraints(c) {}
 
-void AEG::construct(const AEGPO& po, unsigned spec_depth, llvm::AliasAnalysis& AA) {
+void AEG::construct(const AEGPO2& po, unsigned spec_depth, llvm::AliasAnalysis& AA) {
    // initialize nodes
    std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
-                  [&] (const AEGPO::Node& node) {
+                  [&] (const AEGPO2::Node& node) {
                      const Inst inst =
-                        std::visit(util::creator<Inst>(), po.cfg.lookup(node.cfg_ref).v);
-                     return Node {node.cfg_ref, inst, context};
+                        std::visit(util::creator<Inst>(),
+                                   node());
+                     return Node {inst, context};
                   });
    for (NodeRef ref : node_range()) {
       graph.add_node(ref);
@@ -72,7 +73,7 @@ void AEG::construct(const AEGPO& po, unsigned spec_depth, llvm::AliasAnalysis& A
    construct_aliases(po, AA);
 }
 
-void AEG::construct_nodes_po(const AEGPO& po) {
+void AEG::construct_nodes_po(const AEGPO2& po) {
    for (NodeRef ref : node_range()) {
       const auto& preds = po.po.rev.at(ref);
       const auto& succs = po.po.fwd.at(ref);
@@ -96,7 +97,7 @@ void AEG::construct_nodes_po(const AEGPO& po) {
    }
 }
 
-void AEG::construct_nodes_tfo(const AEGPO& po, unsigned spec_depth) {
+void AEG::construct_nodes_tfo(const AEGPO2& po, unsigned spec_depth) {
    std::unordered_set<NodeRef> seen;
    std::deque<NodeRef> todo {po.entry};
 
@@ -161,7 +162,7 @@ digraph G {
       {
          std::string s;
          llvm::raw_string_ostream ss_ {s};
-         ss_ << cfg.lookup(node.cfg_ref);
+         ss_ << node.inst;
          ss << s << "\n";
       }
       ss << "po: " << node.po << "\n"
@@ -205,7 +206,7 @@ void AEG::simplify() {
 }
 
 
-void AEG::construct_edges_po_tfo(const AEGPO& po) {
+void AEG::construct_edges_po_tfo(const AEGPO2& po) {
    /* When does a po edge exist between two nodes?
     * (1) po must hold for both nodes.
     * (2) One must directly follow the other.
@@ -276,7 +277,7 @@ void AEG::test() {
  *  - Self-alias checks always returns 'may alias' to generalize across loops.
  */
 
-void AEG::construct_aliases(const AEGPO& po, llvm::AliasAnalysis& AA) {
+void AEG::construct_aliases(const AEGPO2& po, llvm::AliasAnalysis& AA) {
    /* assign address variables (symbolic ints) to each node */
    for (NodeRef ref : node_range()) {
       Node& node = lookup(ref);
@@ -306,7 +307,9 @@ void AEG::construct_aliases(const AEGPO& po, llvm::AliasAnalysis& AA) {
                         break;
                      case llvm::NoAlias:
                         node1.constraints(*node1.addr != *node2.addr);
-                     default: std::abort();
+                        break;
+                     default:
+                        std::abort();
                      }
                   }
                }

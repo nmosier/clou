@@ -6,7 +6,7 @@
 #include <llvm/IR/Instructions.h>
 
 #include "xmacro.h"
-#include "cfg.h"
+#include "lcm.h"
 
 struct Inst {
 
@@ -20,20 +20,22 @@ struct Inst {
    
    XM_ENUM_DEF(Kind, INST_KIND_X);
 
-   const llvm::Instruction *I;
+   const llvm::Instruction *I = nullptr;
    Kind kind;
-   const llvm::Value *addr; // TODO: This should be able to hold multiple addresses.
+   const llvm::Value *addr = nullptr; // TODO: This should be able to hold multiple addresses.
 
    static const char *kind_tostr(Kind kind);
    const char *kind_tostr() const { return kind_tostr(kind); }
    void set_kind();
    void set_addr();
-
-   void set_base();
-   void set(const llvm::Instruction *I_) { I = I_; set_base(); }
-   void set(CFG::Entry) { kind = Kind::ENTRY; set_base(); }
-   void set(CFG::Exit) { kind = Kind::EXIT; set_base(); }
    
-   template <typename... Args>
-   Inst(Args&&... args) { set(std::forward<Args>(args)...); }
+   void set_base();
+   void set(const llvm::Instruction *I_) { I = I_; set_kind(); set_addr(); }
+   void set(Entry) { kind = Kind::ENTRY; }
+   void set(Exit) { kind = Kind::EXIT; }
+
+   template <typename Arg>
+   Inst(const Arg& arg) { set(arg); }
 };
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Inst& inst);

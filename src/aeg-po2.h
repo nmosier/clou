@@ -9,14 +9,17 @@
 
 #include "noderef.h"
 #include "binrel.h"
+#include "lcm.h"
 
 class AEGPO2 {
 public:
    using NodeRef = std::size_t;
 
    struct Node {
-      struct Entry {};
-      struct Exit {};
+      // struct Entry {};
+      // struct Exit {};
+      using Entry = ::Entry;
+      using Exit = ::Exit;
       using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
       Variant v;
       const Variant& operator()() const { return v; }
@@ -48,10 +51,12 @@ public:
    Node& lookup(NodeRef ref) { return nodes.at(ref); }
    const Node& lookup(NodeRef ref) const { return nodes.at(ref); }
    
-private:
+   // TODO: these should be private private:
    llvm::Function& F;
    const unsigned num_unrolls;
-   std::vector<Node> nodes;
+   std::vector<Node> nodes; // 
+
+private:
 
    void construct();
 

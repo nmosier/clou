@@ -96,7 +96,6 @@ private:
       const NodeRef ref {static_cast<unsigned>(nodes.size())};
       nodes.emplace_back(std::forward<Ts>(ts)...);
       po.add_node(ref);
-      llvm::errs() << "adding node " << ref << "\n";
       return ref;
    }
 
