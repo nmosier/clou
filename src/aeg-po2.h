@@ -1,0 +1,96 @@
+#pragma once
+
+#include <variant>
+#include <vector>
+
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/Analysis/LoopInfo.h>
+
+#include "noderef.h"
+#include "binrel.h"
+
+class AEGPO2 {
+public:
+   using NodeRef = std::size_t;
+
+   struct Node {
+      struct Entry {};
+      struct Exit {};
+      using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
+      Variant v;
+      const Variant& operator()() const { return v; }
+      Variant& operator()() { return v; }
+
+      static Node make_entry() { return Node {Entry {}}; }
+      static Node make_exit() { return Node {Exit {}}; }
+      static Node make(const llvm::Instruction *I) { return Node {I}; }
+   };
+
+   static inline const NodeRef entry {0};
+   static inline const NodeRef exit {1};
+
+   using Rel = binrel<NodeRef>;
+   Rel po; // simple po
+
+   explicit AEGPO2(llvm::Function& F, unsigned num_unrolls = 2):
+      F(F), num_unrolls(num_unrolls) {
+      construct();
+   }
+   
+private:
+   llvm::Function& F;
+   const unsigned num_unrolls;
+   std::vector<Node> nodes;
+
+   void construct();
+
+   struct Port {
+      NodeRef entry;
+      std::unordered_map<const llvm::BasicBlock *, NodeRef> exits;
+   };
+   
+   void construct_instruction(const llvm::Instruction *I, Port& port);
+   void construct_block(const llvm::BasicBlock *B, Port& port);
+   void construct_loop(const llvm::Loop *L, Port& port);
+   void construct_function(llvm::Function *F, Port& port);
+
+   template <typename InputIt>
+   void connect(InputIt src_begin, InputIt src_end, NodeRef dst) {
+      for (auto src_it = src_begin; src_it != src_end; ++src_it) {
+         add_edge(src_it->second, dst);
+      }
+   }
+
+   void add_edge(NodeRef src, NodeRef dst) { po.insert(src, dst); }
+   NodeRef add_node(const Node& node) {
+      const NodeRef res = nodes.size();
+      nodes.push_back(node);
+      return res;
+   }
+   NodeRef add_node(Node&& node) {
+      const NodeRef res = nodes.size();
+      nodes.push_back(node);
+      return res;
+   }
+};
+
+/* Functions and loops may have multiple exits.
+ * For functions, these are return instructions.
+ * For loops, these are branch instructions. 
+ *
+ * Loops can be abstracted as a basic block that can go to any number of successors.
+ * Then what we do is replace that loop with its unrolled version.
+ * So really what we're doing is replacing loop nodes and function nodes in the CFG with 
+ * their unrolled and inlined counterparts.
+ *
+ * Actually, BasicBlocks are even abstractions of instructions.
+ * We should construct the PO graph using a depth-first recursive approach. 
+ * construct_function()
+ * construct_loop()
+ * construct_block()
+ * construct_instruction()
+ * All of these return the entering instruction and set of exiting instructions.
+ * For all of these, they must have exactly one entering instruction and any number of exiting 
+ * instructions (for now, we can assume >= 1 exits).
+ */
