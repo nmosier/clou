@@ -165,6 +165,7 @@ struct LCMPass : public llvm::FunctionPass {
       if (!aegpo_output_path.empty()) {
          aegpo.dump_graph(format_graph_path(aegpo_output_path, F));
       }
+
 #endif
       
       return false;

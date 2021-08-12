@@ -234,7 +234,8 @@ void AEGPO2::prune() {
          todo.insert(i);
       }
    }
-   
+
+   std::unordered_set<NodeRef> deleted;
    while (!todo.empty()) {
       // pop off next job
       const auto it = todo.begin();
@@ -246,7 +247,41 @@ void AEGPO2::prune() {
          const auto& preds = po.rev.at(ref);
          std::copy(preds.begin(), preds.end(), std::inserter(todo, todo.end()));
          po.erase(ref);
+         deleted.insert(ref);
       }
    }
 
+   /* NOTE: There is a more efficient way to do this renumbering of node references; 
+    * however, this method preserved the order. If it becomes too slow, we can replace it.
+    */
+
+   /* create mapping from old ref to new refs */
+   std::unordered_map<NodeRef, NodeRef> refmap;
+   NodeRef next_ref = 0;
+   for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
+      if (deleted.find(old_ref) == deleted.end()) {
+         refmap.emplace(old_ref, next_ref);
+         ++next_ref;
+      }
+   }
+
+   /* compactify nodes */
+   Rel new_po;
+   for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
+      const auto it = refmap.find(old_ref);
+      if (it != refmap.end()) {
+         nodes[it->second] = std::move(nodes[it->first]);
+         new_po.add_node(it->second);
+      }
+   }
+   nodes.resize(next_ref);
+   
+   /* rename mappings */
+   for (const auto& pair : po.fwd) {
+      const NodeRef src = pair.first;
+      for (const NodeRef dst : pair.second) {
+         new_po.insert(refmap.at(src), refmap.at(dst));
+      }
+   }
+   po = std::move(new_po);
 }
