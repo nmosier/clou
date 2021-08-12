@@ -36,6 +36,9 @@ public:
    explicit AEGPO2(llvm::Function& F, unsigned num_unrolls = 2):
       F(F),
       num_unrolls(num_unrolls) {
+      if (num_unrolls == 0) {
+         throw std::invalid_argument("positive number of loop unrolls required");
+      }
       construct();
    }
 
@@ -89,6 +92,8 @@ private:
       po.add_node(res);
       return res;
    }
+
+   void erase_edge(NodeRef src, NodeRef dst) { po.erase(src, dst); }
 };
 
 /* Functions and loops may have multiple exits.

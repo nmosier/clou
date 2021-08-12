@@ -125,7 +125,6 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
 
 
 void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
-   /* construct loop forest */
    LoopForest LF;
    LF.entry = L->getHeader();
    llvm::SmallVector<llvm::BasicBlock *> exits;
@@ -133,7 +132,39 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
    std::copy(exits.begin(), exits.end(), std::back_inserter(LF.exits));
    std::copy(L->block_begin(), L->block_end(), std::back_inserter(LF.blocks));
    std::copy(L->begin(), L->end(), std::back_inserter(LF.loops));
-   construct_loop_forest(&LF, port);
+
+   /* Generate all iterations */
+   struct Iteration {
+      Port port;
+      typename Rel::Set continuations;
+   };
+   std::vector<Iteration> iterations;
+   for (unsigned i = 0; i < num_unrolls; ++i) {
+      Iteration iteration;
+      construct_loop_forest(&LF, iteration.port);
+
+      // remove back-edges to header, remembering in iteration continuations
+      const NodeRef iteration_header = iteration.port.entry;
+      iteration.continuations = po.rev.at(iteration_header);
+      for (NodeRef continuation : iteration.continuations) {
+         erase_edge(continuation, iteration_header);
+      }
+
+      iterations.push_back(iteration);
+   }
+
+   /* Glue iterations together */
+   for (unsigned i = 0; i < num_unrolls - 1; ++i) {
+      for (NodeRef continuation : iterations[i].continuations) {
+         add_edge(continuation, iterations[i + 1].port.entry);
+      }
+   }
+
+   /* Set global port info */
+   port.entry = iterations[0].port.entry;
+   for (auto& iteration : iterations) {
+      port.exits.merge(std::move(iteration.port.exits));
+   }
 }
 
 
