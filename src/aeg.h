@@ -54,30 +54,25 @@ inline std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
       std::reduce(c.exprs.begin(), c.exprs.end(), c.TRUE,
                   [] (const z3::expr& a, const z3::expr& b) {
                      return a && b;
-                  }).simplify();
+                  }); // .simplify();
 }
 
-using UHBAddress = unsigned;
+
+struct UHBAddress {
+   const llvm::Value *value;
+   z3::expr class_id;
+   z3::expr instance_id;
+};
 
 struct UHBNode {
    Inst inst;
    z3::expr po;  // program order variable
    z3::expr tfo; // transient fetch order variable
    z3::expr tfo_depth; // transient depth
-   std::optional<z3::expr> addr = std::nullopt;
+   std::optional<UHBAddress> addr_def;
+   std::unordered_map<const llvm::Value *, z3::expr> addr_refs;
    UHBConstraints constraints;
-
-#if 0
-   bool operator==(const UHBNode& other) const { return ref == other.ref; }
-   bool operator!=(const UHBNode& other) const { return !(*this == other); }
-
-   struct Hash {
-      size_t operator()(const UHBNode& node) const {
-         return std::hash<AEGPO2::NodeRef>()(node.ref);
-      }
-   };
-#endif
-
+   
    void simplify() {
       po = po.simplify();
       tfo = tfo.simplify();
@@ -138,12 +133,12 @@ public:
 
    graph_type graph;
    
-   void construct(const AEGPO2& po, unsigned spec_depth, llvm::AliasAnalysis& AA);
+   void construct(unsigned spec_depth, llvm::AliasAnalysis& AA);
 
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
    
-   explicit AEG(): context(), constraints(context) {}
+   explicit AEG(const AEGPO2& po): po(po), context(), constraints(context) {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -153,14 +148,15 @@ public:
    void test();
    
 private:
+   const AEGPO2& po;
    UHBContext context;
    UHBConstraints constraints;
    std::vector<Node> nodes;
 
-   void construct_nodes_po(const AEGPO2& po);
-   void construct_nodes_tfo(const AEGPO2& po, unsigned spec_depth);
-   void construct_edges_po_tfo(const AEGPO2& po);
-   void construct_aliases(const AEGPO2& po, llvm::AliasAnalysis& AA);
+   void construct_nodes_po();
+   void construct_nodes_tfo(unsigned spec_depth);
+   void construct_edges_po_tfo();
+   void construct_aliases(llvm::AliasAnalysis& AA);
    
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {
@@ -175,4 +171,6 @@ private:
       return ref;
    }
 #endif
+
+   NodeRef find_upstream_def(NodeRef node, const llvm::Value *addr_ref) const;
 };

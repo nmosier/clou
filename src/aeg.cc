@@ -7,6 +7,7 @@
 #include "aeg.h"
 #include "mcfg.h"
 #include "aeg-po.h"
+#include "config.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -54,7 +55,7 @@ UHBNode::UHBNode(const Inst& inst, UHBContext& c):
    inst(inst), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
    constraints(c) {}
 
-void AEG::construct(const AEGPO2& po, unsigned spec_depth, llvm::AliasAnalysis& AA) {
+void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
    // initialize nodes
    std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
                   [&] (const AEGPO2::Node& node) {
@@ -66,14 +67,18 @@ void AEG::construct(const AEGPO2& po, unsigned spec_depth, llvm::AliasAnalysis& 
    for (NodeRef ref : node_range()) {
       graph.add_node(ref);
    }
-   
-   construct_nodes_po(po);
-   construct_nodes_tfo(po, spec_depth);
-   construct_edges_po_tfo(po);
-   construct_aliases(po, AA);
+
+   if (verbose >= 2) { llvm::errs() << "Constructing nodes po\n"; }
+   construct_nodes_po();
+   if (verbose >= 2) { llvm::errs() << "Constructing nodes tfo\n"; }   
+   construct_nodes_tfo(spec_depth);
+   if (verbose >= 2) { llvm::errs() << "Constructing edges po tfo\n"; }
+   construct_edges_po_tfo();
+   if (verbose >= 2) { llvm::errs() << "Constructing aliases\n"; }
+   construct_aliases(AA);
 }
 
-void AEG::construct_nodes_po(const AEGPO2& po) {
+void AEG::construct_nodes_po() {
    for (NodeRef ref : node_range()) {
       const auto& preds = po.po.rev.at(ref);
       const auto& succs = po.po.fwd.at(ref);
@@ -97,7 +102,7 @@ void AEG::construct_nodes_po(const AEGPO2& po) {
    }
 }
 
-void AEG::construct_nodes_tfo(const AEGPO2& po, unsigned spec_depth) {
+void AEG::construct_nodes_tfo(unsigned spec_depth) {
    std::unordered_set<NodeRef> seen;
    std::deque<NodeRef> todo {po.entry};
 
@@ -109,11 +114,21 @@ void AEG::construct_nodes_tfo(const AEGPO2& po, unsigned spec_depth) {
       const auto& succs = po.po.fwd.at(noderef);
       std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
 
+      /* tfo_depth[N], tfo[N]
+       * 
+       * 
+       * 
+       */
+
       /* set tfo_depth */
       Node& node = lookup(noderef);
       if (preds.size() != 1) {
          node.constraints(node.tfo_depth == context.context.int_val(0));
          node.constraints(!node.tfo); // force TFO to false
+         // Why would we force TFO to false? Couldn't we still speculate?
+         // It's because I was assuming we'd expand it beyond the speculation window size.
+         // But we probably don't want to make that assumption.
+         // Should actually force at most one misspeculated path. 
       } else {
          const Node& pred = lookup(*preds.begin());
          const z3::expr tfo_depth_expr =
@@ -168,9 +183,20 @@ digraph G {
       ss << "po: " << node.po << "\n"
          << "tfo: " << node.tfo << "\n"
          << "tfo_depth: " << node.tfo_depth << "\n";
-      if (node.addr) {
-         ss << "addr: " << *node.addr << "\n";
+
+#if 0
+      if (node.addr_def) {
+         ss << "addr (def): " << *node.addr_def << "\n";
       }
+      if (!node.addr_refs.empty()) {
+         ss << "addr (refs):";
+         for (const auto& ref : node.addr_refs) {
+            ss << " " << ref.second;
+         }
+         ss << "\n";
+      }
+#endif
+
       ss << "constraints: " << node.constraints << "\n";
       
       dot::emit_kvs(os, "label", ss.str());
@@ -198,7 +224,11 @@ digraph G {
 
 
 void AEG::simplify() {
-   std::for_each(nodes.begin(), nodes.end(), [] (Node& node) { node.simplify(); });
+   unsigned count = 0;
+   std::for_each(nodes.begin(), nodes.end(), [&] (Node& node) {
+      llvm::errs() << ++count << "\n";
+      node.simplify();
+   });
    constraints.simplify();
    graph.for_each_edge([] (NodeRef, NodeRef, Edge& edge) {
       edge.simplify();
@@ -206,7 +236,7 @@ void AEG::simplify() {
 }
 
 
-void AEG::construct_edges_po_tfo(const AEGPO2& po) {
+void AEG::construct_edges_po_tfo() {
    /* When does a po edge exist between two nodes?
     * (1) po must hold for both nodes.
     * (2) One must directly follow the other.
@@ -235,6 +265,24 @@ void AEG::construct_edges_po_tfo(const AEGPO2& po) {
 
 void AEG::test() {
    z3::solver solver {context.context};
+
+   /* display stats */
+   if (verbose >= 3) {
+      auto& os = llvm::errs();
+      os << constraints.exprs.size() << " top level constraints\n";
+      const unsigned node_clauses =
+         std::transform_reduce(nodes.begin(), nodes.end(), 0, std::plus<unsigned>(),
+                               [] (const Node& node) {
+                                  return node.constraints.exprs.size();
+                               });
+      os << node_clauses << " node constraints\n";
+      unsigned edge_clauses = 0;
+      graph.for_each_edge([&] (NodeRef, NodeRef, const Edge& e) {
+         edge_clauses += e.constraints.exprs.size();
+      });
+      os << edge_clauses << " edge constraints\n";
+   }
+   
 
    // add edge constraints 
    graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
@@ -277,78 +325,134 @@ void AEG::test() {
  *  - Self-alias checks always returns 'may alias' to generalize across loops.
  */
 
-void AEG::construct_aliases(const AEGPO2& po, llvm::AliasAnalysis& AA) {
-   /* assign address variables (symbolic ints) to each node */
-   for (NodeRef ref : node_range()) {
-      Node& node = lookup(ref);
-      assert(!node.addr);
-      if (node.inst.addr) {
-         assert(node.inst.kind != Inst::Kind::EXIT);
-         node.addr = context.make_int();
+void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
+#if 0
+   /* assign fresh symbolic variables to defs */
+   std::unordered_map<const llvm::Value *, z3::expr> class_ids;
+   for (Node& node : nodes) {
+      const llvm::Value *def = node.inst.addr_def;
+      if (def && class_ids.find(def) == class_ids.end()) {
+         node.addr_def = context.make_int();
+         class_ids.emplace(def, *node.addr_def);
       }
    }
 
-   /* generate constraints for each node */
-   for (NodeRef ref1 : node_range()) {
-      Node& node1 = lookup(ref1);
-      if (node1.addr) {
-         for (NodeRef ref2 : node_range()) {
-            if (ref1 != ref2) {
-               const Node& node2 = lookup(ref2);
-               if (node2.addr) {
-                  if (node1.inst.I == node2.inst.I) { // same instruction, special case
-                  } else { // different instructions, default to builtin alias analysis results
-                     switch (AA.alias(node1.inst.addr, node2.inst.addr)) {
-                     case llvm::MustAlias:
-                        node1.constraints(*node1.addr == *node2.addr);
-                        break;
-                     case llvm::MayAlias:
-                     case llvm::PartialAlias:
-                        break;
-                     case llvm::NoAlias:
-                        node1.constraints(*node1.addr != *node2.addr);
-                        break;
-                     default:
-                        std::abort();
-                     }
-                  }
+   /* iterate over all class combinations */
+   for (const auto& class1 : class_ids) {
+      for (const auto& class2 : class_ids) {
+         std::optional<std::function<z3::expr(const z3::expr&, const z3::expr&)>> f;
+         switch (AA.alias(class1.first, class2.first)) {
+         case llvm::MustAlias:
+            constraints(class1.second == class2.second);
+            f = [] (const z3::expr& a, const z3::expr& b) -> z3::expr { return a == b; };
+            break;
+         case llvm::NoAlias:
+            f = [] (const z3::expr& a, const z3::expr& b) -> z3::expr { return a != b; };
+            break;
+         case llvm::MayAlias:
+            break;
+         default:
+            std::abort();
+         }
+
+         if (f) {
+            
+         }
+      }
+   }
+
+   if (verbose >= 3) {
+      llvm::errs() << "Constructing aliases on " << nodes.size() << " nodes with ";
+      unsigned n = 0;
+      for (NodeRef ref : node_range()) {
+         if (lookup(ref).addr_def) {
+            ++n;
+         }
+      }
+      llvm::errs() << n << " addresses\n";
+   }
+
+   /* construct address map */
+   std::unordered_map<const llvm::Value *, std::unordered_set<NodeRef>> map;
+   for (NodeRef ref : node_range()) {
+      const Node& node = lookup(ref);
+      if (node.inst.addr_def) {
+         map[node.inst.addr_def].insert(ref);
+      }
+   }
+
+   if (verbose >= 3) {
+      llvm::errs() << map.size() << " distinct addresses\n";
+   }
+
+   /* iterate over all address combinations */
+   for (const auto& P1 : map) {
+      const llvm::Value *A1 = P1.first;
+      const auto& refs1 = P1.second;
+      for (const auto& P2 : map) {
+         const llvm::Value *A2 = P2.first;
+         const auto& refs2 = P2.second;
+         std::optional<std::function<z3::expr(const z3::expr&, const z3::expr&)>> f;
+         switch (AA.alias(A1, A2)) {
+         case llvm::MustAlias:
+            f = [] (const z3::expr& a, const z3::expr& b) -> z3::expr { return a == b; };
+            break;
+         case llvm::NoAlias:
+            f = [] (const z3::expr& a, const z3::expr& b) -> z3::expr { return a != b; };
+            break;
+         case llvm::MayAlias:
+            break;
+         default:
+            std::abort();
+         }
+
+         if (f) {
+            for (NodeRef ref1 : refs1) {
+               Node& node1 = lookup(ref1);
+               for (NodeRef ref2 : refs2) {
+                  Node& node2 = lookup(ref2);
+                  node1.constraints((*f)(*node1.addr_def, *node2.addr_def));
                }
             }
          }
       }
    }
-   
-   
-#if 0
-      // generate set of addresses
-      std::unordered_map<const llvm::Value *, z3::expr> addrs;
-      for (NodeRef ref : node_range()) {
-         Node& node = lookup(ref);
-         if (node.inst.addr) {
-            assert(node.inst.kind != Inst::Kind::EXIT);
-            auto it = addrs.find(node.inst.I);
-            if (it == addrs.end()) {
-               it = addrs.emplace(node.inst.addr, context.make_int()).first;
-            }
-            node.addr = it->second;
-         }
-      }
 
-      // generate constraints
-      for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
-         for (auto it2 = addrs.begin(); it2 != it1; ++it2) {
-            switch (AA.alias(it1->first, it2->first)) {
-            case llvm::MustAlias:
-               constraints(it1->second == it2->second);
-               break;
-            case llvm::MayAlias:
-            case llvm::PartialAlias:
-               break;
-            case llvm::NoAlias:
-               constraints(it1->second != it2->second);
-               break;
-            }
-         }
-      }
+   // TODO: Assign addr_refs
+
+   /*
+    * 'No alias' and 'Must alias' only applies within a loop iteration, function call, 
+    * For each instruction, find the deepest 
+    *
+    * Hmm. It incorrectly says 'no alias' across function calls.
+    * So we can only assume results are correct within our current function call.
+    * Results are valid up to function call and loop iteration.
+    * 
+    * Intra-loop same-iteration AA results are valid.
+    * Intra-loop different-iteration AA results are possibly invalid.
+    *
+    * Need to assign nodes in AEG-PO to tightest containing loop or function.
+    */
 #endif
+}
+
+
+AEG::NodeRef AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref) const {
+   /* Use BFS */
+   std::deque<NodeRef> queue;
+   const auto& init_preds = po.po.rev.at(node);
+   std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(queue));
+
+   while (!queue.empty()) {
+      const NodeRef nr = queue.back();
+      queue.pop_back();
+      const Node& node = lookup(nr);
+      if (node.inst.addr_def == addr_ref) {
+         return nr;
+      }
+      const auto& preds = po.po.rev.at(nr);
+      std::copy(preds.begin(), preds.end(), std::front_inserter(queue));
+   }
+
+   throw std::logic_error("address definition not found");
 }

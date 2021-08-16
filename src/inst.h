@@ -22,7 +22,8 @@ struct Inst {
 
    const llvm::Instruction *I = nullptr;
    Kind kind;
-   const llvm::Value *addr = nullptr; // TODO: This should be able to hold multiple addresses.
+   const llvm::Value *addr_def = nullptr;
+   std::vector<const llvm::Value *> addr_refs;
 
    static const char *kind_tostr(Kind kind);
    const char *kind_tostr() const { return kind_tostr(kind); }
@@ -33,7 +34,7 @@ struct Inst {
    void set(const llvm::Instruction *I_) { I = I_; set_kind(); set_addr(); }
    void set(Entry) { kind = Kind::ENTRY; }
    void set(Exit) { kind = Kind::EXIT; }
-
+   
    template <typename Arg>
    Inst(const Arg& arg) { set(arg); }
 };

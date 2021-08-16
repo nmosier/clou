@@ -22,20 +22,30 @@ void AEGPO2::construct() {
    prune();
 }
 
-void AEGPO2::construct_instruction(const llvm::Instruction *I, Port& port) {
-   // TODO: Should handle function calls.
-   
-   port.entry = add_node(Node::make(I));
-   port.exits = {{I->getParent(), port.entry}};
+template <typename OutputIt>
+void AEGPO2::construct_instruction(const llvm::Instruction *I, Port& port, OutputIt out) {
+   if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(I)) {
+      construct_call(C, port, out); 
+   } else {
+      port.entry = add_node(Node::make(I));
+      port.exits = {{I->getParent(), port.entry}};
+      *out++ = port.entry;
+   }
 }
 
-void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port) {
+template <typename OutputIt>
+void AEGPO2::construct_call(const llvm::CallBase *C, Port& port, OutputIt out) {
+   construct_function(C->getCalledFunction(), port);
+}
+
+template <typename OutputIt>
+void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port, OutputIt out) {
    std::vector<Port> ports;
    ports.resize(B->size());
 
    auto port_it = ports.begin();
    for (const llvm::Instruction& I : *B) {
-      construct_instruction(&I, *port_it);
+      construct_instruction(&I, *port_it, out);
       if (port_it != ports.begin()) {
          auto port_prev = std::next(port_it, -1);
          connect(port_prev->exits.begin(), port_prev->exits.end(), port_it->entry);
@@ -47,7 +57,8 @@ void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port) {
    port.exits = std::move(ports.back().exits);
 }
 
-void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
+template <typename OutputIt>
+void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port, OutputIt out) {
    /* construct loops */
    std::unordered_map<const llvm::BasicBlock *, const llvm::Loop *> block_to_loop;
    std::unordered_map<const llvm::Loop *, Port> loop_to_port;
@@ -66,7 +77,7 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
    for (const llvm::BasicBlock *B : LF->blocks) {
       if (block_to_loop.find(B) == block_to_loop.end()) {
          Port B_port;
-         construct_block(B, B_port);
+         construct_block(B, B_port, out);
          nonloop_block_to_port.emplace(B, B_port);
       }
    }
@@ -134,7 +145,6 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port) {
    }
 }
 
-
 void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
    LoopForest LF;
    LF.entry = L->getHeader();
@@ -143,7 +153,7 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
    std::copy(exits.begin(), exits.end(), std::back_inserter(LF.exits));
    std::copy(L->block_begin(), L->block_end(), std::back_inserter(LF.blocks));
    std::copy(L->begin(), L->end(), std::back_inserter(LF.loops));
-
+   
    /* Generate all iterations */
    struct Iteration {
       Port port;
@@ -152,23 +162,19 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
    std::vector<Iteration> iterations;
    for (unsigned i = 0; i < num_unrolls + 1; ++i) {
       Iteration iteration;
-      construct_loop_forest(&LF, iteration.port);
+      NodeRefSet iteration_nodes;
+      construct_loop_forest(&LF, iteration.port,
+                            std::inserter(iteration_nodes, iteration_nodes.end()));
 
+      // add loop set information
+      add_lf_set(iteration_nodes, loops);
+      
       // remove back-edges to header, remembering in iteration continuations
       const NodeRef iteration_header = iteration.port.entry;
       iteration.continuations = po.rev.at(iteration_header);
 
-      // DEBUG
-      llvm::errs() << "back edges to header " << iteration_header << ":";
-      for (NodeRef ref : iteration.continuations) {
-         llvm::errs() << " " << ref;
-      }
-      llvm::errs() << "\n";
-         
-      
       for (NodeRef continuation : iteration.continuations) {
          erase_edge(continuation, iteration_header);
-         llvm::errs() << "erasing edge " << continuation << " " << iteration_header << "\n";
       }
 
       iterations.push_back(iteration);
@@ -207,13 +213,15 @@ void AEGPO2::construct_function(llvm::Function *F, Port& port) {
                      return &B;
                   });
    std::copy(loop_info.begin(), loop_info.end(), std::back_inserter(LF.loops));
-   construct_loop_forest(&LF, port);
+   NodeRefSet func_nodes;
+   construct_loop_forest(&LF, port, std::inserter(func_nodes, func_nodes.end()));
+   add_lf_set(func_nodes, funcs);
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
    std::visit(util::overloaded {
-         [&] (AEGPO2::Node::Entry) { os << "<ENTRY>"; },
-         [&] (AEGPO2::Node::Exit)  { os << "<EXIT>";  },
+         [&] (Entry) { os << "<ENTRY>"; },
+         [&] (Exit)  { os << "<EXIT>";  },
          [&] (const llvm::Instruction *I) { os << *I; },
       }, node());
    return os;
@@ -284,4 +292,26 @@ void AEGPO2::prune() {
       }
    }
    po = std::move(new_po);
+}
+
+
+void AEGPO2::add_lf_set(const NodeRefSet& set, LFMap& map) {
+   auto ptr = std::make_shared<NodeRefSet>(set);
+   for (NodeRef ref : set) {
+      map.emplace(ref, ptr);
+   }
+}
+
+
+void AEGPO2::dump_lf_map(llvm::raw_ostream& os, const LFMap& map) const {
+   std::unordered_set<std::shared_ptr<NodeRefSet>> sets;
+   std::transform(map.begin(), map.end(), std::inserter(sets, sets.end()),
+                  [] (const auto& pair) { return pair.second; });
+   for (const auto& set : sets) {
+      os << "{";
+      for (NodeRef ref : *set) {
+         os << ref << " ";
+      }
+      os << "}\n";
+   }
 }

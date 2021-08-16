@@ -42,14 +42,9 @@ struct LCMPass : public llvm::FunctionPass {
 
       /* Gather all pointers */
       std::vector<const llvm::Instruction *> pointers;
-      for (const auto& B : F) {
-         for (const auto& I : B) {
-            if (I.getType()->isPointerTy()) {
-               pointers.push_back(&I);
-            }
-         }
-      }
+      get_pointers(F, std::back_inserter(pointers));
 
+      errs() << "Aliases:\n";
       for (auto it1 = pointers.begin(); it1 != pointers.end(); ++it1) {
          for (auto it2 = std::next(it1, 1); it2 != pointers.end(); ++it2) {
             const llvm::AliasResult res = AA.alias(*it1, *it2);
@@ -65,6 +60,22 @@ struct LCMPass : public llvm::FunctionPass {
       }
       
       return false;
+   }
+
+private:
+   template <typename OutputIt>
+   OutputIt get_pointers(const llvm::Function& F, OutputIt out) {
+      for (const auto& B : F) {
+         for (const auto& I : B) {
+            if (I.getType()->isPointerTy()) {
+               *out++ = &I;
+            }
+            if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(&I)) {
+               out = get_pointers(*C->getCalledFunction(), out);
+            }
+         }
+      }
+      return out;
    }
 };
 

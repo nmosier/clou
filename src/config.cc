@@ -64,7 +64,7 @@ static int parse_args() {
       {nullptr, 0, nullptr, 0}
    };
    
-   while ((optc = getopt_long(argc, argv, "h", opts, nullptr)) >= 0) {
+   while ((optc = getopt_long(argc, argv, "hv", opts, nullptr)) >= 0) {
       switch (optc) {
       case 'h':
          usage(stdout);

@@ -161,18 +161,43 @@ struct LCMPass : public llvm::FunctionPass {
       aeg2.test();
 #else
 
+      if (verbose >= 1) {
+         llvm::errs() << "Constructing AEGPO for " << F.getName() << "\n";
+      }
+
       AEGPO2 aegpo {F};
       if (!aegpo_output_path.empty()) {
          aegpo.dump_graph(format_graph_path(aegpo_output_path, F));
       }
 
-      AEG aeg {};
-      aeg.construct(aegpo, 2, AA);
-      aeg.simplify();
+      if (verbose >= 1) {
+         llvm::errs() << "Constructing AEG for " << F.getName() << "\n";
+      }
+
+
+      ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
+      signal(SIGINT, [] (int sig) {
+         ProfilerStop();
+         std::exit(0);
+      });
+      AEG aeg {aegpo};
+      aeg.construct(2, AA);
+      // aeg.simplify();
       if (!aeg_output_path.empty()) {
          aeg.dump_graph(format_graph_path(aeg_output_path, F));
       }
+      ProfilerStop();
 
+      llvm::errs() << "Testing...\n";
+      aeg.test();
+      llvm::errs() << "done\n";
+
+      // DEBUG: print out function, loop info
+      auto& os = llvm::errs();
+      os << "Loops:\n";
+      aegpo.dump_loops(os);
+      os << "Funcs:\n";
+      aegpo.dump_funcs(os);
 
 #endif
       

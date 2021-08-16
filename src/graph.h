@@ -51,8 +51,6 @@ public:
    }
 
    void add_node(const Node& node) {
-      // TODO: This can just be a no-op, since doing the below isn't useful.
-      llvm::errs() << "adding node " << node << "\n";
       fwd[node];
       rev[node];
    }

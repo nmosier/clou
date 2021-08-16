@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <memory>
 #include <ostream>
+#include <variant>
 
 #include <llvm/IR/Instruction.h>
 #include <llvm/Support/raw_ostream.h>
@@ -38,7 +39,7 @@ public:
 
    using Rel = binrel<NodeRef>;
    Rel po; // simple po
-   
+
    explicit AEGPO(const CFG& cfg): cfg(cfg), nodes({Node {CFG::entry}}) {
       po.add_node(entry);
    }

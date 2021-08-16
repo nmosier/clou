@@ -21,24 +21,21 @@ void Inst::set_kind() {
 
 void Inst::set_addr() {
    switch (kind) {
-   case Kind::READ:
-      assert(I->getNumOperands() == 1);
-      addr = I->getOperand(0);
-      break;
-   case Kind::WRITE:
-      assert(I->getNumOperands() == 2);
-      addr = I->getOperand(1);
-      break;
-   case Kind::FENCE:
-   case Kind::OTHER:
    case Kind::ENTRY:
    case Kind::EXIT:
-      addr = nullptr;
       break;
-   default: std::abort();
-   }
-   if (addr) {
-      assert(addr->getType()->isPointerTy());
+      
+   default:
+      // check for addr def
+      if (I->getType()->isPointerTy()) {
+         addr_def = static_cast<const llvm::Value *>(I);
+      }
+      // check for addr refs
+      for (const llvm::Value *V : I->operand_values()) {
+         if (V->getType()->isPointerTy()) {
+            addr_refs.push_back(V);
+         }
+      }
    }
 }
 

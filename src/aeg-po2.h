@@ -2,6 +2,9 @@
 
 #include <variant>
 #include <vector>
+#include <unordered_map>
+#include <unordered_set>
+#include <memory>
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
@@ -16,12 +19,12 @@ public:
    using NodeRef = std::size_t;
 
    struct Node {
-      // struct Entry {};
-      // struct Exit {};
-      using Entry = ::Entry;
-      using Exit = ::Exit;
       using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
       Variant v;
+
+      unsigned func_id = 0; // invalid if == 0
+      unsigned loop_id = 0; // invalid if == 0
+      
       const Variant& operator()() const { return v; }
       Variant& operator()() { return v; }
 
@@ -32,6 +35,11 @@ public:
 
    using Rel = binrel<NodeRef>;
    Rel po; // simple po
+
+   using NodeRefSet = std::unordered_set<NodeRef>;
+   using LFMap = std::unordered_map<NodeRef, std::shared_ptr<NodeRefSet>>;
+   LFMap funcs;
+   LFMap loops;
 
    NodeRef entry;
    NodeRef exit;
@@ -54,9 +62,14 @@ public:
    // TODO: these should be private private:
    llvm::Function& F;
    const unsigned num_unrolls;
-   std::vector<Node> nodes; // 
+   std::vector<Node> nodes; //
+
+   void dump_loops(llvm::raw_ostream& os) const { dump_lf_map(os, loops); }
+   void dump_funcs(llvm::raw_ostream& os) const { dump_lf_map(os, funcs); }
 
 private:
+
+   void dump_lf_map(llvm::raw_ostream& os, const LFMap& map) const;
 
    void construct();
 
@@ -64,28 +77,36 @@ private:
       NodeRef entry;
       std::unordered_multimap<const llvm::BasicBlock *, NodeRef> exits;
    };
-   
-   void construct_instruction(const llvm::Instruction *I, Port& port);
-   void construct_block(const llvm::BasicBlock *B, Port& port);
+
+   template <typename OutputIt>
+   void construct_instruction(const llvm::Instruction *I, Port& port, OutputIt out);
+
+   template <typename OutputIt>
+   void construct_call(const llvm::CallBase *C, Port& port, OutputIt out);
+
+   template <typename OutputIt>
+   void construct_block(const llvm::BasicBlock *B, Port& port, OutputIt out);
+
    void construct_loop(const llvm::Loop *L, Port& port);
    void construct_function(llvm::Function *F, Port& port);
+   
    struct LoopForest {
       const llvm::BasicBlock *entry;
       std::vector<const llvm::BasicBlock *> exits;
       std::vector<const llvm::BasicBlock *> blocks;
       std::vector<const llvm::Loop *> loops;
    };
-   void construct_loop_forest(const LoopForest *LF, Port& port);
-
+   template <typename OutputIt>
+   void construct_loop_forest(const LoopForest *LF, Port& port, OutputIt out);
+   
    template <typename InputIt>
    void connect(InputIt src_begin, InputIt src_end, NodeRef dst) {
       for (auto src_it = src_begin; src_it != src_end; ++src_it) {
          add_edge(src_it->second, dst);
       }
    }
-
+   
    void add_edge(NodeRef src, NodeRef dst) {
-      llvm::errs() << "adding edge " << src << " " << dst << "\n";
       po.insert(src, dst);
    }
    NodeRef add_node(const Node& node) {
@@ -104,6 +125,8 @@ private:
    void erase_edge(NodeRef src, NodeRef dst) { po.erase(src, dst); }
 
    void prune();
+
+   void add_lf_set(const NodeRefSet& set, LFMap& map);
 };
 
 /* Functions and loops may have multiple exits.
