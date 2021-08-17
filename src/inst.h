@@ -36,7 +36,7 @@ struct Inst {
    void set(Exit) { kind = Kind::EXIT; }
    
    template <typename Arg>
-   Inst(const Arg& arg) { set(arg); }
+   explicit Inst(const Arg& arg) { set(arg); }
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Inst& inst);

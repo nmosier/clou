@@ -8,6 +8,7 @@
 #include <numeric>
 
 #include <llvm/IR/Function.h>
+#include <llvm/Support/Format.h>
 
 #include "binrel.h"
 
@@ -15,13 +16,30 @@ extern const char *prog;
 
 template <typename... Args>
 void log(const char *fmt, Args&&... args) {
-   fprintf(stderr, fmt, std::forward<Args>(args)...);
+   llvm::errs() << llvm::format(fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 [[noreturn]] void error(const char *fmt, Args&&... args) {
    log(fmt, std::forward<Args>(args)...);
    exit(1);
+}
+
+extern unsigned verbose;
+template <typename... Args>
+void log(unsigned verb, const char *fmt, Args&&... args) {
+   if (verbose >= verb) {
+       log(fmt, std::forward<Args>(args)...);
+   }
+}
+
+inline llvm::raw_ostream& logv(unsigned verb) {
+   if (verbose >= verb) {
+      return llvm::errs();
+   } else {
+      static llvm::raw_null_ostream null_os;
+      return null_os;
+   }
 }
 
 using BinaryInstRel = std::unordered_map<const llvm::Instruction *,
@@ -155,7 +173,8 @@ namespace util {
             }
             return pred;
          }, true_val);
-         disj |= conj;
+         disj = disj || conj;
+         // disj |= conj;
       }
       return disj;
    }

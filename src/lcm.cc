@@ -15,14 +15,20 @@
 #include "lcm.h"
 #include "addr.h"
 #include "mcfg.h"
-#include "aeg-po.h"
 #include "config.h"
 #include "cfg.h"
 #include "aeg.h"
 #include "aeg-po2.h"
+#include "aeg-expanded.h"
 
 using llvm::errs;
 
+template <typename Graph>
+void output(const Graph& graph, const std::string& name, const llvm::Function& F) {
+   if (!output_dir.empty()) {
+      graph.dump_graph(format_graph_path(output_dir + "/" + name + "-%s.dot", F));
+   }
+}
    
 struct LCMPass : public llvm::FunctionPass {
    static char ID;
@@ -70,24 +76,6 @@ struct LCMPass : public llvm::FunctionPass {
       /* Try dataflow analysis */
       AddressDependencyAnalysis addr_analysis;
       addr_analysis.run(F);
-#if 0
-      errs() << "\n\n\nADDRESS DEPENDENCY ANALYSIS\n";
-      for (const auto& B : F) {
-         for (const auto& I : B) {
-            errs() << "Instruction: " << I << "\n";
-            const auto& inval = addr_analysis.get_in(I);
-            for (const auto& pair : inval) {
-               if (!pair.second.empty()) {
-                  errs() << "  " << *pair.first << "\n";
-                  for (const llvm::Instruction *inst : pair.second) {
-                     errs() << "      " << *inst << "\n";
-                  }
-               }
-            }
-            errs() << "\n";
-         }
-      }
-#endif
 
       /* Construct addr relation */
       BinaryInstRel addr;
@@ -124,68 +112,25 @@ struct LCMPass : public llvm::FunctionPass {
       
       
       /* Construct AEG */
-
-#if 0
-      CFG cfg;
-      cfg.construct(F);
-
-      llvm::errs() << "CFG done\n";
-      
-      if (!cfg_output_path.empty()) {
-         cfg.dump_graph(format_graph_path(cfg_output_path, F));
-      }
-
-      AEGPO aeg {cfg};
-      
-      
-      ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
-      signal(SIGINT, [] (int sig) {
-         ProfilerStop();
-         std::exit(0);
-      });
-      aeg.construct2();
-      ProfilerStop();
-
-      if (!aegpo_output_path.empty()) {
-         aeg.dump_graph(format_graph_path(aegpo_output_path, F));
-      }
-
-      AEG aeg2 {cfg};
-      aeg2.construct(aeg, 2, AA);
-      aeg2.simplify();
-
-      if (!aeg_output_path.empty()) {
-         aeg2.dump_graph(format_graph_path(aeg_output_path, F));
-      }
-
-      aeg2.test();
-#else
-
-      if (verbose >= 1) {
-         llvm::errs() << "Constructing AEGPO for " << F.getName() << "\n";
-      }
-
+      logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
       AEGPO2 aegpo {F};
-      if (!aegpo_output_path.empty()) {
-         aegpo.dump_graph(format_graph_path(aegpo_output_path, F));
-      }
+      output(aegpo, "aegpo", F);
 
-      if (verbose >= 1) {
-         llvm::errs() << "Constructing AEG for " << F.getName() << "\n";
-      }
-
-
+      logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
+      AEGPO_Expanded aegpo_expanded {aegpo};
+      logv(2) << "Expanded AEGPO node counts: " << aegpo.size() << " (orig) vs. "
+              << aegpo_expanded.size() << " (expanded)\n";
+      output(aegpo_expanded, "aegpoexp", F);
+      
+      logv(1) << "Constructing AEG for " << F.getName() << "\n";
       ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
       signal(SIGINT, [] (int sig) {
          ProfilerStop();
          std::exit(0);
       });
-      AEG aeg {aegpo};
-      aeg.construct(2, AA);
-      // aeg.simplify();
-      if (!aeg_output_path.empty()) {
-         aeg.dump_graph(format_graph_path(aeg_output_path, F));
-      }
+      AEG aeg {};
+      aeg.construct(aegpo_expanded, 2, AA);
+      output(aeg, "aeg", F);
       ProfilerStop();
 
       llvm::errs() << "Testing...\n";
@@ -198,8 +143,6 @@ struct LCMPass : public llvm::FunctionPass {
       aegpo.dump_loops(os);
       os << "Funcs:\n";
       aegpo.dump_funcs(os);
-
-#endif
       
       return false;
    }

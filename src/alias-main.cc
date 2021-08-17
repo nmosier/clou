@@ -1,5 +1,6 @@
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -10,15 +11,6 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 
 #include <gperftools/profiler.h>
-
-#include "util.h"
-#include "lcm.h"
-#include "addr.h"
-#include "mcfg.h"
-#include "aeg-po.h"
-#include "config.h"
-#include "cfg.h"
-#include "aeg.h"
 
 using llvm::errs;
 

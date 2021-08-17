@@ -6,24 +6,37 @@ void AEGPO_Expanded::construct(const AEGPO2& in) {
    // create entry
    NodeRef in_src = in.entry;
    NodeRef src = add_node(Node {in.lookup(in_src).v});
+   entry = src;
    NodeMap map {{in_src, src}};
-   for (NodeRef in_dst : in.po.fwd.at(in.entry)) {
-      construct_rec(in, in_src, in_dst, src, 0, map);
+
+   std::deque<Task> queue;
+   for (NodeRef in_dst : in.po.fwd.at(in_src)) {
+      queue.push_back({in_src, in_dst, src, 0});
+   }
+   while (!queue.empty()) {
+      const Task& task = queue.back();
+      construct_rec(in, task.in_src, task.in_dst, task.src, task.spec_depth, map,
+                    std::front_inserter(queue));
+      queue.pop_back();
    }
 }
 
 /* NOTE: spec_depth is the depth of in_src.
  *
  */
-void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_dst, NodeRef src,
-                                   unsigned spec_depth, NodeMap& map) {
+template <typename OutputIt>
+void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_dst,
+                                   NodeRef src, unsigned spec_depth, NodeMap& map, OutputIt out) {
    NodeRef dst;
-
+   bool newnode;
+   
    /* check whether to merge or duplicate node */
    ++spec_depth;
    if (spec_depth < num_specs) {
       /* create private node */
       dst = add_node(Node {in.lookup(in_dst).v});
+      newnode = true;
+      llvm::errs() << "private " << dst << "\n";
    } else {
       /* merge with or create public node */
       const auto it = map.find(in_dst);
@@ -31,9 +44,12 @@ void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_
          // create
          dst = add_node(Node {in.lookup(in_dst).v});
          map.emplace(in_dst, dst);
+         newnode = true;
       } else {
          dst = it->second;
+         newnode = false;
       }
+      llvm::errs() << "public " << dst << "\n";
    }
    
    po.insert(src, dst);
@@ -42,10 +58,12 @@ void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_
    if (succs.size() > 1) {
       /* speculation depth reset to 0 */
       spec_depth = 0;
-   }
+      }
 
-   const NodeRef next_in_src = in_dst;
-   for (NodeRef next_in_dst : succs) {
-      construct_rec(in, next_in_src, next_in_dst, dst, spec_depth, map);
+   if (newnode) {
+      const NodeRef next_in_src = in_dst;
+      for (NodeRef next_in_dst : succs) {
+         *out++ = Task {next_in_src, next_in_dst, dst, spec_depth};
+      }
    }
 }

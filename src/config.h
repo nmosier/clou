@@ -2,8 +2,6 @@
 
 #include <string>
 
-extern std::string cfg_output_path;
-extern std::string aegpo_output_path;
-extern std::string aeg_output_path;
+extern std::string output_dir;
 extern std::vector<std::string> function_names;
 extern unsigned verbose;

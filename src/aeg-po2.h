@@ -14,36 +14,74 @@
 #include "binrel.h"
 #include "lcm.h"
 
-class AEGPO2 {
+struct AEGPO_Node_Base {
+   using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
+   Variant v;
+   const Variant& operator()() const { return v; }
+   Variant& operator()() { return v; }
+};
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node);
+
+template <typename NodeT>
+class AEGPO_Base {
 public:
    using NodeRef = std::size_t;
-
-   struct Node {
-      using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
-      Variant v;
-
-      unsigned func_id = 0; // invalid if == 0
-      unsigned loop_id = 0; // invalid if == 0
-      
-      const Variant& operator()() const { return v; }
-      Variant& operator()() { return v; }
-
-      static Node make_entry() { return Node {Entry {}}; }
-      static Node make_exit() { return Node {Exit {}}; }
-      static Node make(const llvm::Instruction *I) { return Node {I}; }
-   };
+   using Node = NodeT; 
 
    using Rel = binrel<NodeRef>;
-   Rel po; // simple po
+   Rel po;
+
+   NodeRef entry;
+   NodeRef exit;   
+   std::vector<Node> nodes; // TODO: Should be private
+
+   Node& lookup(NodeRef ref) { return nodes.at(ref); }
+   const Node& lookup(NodeRef ref) const { return nodes.at(ref); }
+   std::size_t size() const { return nodes.size(); }
+
+   void dump_graph(const std::string& path) const {
+      po.group().dump_graph(path, [&] (auto& os, const auto& group) {
+         for (NodeRef ref : group) {
+            os << ref << " " << lookup(ref) << "\n";
+         }
+      });      
+   }
+
+protected:
+   void add_edge(NodeRef src, NodeRef dst) {
+      po.insert(src, dst);
+   }
+
+   NodeRef add_node(const Node& node) {
+      const NodeRef ref = size();
+      nodes.push_back(node);
+      po.add_node(ref);
+      return ref;
+   }
+
+   void erase_edge(NodeRef src, NodeRef dst) {
+      po.erase(src, dst);
+   }
+};
+
+struct AEGPO2_Node: AEGPO_Node_Base {
+   unsigned func_id = 0; // invalid if 0
+   unsigned loop_id = 0; // invalid if 0
+   static AEGPO2_Node make_entry() { return AEGPO2_Node {{Entry {}}}; }
+   static AEGPO2_Node make_exit() { return AEGPO2_Node {{Exit {}}}; }
+   static AEGPO2_Node make(const llvm::Instruction *I) { return AEGPO2_Node {{I}}; }
+};
+
+class AEGPO2: public AEGPO_Base<AEGPO2_Node> {
+public:
+   using NodeRef = std::size_t;
 
    using NodeRefSet = std::unordered_set<NodeRef>;
    using LFMap = std::unordered_map<NodeRef, std::shared_ptr<NodeRefSet>>;
    LFMap funcs;
    LFMap loops;
 
-   NodeRef entry;
-   NodeRef exit;
-   
    explicit AEGPO2(llvm::Function& F, unsigned num_unrolls = 2):
       F(F),
       num_unrolls(num_unrolls) {
@@ -54,15 +92,10 @@ public:
    }
 
    llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
-   void dump_graph(const std::string& path) const;
 
-   Node& lookup(NodeRef ref) { return nodes.at(ref); }
-   const Node& lookup(NodeRef ref) const { return nodes.at(ref); }
-   
    // TODO: these should be private private:
    llvm::Function& F;
    const unsigned num_unrolls;
-   std::vector<Node> nodes; //
 
    void dump_loops(llvm::raw_ostream& os) const { dump_lf_map(os, loops); }
    void dump_funcs(llvm::raw_ostream& os) const { dump_lf_map(os, funcs); }
@@ -106,24 +139,6 @@ private:
       }
    }
    
-   void add_edge(NodeRef src, NodeRef dst) {
-      po.insert(src, dst);
-   }
-   NodeRef add_node(const Node& node) {
-      const NodeRef res = nodes.size();
-      nodes.push_back(node);
-      po.add_node(res);
-      return res;
-   }
-   NodeRef add_node(Node&& node) {
-      const NodeRef res = nodes.size();
-      nodes.push_back(node);
-      po.add_node(res);
-      return res;
-   }
-
-   void erase_edge(NodeRef src, NodeRef dst) { po.erase(src, dst); }
-
    void prune();
 
    void add_lf_set(const NodeRefSet& set, LFMap& map);

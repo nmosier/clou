@@ -5,12 +5,12 @@ add_library(lcm MODULE
   util.cc
   addr.cc
   mcfg.cc
-  aeg-po.cc
   aeg-po2.cc
   config.cc
   cfg.cc
   aeg.cc
   inst.cc
+  aeg-expanded.cc
   )
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
 target_link_libraries(lcm PRIVATE z3 ${LIBPROFILER_LIBRARIES})

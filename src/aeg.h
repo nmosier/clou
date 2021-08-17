@@ -2,15 +2,17 @@
 
 #include <string>
 #include <cassert>
+#include <deque>
 
 #include <llvm/IR/Instruction.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <z3++.h>
 
+#include "z3-util.h"
 #include "aeg-po2.h"
 #include "graph.h"
-#include "z3-util.h"
 #include "inst.h"
+#include "util.h"
 
 class UHBContext {
 public:
@@ -125,20 +127,21 @@ std::ostream& operator<<(std::ostream& os, const UHBEdge& e);
 class AEG {
 public:
    using Node = UHBNode;
-   using NodeRef = AEGPO2::NodeRef;
+   using NodeRef = std::size_t;
    using Edge = UHBEdge;
    using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
 
    static inline const NodeRef entry {0};
 
    graph_type graph;
-   
-   void construct(unsigned spec_depth, llvm::AliasAnalysis& AA);
+
+   template <typename T>
+   void construct(const AEGPO_Base<T>& po, unsigned spec_depth, llvm::AliasAnalysis& AA);
 
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
-   
-   explicit AEG(const AEGPO2& po): po(po), context(), constraints(context) {}
+
+   AEG(): context(), constraints(context) {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -148,15 +151,21 @@ public:
    void test();
    
 private:
-   const AEGPO2& po;
    UHBContext context;
    UHBConstraints constraints;
    std::vector<Node> nodes;
 
-   void construct_nodes_po();
-   void construct_nodes_tfo(unsigned spec_depth);
-   void construct_edges_po_tfo();
-   void construct_aliases(llvm::AliasAnalysis& AA);
+   template <typename T>
+   void construct_nodes_po(const AEGPO_Base<T>& po);
+
+   template <typename T>
+   void construct_nodes_tfo(const AEGPO_Base<T>& po, unsigned spec_depth);
+
+   template <typename T>
+   void construct_edges_po_tfo(const AEGPO_Base<T>& po);
+
+   template <typename T>
+   void construct_aliases(const AEGPO_Base<T>& po, llvm::AliasAnalysis& AA);
    
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {
@@ -174,3 +183,119 @@ private:
 
    NodeRef find_upstream_def(NodeRef node, const llvm::Value *addr_ref) const;
 };
+
+
+template <typename T>
+void AEG::construct(const AEGPO_Base<T>& po, unsigned spec_depth, llvm::AliasAnalysis& AA) {
+   // initialize nodes
+   std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
+                  [&] (const auto& node) {
+                     const Inst inst =
+                        std::visit(util::creator<Inst>(),
+                                   node());
+                     return Node {inst, context};
+                  });
+   for (NodeRef ref : node_range()) {
+      graph.add_node(ref);
+   }
+
+   if (verbose >= 2) { llvm::errs() << "Constructing nodes po\n"; }
+   construct_nodes_po(po);
+   if (verbose >= 2) { llvm::errs() << "Constructing nodes tfo\n"; }   
+   construct_nodes_tfo(po, spec_depth);
+   if (verbose >= 2) { llvm::errs() << "Constructing edges po tfo\n"; }
+   construct_edges_po_tfo(po);
+   if (verbose >= 2) { llvm::errs() << "Constructing aliases\n"; }
+   construct_aliases(po, AA);
+}
+
+template <typename T>
+void AEG::construct_nodes_po(const AEGPO_Base<T>& po) {
+   for (NodeRef ref : node_range()) {
+      const auto& preds = po.po.rev.at(ref);
+      const auto& succs = po.po.fwd.at(ref);
+      Node& node = lookup(ref);
+
+      if (preds.empty()) {
+         // program entry, require po
+         node.constraints(node.po);
+      }
+
+      /* add po constraint: exactly one successor */
+      if (!succs.empty()) {
+         // Not Program Exit
+         const z3::expr succ_po = util::one_of(succs.begin(), succs.end(), [&] (NodeRef dstref) {
+            return lookup(dstref).po;
+         }, context.TRUE, context.FALSE);
+         node.constraints(z3::implies(node.po, succ_po));
+      }
+      // po excludes tfo
+      node.constraints(z3::implies(node.po, !node.tfo));
+   }
+}
+
+template <typename T>
+void AEG::construct_nodes_tfo(const AEGPO_Base<T>& po, unsigned spec_depth) {
+   std::unordered_set<NodeRef> seen;
+
+   std::deque<NodeRef> todo {po.entry};
+   while (!todo.empty()) {
+      const NodeRef noderef = todo.front();
+      todo.pop_front();
+      if (!seen.insert(noderef).second) { continue; }
+      const auto& preds = po.po.rev.at(noderef);
+      const auto& succs = po.po.fwd.at(noderef);
+      std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
+      
+      /* set tfo_depth */
+      Node& node = lookup(noderef);
+      if (preds.size() != 1) {
+         node.constraints(node.tfo_depth == context.context.int_val(0));
+         node.constraints(!node.tfo); // force TFO to false
+         // NOTE: This covers both TOP and non-speculative join cases.
+      } else {
+         const Node& pred = lookup(*preds.begin());
+         const z3::expr tfo_depth_expr =
+            z3::ite(node.po,
+                    context.context.int_val(0),
+                    pred.tfo_depth + context.context.int_val(1));
+         node.constraints(node.tfo_depth == tfo_depth_expr);
+         node.constraints(z3::implies(node.tfo_depth > context.context.int_val(spec_depth),
+                                      !node.tfo));
+         node.constraints(z3::implies(node.tfo, pred.tfo || pred.po));
+      }
+   }
+}
+
+template <typename T>
+void AEG::construct_edges_po_tfo(const AEGPO_Base<T>& po) {
+   /* When does a po edge exist between two nodes?
+    * (1) po must hold for both nodes.
+    * (2) One must directly follow the other.
+    *
+    */
+
+   for (NodeRef ref : node_range()) {
+      const Node& node = lookup(ref);
+      const auto& succs = po.po.fwd.at(ref);
+      for (NodeRef succ_ref : succs) {
+         const Node& succ = lookup(succ_ref);
+         {
+            UHBEdge edge {UHBEdge::PO, context};
+            edge.constraints(edge.exists == (node.po && succ.po));
+            graph.insert(ref, succ_ref, edge);
+         }
+         {
+            UHBEdge edge {UHBEdge::TFO, context};
+            edge.constraints(edge.exists == ((node.po || node.tfo) && succ.tfo));
+            graph.insert(ref, succ_ref, edge);
+         }
+      }
+   }
+}
+
+template <typename T>
+void AEG::construct_aliases(const AEGPO_Base<T>& po, llvm::AliasAnalysis& AA) {
+   
+   
+}

@@ -218,21 +218,13 @@ void AEGPO2::construct_function(llvm::Function *F, Port& port) {
    add_lf_set(func_nodes, funcs);
 }
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node) {
    std::visit(util::overloaded {
          [&] (Entry) { os << "<ENTRY>"; },
          [&] (Exit)  { os << "<EXIT>";  },
          [&] (const llvm::Instruction *I) { os << *I; },
       }, node());
    return os;
-}
-
-void AEGPO2::dump_graph(const std::string& path) const {
-   po.group().dump_graph(path, [&] (auto& os, const auto& group) {
-      for (const NodeRef& ref : group) {
-         os << ref << " " << lookup(ref) << "\n";
-      }
-   });
 }
 
 void AEGPO2::prune() {
