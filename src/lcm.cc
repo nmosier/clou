@@ -128,8 +128,8 @@ struct LCMPass : public llvm::FunctionPass {
          ProfilerStop();
          std::exit(0);
       });
-      AEG aeg {};
-      aeg.construct(aegpo_expanded, 2, AA);
+      AEG aeg {aegpo_expanded};
+      aeg.construct(2, AA);
       output(aeg, "aeg", F);
       ProfilerStop();
 

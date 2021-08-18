@@ -250,3 +250,172 @@ void AEG::for_each_pred(NodeRef ref, Pred pred) {
    }
 }
 #endif
+
+
+void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
+   // initialize nodes
+   std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
+                  [&] (const auto& node) {
+                     const Inst inst =
+                        std::visit(util::creator<Inst>(),
+                                   node->v);
+                     return Node {inst, context};
+                  });
+   for (NodeRef ref : node_range()) {
+      graph.add_node(ref);
+   }
+
+   logv(2) << "Constructing nodes po\n";
+   construct_nodes_po();
+   logv(2) << "Constructing nodes tfo\n";
+   construct_nodes_tfo(spec_depth);
+   logv(2) << "Constructing edges po tfo\n";
+   construct_edges_po_tfo();
+   logv(2) << "Constructing aliases\n";
+   construct_aliases(AA);
+}
+
+void AEG::construct_nodes_po() {
+   for (NodeRef ref : node_range()) {
+      const auto& preds = po.po.rev.at(ref);
+      const auto& succs = po.po.fwd.at(ref);
+      Node& node = lookup(ref);
+
+      if (preds.empty()) {
+         // program entry, require po
+         node.constraints(node.po);
+      }
+
+      /* add po constraint: exactly one successor */
+      if (!succs.empty()) {
+         // Not Program Exit
+         const z3::expr succ_po = util::one_of(succs.begin(), succs.end(), [&] (NodeRef dstref) {
+            return lookup(dstref).po;
+         }, context.TRUE, context.FALSE);
+         node.constraints(z3::implies(node.po, succ_po));
+      }
+      // po excludes tfo
+      node.constraints(z3::implies(node.po, !node.tfo));
+   }
+}
+
+void AEG::construct_nodes_tfo(unsigned spec_depth) {
+   std::unordered_set<NodeRef> seen;
+
+   std::deque<NodeRef> todo {po.entry};
+   while (!todo.empty()) {
+      const NodeRef noderef = todo.front();
+      todo.pop_front();
+      if (!seen.insert(noderef).second) { continue; }
+      const auto& preds = po.po.rev.at(noderef);
+      const auto& succs = po.po.fwd.at(noderef);
+      std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
+      
+      /* set tfo_depth */
+      Node& node = lookup(noderef);
+      if (preds.size() != 1) {
+         node.constraints(node.tfo_depth == context.context.int_val(0));
+         node.constraints(!node.tfo); // force TFO to false
+         // NOTE: This covers both TOP and non-speculative join cases.
+      } else {
+         const Node& pred = lookup(*preds.begin());
+         const z3::expr tfo_depth_expr =
+            z3::ite(node.po,
+                    context.context.int_val(0),
+                    pred.tfo_depth + context.context.int_val(1));
+         node.constraints(node.tfo_depth == tfo_depth_expr);
+         node.constraints(z3::implies(node.tfo_depth > context.context.int_val(spec_depth),
+                                      !node.tfo));
+         node.constraints(z3::implies(node.tfo, pred.tfo || pred.po));
+      }
+   }
+}
+
+void AEG::construct_edges_po_tfo() {
+   /* When does a po edge exist between two nodes?
+    * (1) po must hold for both nodes.
+    * (2) One must directly follow the other.
+    *
+    */
+
+   for (NodeRef ref : node_range()) {
+      const Node& node = lookup(ref);
+      const auto& succs = po.po.fwd.at(ref);
+      for (NodeRef succ_ref : succs) {
+         const Node& succ = lookup(succ_ref);
+         {
+            UHBEdge edge {UHBEdge::PO, context};
+            edge.constraints(edge.exists == (node.po && succ.po));
+            graph.insert(ref, succ_ref, edge);
+         }
+         {
+            UHBEdge edge {UHBEdge::TFO, context};
+            edge.constraints(edge.exists == ((node.po || node.tfo) && succ.tfo));
+            graph.insert(ref, succ_ref, edge);
+         }
+      }
+   }
+}
+
+void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
+}
+
+void AEG::construct_com() {
+   assert(po.nodes.size() == nodes.size());
+   
+   /* construct rf */
+   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::READ) {
+         /* get set of possible writes */
+         std::vector<CondNode> writes;
+         find_sourced_writes(ref, std::back_inserter(writes));
+
+         /* add edges */
+         for (const CondNode& write : writes) {
+            Edge e {Edge::RF, context};
+            e.exists = node.po && write.cond;
+            graph.insert(write.ref, ref, e);
+         }
+      }
+   }
+
+   /* construct co */
+   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::WRITE) {
+         /* get set of possible writes */
+         std::vector<CondNode> writes;
+         find_preceding_writes(ref, std::back_inserter(writes));
+
+         /* add edges */
+         for (const CondNode& write : writes) {
+            Edge e {Edge::CO, context};
+            e.exists = node.po && write.cond;
+            graph.insert(write.ref, ref, e);
+         }
+      }
+   }
+   
+   /* construct fr 
+    * This is computed as ~rf.co, I think.
+    * But the easier way for now is to construct it directly, like above for rf and co.
+    */
+   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::WRITE) {
+         /* get set of possible reads */
+         std::vector<CondNode> reads;
+         find_sourced_reads(ref, std::back_inserter(reads));
+
+         /* add edges */
+         for (const CondNode& read : reads) {
+            Edge e {Edge::FR, context};
+            e.exists = node.po && read.cond;
+            graph.insert(read.ref, ref, e);
+         }
+      }
+   }
+}
+
+

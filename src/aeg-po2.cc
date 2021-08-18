@@ -14,7 +14,8 @@ void AEGPO2::construct() {
    entry = add_node(Node::make_entry());
    exit = add_node(Node::make_exit());
    Port port;
-   construct_function(&F, port);
+   IDs ids;
+   construct_function(&F, port, ids);
    add_edge(entry, port.entry);
    for (const auto& exit_pair : port.exits) {
       add_edge(exit_pair.second, exit);
@@ -23,29 +24,33 @@ void AEGPO2::construct() {
 }
 
 template <typename OutputIt>
-void AEGPO2::construct_instruction(const llvm::Instruction *I, Port& port, OutputIt out) {
+void AEGPO2::construct_instruction(const llvm::Instruction *I, Port& port, OutputIt out,
+                                   IDs& ids) {
    if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(I)) {
-      construct_call(C, port, out); 
+      construct_call(C, port, out, ids); 
    } else {
-      port.entry = add_node(Node::make(I));
+      Node node {I};
+      node.func_id = ids.func_id;
+      node.loop_id = ids.loop_ids;
+      port.entry = add_node(node);
       port.exits = {{I->getParent(), port.entry}};
       *out++ = port.entry;
    }
 }
 
 template <typename OutputIt>
-void AEGPO2::construct_call(const llvm::CallBase *C, Port& port, OutputIt out) {
-   construct_function(C->getCalledFunction(), port);
+void AEGPO2::construct_call(const llvm::CallBase *C, Port& port, OutputIt out, IDs& ids) {
+   construct_function(C->getCalledFunction(), port, ids);
 }
 
 template <typename OutputIt>
-void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port, OutputIt out) {
+void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port, OutputIt out, IDs& ids) {
    std::vector<Port> ports;
    ports.resize(B->size());
 
    auto port_it = ports.begin();
    for (const llvm::Instruction& I : *B) {
-      construct_instruction(&I, *port_it, out);
+      construct_instruction(&I, *port_it, out, ids);
       if (port_it != ports.begin()) {
          auto port_prev = std::next(port_it, -1);
          connect(port_prev->exits.begin(), port_prev->exits.end(), port_it->entry);
@@ -58,14 +63,14 @@ void AEGPO2::construct_block(const llvm::BasicBlock *B, Port& port, OutputIt out
 }
 
 template <typename OutputIt>
-void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port, OutputIt out) {
+void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port, OutputIt out, IDs& ids) {
    /* construct loops */
    std::unordered_map<const llvm::BasicBlock *, const llvm::Loop *> block_to_loop;
    std::unordered_map<const llvm::Loop *, Port> loop_to_port;
    for (const llvm::Loop *subL : LF->loops) {
       /* process loop */
       Port subL_port;
-      construct_loop(subL, subL_port);
+      construct_loop(subL, subL_port, ids);
       for (const llvm::BasicBlock *B : subL->blocks()) {
          block_to_loop.emplace(B, subL);
       }
@@ -77,7 +82,7 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port, OutputIt ou
    for (const llvm::BasicBlock *B : LF->blocks) {
       if (block_to_loop.find(B) == block_to_loop.end()) {
          Port B_port;
-         construct_block(B, B_port, out);
+         construct_block(B, B_port, out, ids);
          nonloop_block_to_port.emplace(B, B_port);
       }
    }
@@ -145,7 +150,7 @@ void AEGPO2::construct_loop_forest(const LoopForest *LF, Port& port, OutputIt ou
    }
 }
 
-void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
+void AEGPO2::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
    LoopForest LF;
    LF.entry = L->getHeader();
    llvm::SmallVector<llvm::BasicBlock *> exits;
@@ -161,14 +166,14 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
    };
    std::vector<Iteration> iterations;
    for (unsigned i = 0; i < num_unrolls + 1; ++i) {
+      // set loop id
+      ids.loop_ids.push_back(ids.next_loop_id++);
+      
       Iteration iteration;
       NodeRefSet iteration_nodes;
       construct_loop_forest(&LF, iteration.port,
-                            std::inserter(iteration_nodes, iteration_nodes.end()));
+                            std::inserter(iteration_nodes, iteration_nodes.end()), ids);
 
-      // add loop set information
-      add_lf_set(iteration_nodes, loops);
-      
       // remove back-edges to header, remembering in iteration continuations
       const NodeRef iteration_header = iteration.port.entry;
       iteration.continuations = po.rev.at(iteration_header);
@@ -178,6 +183,8 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
       }
 
       iterations.push_back(iteration);
+
+      ids.loop_ids.pop_back();
    }
 
    /* Glue iterations together */
@@ -196,7 +203,7 @@ void AEGPO2::construct_loop(const llvm::Loop *L, Port& port) {
 
 
 // NOTE: A function may be constructed multiple times.
-void AEGPO2::construct_function(llvm::Function *F, Port& port) {
+void AEGPO2::construct_function(llvm::Function *F, Port& port, IDs& ids) {
    const llvm::DominatorTree dom_tree {*F};
    const llvm::LoopInfo loop_info {dom_tree};
    LoopForest LF;
@@ -214,8 +221,9 @@ void AEGPO2::construct_function(llvm::Function *F, Port& port) {
                   });
    std::copy(loop_info.begin(), loop_info.end(), std::back_inserter(LF.loops));
    NodeRefSet func_nodes;
-   construct_loop_forest(&LF, port, std::inserter(func_nodes, func_nodes.end()));
-   add_lf_set(func_nodes, funcs);
+   construct_loop_forest(&LF, port, std::inserter(func_nodes, func_nodes.end()), ids);
+   
+   ++ids.func_id;
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node) {
@@ -224,6 +232,15 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node
          [&] (Exit)  { os << "<EXIT>";  },
          [&] (const llvm::Instruction *I) { os << *I; },
       }, node());
+   if (node.func_id) {
+      os << " F" << *node.func_id;
+   }
+   if (!node.loop_id.empty()) {
+      os << " L";
+      for (auto loop_id : node.loop_id) {
+         os << loop_id << ",";
+      }
+   }
    return os;
 }
 
@@ -287,14 +304,6 @@ void AEGPO2::prune() {
 }
 
 
-void AEGPO2::add_lf_set(const NodeRefSet& set, LFMap& map) {
-   auto ptr = std::make_shared<NodeRefSet>(set);
-   for (NodeRef ref : set) {
-      map.emplace(ref, ptr);
-   }
-}
-
-
 void AEGPO2::dump_lf_map(llvm::raw_ostream& os, const LFMap& map) const {
    std::unordered_set<std::shared_ptr<NodeRefSet>> sets;
    std::transform(map.begin(), map.end(), std::inserter(sets, sets.end()),
@@ -306,4 +315,21 @@ void AEGPO2::dump_lf_map(llvm::raw_ostream& os, const LFMap& map) const {
       }
       os << "}\n";
    }
+}
+
+bool AEGPO_Base_::alias_valid(const Node& a, const Node& b) {
+   if (!(a.func_id && b.func_id)) {
+      return false;
+   }
+   if (*a.func_id != *b.func_id) {
+      return false;
+   }
+
+   if (!std::equal(a.loop_id.begin(),
+                   a.loop_id.begin() + std::min(a.loop_id.size(), b.loop_id.size()),
+                   b.loop_id.begin())) {
+      return false;
+   }
+
+   return true;
 }
