@@ -258,7 +258,7 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
                   [&] (const auto& node) {
                      const Inst inst =
                         std::visit(util::creator<Inst>(),
-                                   node->v);
+                                   node.v);
                      return Node {inst, context};
                   });
    for (NodeRef ref : node_range()) {

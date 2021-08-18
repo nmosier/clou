@@ -1,23 +1,23 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 
 #include "lcm.h"
 #include "aeg-po2.h"
 #include "binrel.h"
 
-class AEGPO_Expanded: public AEGPO_Base<AEGPO_Node_Base> {
+class AEGPO_Expanded: public AEGPO2 {
 public:
-   explicit AEGPO_Expanded(const AEGPO2& po, unsigned num_specs = 2):
-      num_specs(num_specs) {
-      construct(po);
-   }
+   explicit AEGPO_Expanded(unsigned num_specs = 2):
+      num_specs(num_specs) {}
+
+   void construct(const AEGPO2& in);
 
 private:
    const unsigned num_specs;
 
    using NodeMap = std::unordered_map<NodeRef, NodeRef>;
-   void construct(const AEGPO2& in);
 
    struct Task {
       NodeRef in_src;

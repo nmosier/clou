@@ -18,8 +18,8 @@
 #include "config.h"
 #include "cfg.h"
 #include "aeg.h"
-#include "aeg-po2.h"
 #include "aeg-expanded.h"
+#include "aeg-unrolled.h"
 
 using llvm::errs;
 
@@ -42,83 +42,16 @@ struct LCMPass : public llvm::FunctionPass {
    virtual bool runOnFunction(llvm::Function& F) override {
       llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
 
-      errs() << "In a function called " << F.getName() << "!\n";
-         
-      errs() << "Function body:\n";
-      F.print(llvm::errs());
-
-      /* Gather all pointers */
-      std::vector<const llvm::Instruction *> pointers;
-      for (const auto& B : F) {
-         for (const auto& I : B) {
-            if (I.getType()->isPointerTy()) {
-               pointers.push_back(&I);
-            }
-         }
-      }
-
-      for (auto it1 = pointers.begin(); it1 != pointers.end(); ++it1) {
-         for (auto it2 = std::next(it1, 1); it2 != pointers.end(); ++it2) {
-            const llvm::AliasResult res = AA.alias(*it1, *it2);
-            static const std::unordered_map<llvm::AliasResult, const char *> strmap {
-               {llvm::NoAlias, "no alias"},
-               {llvm::MayAlias, "may alias"},
-               {llvm::PartialAlias, "partial alias"},
-               {llvm::MustAlias, "must alias"},
-            };
-            errs() << **it1 << "\t" << **it2 << "\t"
-                   << strmap.at(static_cast<llvm::AliasResult>(res)) << "\n";
-         }
-      }
-
-
-
-      /* Try dataflow analysis */
-      AddressDependencyAnalysis addr_analysis;
-      addr_analysis.run(F);
-
-      /* Construct addr relation */
-      BinaryInstRel addr;
-      addr_analysis.getResult(F, addr);
-
-      errs() << "Address Relation:\n";
-      for (const auto& pair : addr) {
-         const auto *src = pair.first;
-         for (const auto *dst : pair.second) {
-            errs() << *src << "  ->  " << *dst << "\n";
-         }
-      }
-
-
-      MemoryCFG mcfg {F};
-      errs() << "\n\n\nMemory Control Flow Graph\n";
-      for (const auto& src_pair : mcfg.graph()) {
-         const auto *src = src_pair.first;
-         for (const auto *dst : src_pair.second) {
-            if (src) {
-               errs() << *src;
-            } else {
-               errs() << "TOP";
-            }
-            errs() << "  ---->  ";
-            if (dst) {
-               errs() << *dst;
-            } else {
-               errs() << "BOT";
-            }
-            errs() << "\n";
-         }
-      }
-      
-      
       /* Construct AEG */
       logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
-      AEGPO2 aegpo {F};
-      output(aegpo, "aegpo", F);
+      AEGPO_Unrolled aegpo_unrolled {F};
+      aegpo_unrolled.construct();
+      output(aegpo_unrolled, "aegpo", F);
 
       logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
-      AEGPO_Expanded aegpo_expanded {aegpo};
-      logv(2) << "Expanded AEGPO node counts: " << aegpo.size() << " (orig) vs. "
+      AEGPO_Expanded aegpo_expanded {};
+      aegpo_expanded.construct(aegpo_unrolled);
+      logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
               << aegpo_expanded.size() << " (expanded)\n";
       output(aegpo_expanded, "aegpoexp", F);
       
@@ -137,13 +70,6 @@ struct LCMPass : public llvm::FunctionPass {
       aeg.test();
       llvm::errs() << "done\n";
 
-      // DEBUG: print out function, loop info
-      auto& os = llvm::errs();
-      os << "Loops:\n";
-      aegpo.dump_loops(os);
-      os << "Funcs:\n";
-      aegpo.dump_funcs(os);
-      
       return false;
    }
 };

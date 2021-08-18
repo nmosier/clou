@@ -11,6 +11,7 @@ add_library(lcm MODULE
   aeg.cc
   inst.cc
   aeg-expanded.cc
+  aeg-unrolled.cc
   )
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
 target_link_libraries(lcm PRIVATE z3 ${LIBPROFILER_LIBRARIES})

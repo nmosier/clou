@@ -140,7 +140,7 @@ public:
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
 
-   explicit AEG(const AEGPO_Base_& po): po(po), context(), constraints(context) {}
+   explicit AEG(const AEGPO2& po): po(po), context(), constraints(context) {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -150,7 +150,7 @@ public:
    void test();
 
 private:
-   const AEGPO_Base_& po;
+   const AEGPO2& po;
    UHBContext context;
    UHBConstraints constraints;
    std::vector<Node> nodes;
