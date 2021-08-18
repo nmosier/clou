@@ -23,6 +23,10 @@ struct AEGPO_Node_Base {
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node);
 
+class AEGPO_Base_ {
+   
+}
+
 template <typename NodeT>
 class AEGPO_Base {
 public:

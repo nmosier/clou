@@ -72,7 +72,7 @@ struct UHBNode {
    z3::expr tfo; // transient fetch order variable
    z3::expr tfo_depth; // transient depth
    std::optional<UHBAddress> addr_def;
-   std::unordered_map<const llvm::Value *, z3::expr> addr_refs;
+   std::vector<std::pair<const llvm::Value *, z3::expr>> addr_refs;
    UHBConstraints constraints;
    
    void simplify() {
@@ -149,7 +149,7 @@ public:
    void simplify();
 
    void test();
-   
+
 private:
    UHBContext context;
    UHBConstraints constraints;
@@ -166,7 +166,27 @@ private:
 
    template <typename T>
    void construct_aliases(const AEGPO_Base<T>& po, llvm::AliasAnalysis& AA);
+
+   template <typename T>
+   void construct_com(const AEGPO_Base<T>& po);
+
+   template <typename Pred>
+   void for_each_pred(NodeRef ref, Pred pred);
+
+   struct CondNode {
+      NodeRef ref;
+      z3::expr cond;
+   }; 
+   template <Inst::Kind KIND, typename T, typename OutputIt>
+   void find_sourced_memops(const AEGPO_Base<T>& po, NodeRef org, OutputIt out) const;
+   template <typename T, typename OutputIt>
+   void find_sourced_writes(const AEGPO_Base<T>& po, NodeRef read, OutputIt out) const;
+   template <typename T, typename OutputIt>
+   void find_sourced_reads(const AEGPO_Base<T>& po, NodeRef read, OutputIt out) const;
+   template <typename T, typename OutputIt>
+   void find_preceding_writes(const AEGPO_Base<T>& po, NodeRef write, OutputIt out) const;
    
+
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {
       return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
@@ -296,6 +316,163 @@ void AEG::construct_edges_po_tfo(const AEGPO_Base<T>& po) {
 
 template <typename T>
 void AEG::construct_aliases(const AEGPO_Base<T>& po, llvm::AliasAnalysis& AA) {
-   
-   
 }
+
+
+template <Inst::Kind KIND, typename T, typename OutputIt>
+void AEG::find_sourced_memops(const AEGPO_Base<T>& po, NodeRef org, OutputIt out) const {
+   const Node& org_node = lookup(org);
+   const z3::expr& org_addr = org_node.addr_refs.at(0).second;
+   
+   std::deque<CondNode> todo;
+   const auto& init_preds = po.po.rev.at(org);
+   std::transform(init_preds.begin(), init_preds.end(), std::front_inserter(todo),
+                  [&] (NodeRef ref) {
+                     return CondNode {ref, context.TRUE};
+                  });
+
+   while (!todo.empty()) {
+      const CondNode& cn = todo.back();
+      const Node& node = lookup(cn.ref);
+
+      if (node.inst.kind == KIND) {
+         const z3::expr same_addr = org_addr == node.addr_refs.at(0).second;
+         const z3::expr path_taken = node.po;
+         *out++ = CondNode {cn.ref, cn.cond && same_addr && path_taken};
+         for (NodeRef pred : po.po.rev.at(cn.ref)) {
+            todo.emplace_back(pred, cn.cond && !same_addr && path_taken);
+         }
+      }
+      
+      todo.pop_back();
+   }
+                  
+}
+
+template <typename T, typename OutputIt>
+void AEG::find_sourced_writes(const AEGPO_Base<T>& po, NodeRef read, OutputIt out) const {
+   find_sourced_memops<Inst::WRITE>(po, read, out);
+}
+
+template <typename T, typename OutputIt>
+void AEG::find_sourced_reads(const AEGPO_Base<T>& po, NodeRef write, OutputIt out) const {
+   find_sourced_memops<Inst::READ>(po, write, out);
+}
+
+#if 0
+template <typename T, typename OutputIt>
+void AEG::find_sourced_writes(const AEGPO_Base<T>& po, NodeRef read, OutputIt out) const {
+   const Node& read_node = lookup(read);
+   assert(read_node.addr_refs.size() == 1);
+   const z3::expr& read_addr = read_node.addr_refs.at(0).second;
+   
+   std::deque<CondNode> todo;
+   const auto& init_preds = po.po.rev.at(read);
+   std::transform(init_preds.begin(), init_preds.end(), std::front_inserter(todo),
+                  [&] (NodeRef ref) {
+                     return CondNode {ref, context.TRUE};
+                  });
+
+   while (!todo.empty()) {
+      const CondNode& cn = todo.back();
+      const Node& node = lookup(cn.ref);
+
+      if (node.inst.kind == Inst::WRITE) {
+         const z3::expr same_addr = read_addr == node.addr_refs.at(0).second;
+         const z3::expr path_taken = node.po;
+         *out++ = CondNode {cn.ref, cn.cond && same_addr && path_taken};
+         for (NodeRef pred : po.po.rev.at(cn.ref)) {
+            todo.emplace_back(pred, cn.cond && !same_addr && path_taken);
+         }
+      }
+      
+      todo.pop_back();
+   }
+                  
+}
+#endif
+
+template <typename T, typename OutputIt>
+void AEG::find_preceding_writes(const AEGPO_Base<T>& po, NodeRef write, OutputIt out) const {
+   const Node& write_node = lookup(write);
+   const z3::expr& write_addr = write_node.addr_refs.at(0).second;
+
+   std::deque<NodeRef> todo;
+   const auto& init_preds = po.po.rev.at(write);
+   std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(todo));
+
+   while (!todo.empty()) {
+      NodeRef ref = todo.back();
+      todo.pop_back();
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::WRITE) {
+         const z3::expr same_addr = write_addr == node.addr_refs.at(0).second;
+         const z3::expr path_taken = node.po;
+         *out++ = CondNode {ref, same_addr && path_taken};
+         const auto& preds = po.po.rev.at(ref);
+         std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
+      }
+   }
+}
+
+
+template <typename T>
+void AEG::construct_com(const AEGPO_Base<T>& po) {
+   assert(po.nodes.size() == nodes.size());
+   
+   /* construct rf */
+   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::READ) {
+         /* get set of possible writes */
+         std::vector<CondNode> writes;
+         find_sourced_writes(po, ref, std::back_inserter(writes));
+
+         /* add edges */
+         for (const CondNode& write : writes) {
+            Edge e {Edge::RF, context};
+            e.exists = node.po && write.cond;
+            graph.insert(write.ref, ref, e);
+         }
+      }
+   }
+
+   /* construct co */
+   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::WRITE) {
+         /* get set of possible writes */
+         std::vector<CondNode> writes;
+         find_preceding_writes(po, ref, std::back_inserter(writes));
+
+         /* add edges */
+         for (const CondNode& write : writes) {
+            Edge e {Edge::CO, context};
+            e.exists = node.po && write.cond;
+            graph.insert(write.ref, ref, e);
+         }
+      }
+   }
+   
+   /* construct fr 
+    * This is computed as ~rf.co, I think.
+    * But the easier way for now is to construct it directly, like above for rf and co.
+    */
+   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::WRITE) {
+         /* get set of possible reads */
+         std::vector<CondNode> reads;
+         find_sourced_reads(po, ref, std::back_inserter(reads));
+
+         /* add edges */
+         for (const CondNode& read : reads) {
+            Edge e {Edge::FR, context};
+            e.exists = node.po && read.cond;
+            graph.insert(read.ref, ref, e);
+         }
+      }
+   }
+}
+
+

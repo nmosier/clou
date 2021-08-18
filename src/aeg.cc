@@ -233,3 +233,20 @@ AEG::NodeRef AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref) c
 }
 #endif
 
+#if 0
+template <typename Pred>
+void AEG::for_each_pred(NodeRef ref, Pred pred) {
+   std::deque<NodeRef> todo;
+   const auto& init_preds = graph.rev.at(ref);
+   std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(todo));
+
+   while (!todo.empty()) {
+      const NodeRef ref = todo.back();
+      todo.pop_back();
+      if (pred(ref)) {
+         const auto& preds = graph.rev.at(ref);
+         std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
+      }
+   }
+}
+#endif
