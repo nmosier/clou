@@ -1,3 +1,5 @@
+#include <deque>
+
 #include <llvm/IR/Dominators.h>
 
 #include "aeg-unrolled.h"
@@ -13,6 +15,7 @@ void AEGPO_Unrolled::construct() {
       add_edge(exit_pair.second, exit);
    }
    prune();
+   pass_resolve_addr_refs();
 }
 
 void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {
@@ -20,15 +23,28 @@ void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& por
       construct_call(C, port, ids); 
    } else {
       Node node {I};
-      node.func_id = ids.func_id;
-      node.loop_id = ids.loop_ids;
+      node.id = ids.id;
       port.entry = add_node(node);
       port.exits = {{I->getParent(), port.entry}};
    }
 }
 
 void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
+   const llvm::Function *F = C->getCalledFunction();
+   const FuncID caller_id = ids.id.func;
+   ids.push();
+   const FuncID callee_id = ids.id.func;
+   
+   /* add values to parameter map */
+   assert(F->arg_size() == C->arg_size());
+   auto FA_it = F->arg_begin();
+   auto CA_it = C->arg_begin();
+   for (; FA_it != F->arg_end(); ++FA_it, ++CA_it) {
+      params[{callee_id, &*FA_it}] = {caller_id, *CA_it};
+   }
+   
    construct_function(C->getCalledFunction(), port, ids);
+   ids.pop();
 }
 
 void AEGPO_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids) {
@@ -153,7 +169,7 @@ void AEGPO_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
    std::vector<Iteration> iterations;
    for (unsigned i = 0; i < num_unrolls + 1; ++i) {
       // set loop id
-      ids.loop_ids.push_back(ids.next_loop_id++);
+      ids.id.loop.push_back(ids.next_loop++);
       
       Iteration iteration;
       NodeRefSet iteration_nodes;
@@ -169,7 +185,7 @@ void AEGPO_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
 
       iterations.push_back(iteration);
 
-      ids.loop_ids.pop_back();
+      ids.id.loop.pop_back();
    }
 
    /* Glue iterations together */
@@ -207,6 +223,70 @@ void AEGPO_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids)
    std::copy(loop_info.begin(), loop_info.end(), std::back_inserter(LF.loops));
    NodeRefSet func_nodes;
    construct_loop_forest(&LF, port, ids);
-   
-   ++ids.func_id;
+}
+
+bool AEGPO_Unrolled::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
+   if (done.find(ref) != done.end()) {
+      return true;
+   }
+
+   bool acc = true;
+   for (NodeRef succ : po.fwd.at(ref)) {
+      acc &= postorder_rec(done, order, succ);
+   }
+
+   if (acc) {
+      done.insert(ref);
+      order.push_back(ref);
+   }
+
+   return acc;
+}
+
+template <typename OutputIt>
+void AEGPO_Unrolled::reverse_postorder(OutputIt out) const {
+   std::unordered_set<NodeRef> done;
+   std::vector<NodeRef> order;
+   postorder_rec(done, order, entry);
+   std::copy(order.rbegin(), order.rend(), out) ;
+}
+
+void AEGPO_Unrolled::pass_resolve_addr_refs() {
+   // use a reverse postorder traversal
+   std::unordered_map<NodeRef, Binding> bindings;
+   std::vector<NodeRef> order;
+   reverse_postorder(std::back_inserter(order));
+
+   // DEBUG
+   llvm::errs() << "Reverse postorder:";
+   for (NodeRef ref : order) {
+      llvm::errs() << " " << ref;
+   }
+   llvm::errs() << "\n";
+
+   for (NodeRef ref : order) {
+      Node& node = lookup(ref);
+
+      // compute binding: is union of all incoming paths
+      Binding binding;
+      const auto& preds = po.rev.at(ref);
+      for (NodeRef pred : preds) {
+         binding.join(bindings.at(pred));
+      }
+      
+      if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+         const llvm::Instruction *I = *Ip;
+         binding.insts.emplace(I, ref);
+         // TODO: Need to resolve operand dependencies.
+         for (const llvm::Value *V : I->operand_values()) {
+            if (std::optional<NodeRefSet> def = binding.bind(V)) {
+               node.refs.emplace(V, *def);
+            } else {
+               assert(llvm::dyn_cast<llvm::Instruction>(V) == nullptr);
+            }
+         }
+      }
+
+      bindings.emplace(ref, binding);      
+   }
 }

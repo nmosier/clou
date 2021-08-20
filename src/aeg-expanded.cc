@@ -5,7 +5,7 @@
 void AEGPO_Expanded::construct(const AEGPO2& in) {
    // create entry
    NodeRef in_src = in.entry;
-   NodeRef src = add_node(Node {in.lookup(in_src).v});
+   NodeRef src = add_node(in.lookup(in_src));
    entry = src;
    NodeMap map {{in_src, src}};
 
@@ -34,7 +34,7 @@ void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_
    ++spec_depth;
    if (spec_depth < num_specs) {
       /* create private node */
-      dst = add_node(Node {in.lookup(in_dst).v});
+      dst = add_node(in.lookup(in_dst));
       newnode = true;
       llvm::errs() << "private " << dst << "\n";
    } else {
@@ -42,7 +42,7 @@ void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_
       const auto it = map.find(in_dst);
       if (it == map.end()) {
          // create
-         dst = add_node(Node {in.lookup(in_dst).v});
+         dst = add_node(in.lookup(in_dst));
          map.emplace(in_dst, dst);
          newnode = true;
       } else {

@@ -181,7 +181,10 @@ namespace util {
 
    template <typename T, typename InputIt, typename UnaryPredicate>
    T any_of(InputIt begin, InputIt end, UnaryPredicate p, T false_val) {
-      return std::transform_reduce(begin, end, false_val, std::logical_or<T>(), p);
+      return std::transform_reduce(begin, end, false_val,
+                                   [] (const T& a, const T& b) -> T {
+                                      return a || b;
+                                   }, p);
    }
    
    template <typename T>

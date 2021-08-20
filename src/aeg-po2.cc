@@ -10,18 +10,16 @@
  */
 
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node) {
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
    std::visit(util::overloaded {
          [&] (Entry) { os << "<ENTRY>"; },
          [&] (Exit)  { os << "<EXIT>";  },
          [&] (const llvm::Instruction *I) { os << *I; },
       }, node());
-   if (node.func_id) {
-      os << " F" << *node.func_id;
-   }
-   if (!node.loop_id.empty()) {
+   if (node.id) {
+      os << " F" << node.id->func;
       os << " L";
-      for (auto loop_id : node.loop_id) {
+      for (auto loop_id : node.id->loop) {
          os << loop_id << ",";
       }
    }
@@ -87,19 +85,22 @@ void AEGPO2::prune() {
    po = std::move(new_po);
 }
 
-bool AEGPO2::alias_valid(const Node& a, const Node& b) {
-   if (!(a.func_id && b.func_id)) {
-      return false;
-   }
-   if (*a.func_id != *b.func_id) {
+bool AEGPO2::alias_valid(const ID& a, const ID& b) {
+   if (a.func != b.func) {
       return false;
    }
 
-   if (!std::equal(a.loop_id.begin(),
-                   a.loop_id.begin() + std::min(a.loop_id.size(), b.loop_id.size()),
-                   b.loop_id.begin())) {
+   if (!std::equal(a.loop.begin(), a.loop.begin() + std::min(a.loop.size(), b.loop.size()),
+                   b.loop.begin())) {
       return false;
    }
 
    return true;
+}
+
+bool AEGPO2::alias_valid(const Node& a, const Node& b) {
+   if (!(a.id && b.id)) {
+      return false;
+   }
+   return alias_valid(*a.id, *b.id);
 }

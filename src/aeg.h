@@ -2,7 +2,7 @@
 
 #include <string>
 #include <cassert>
-#include <deque>
+#include <unordered_set>
 
 #include <llvm/IR/Instruction.h>
 #include <llvm/Analysis/AliasAnalysis.h>
@@ -71,7 +71,7 @@ struct UHBNode {
    z3::expr po;  // program order variable
    z3::expr tfo; // transient fetch order variable
    z3::expr tfo_depth; // transient depth
-   std::optional<UHBAddress> addr_def;
+   std::optional<z3::expr> addr_def;
    std::vector<std::pair<const llvm::Value *, z3::expr>> addr_refs;
    UHBConstraints constraints;
    
@@ -149,15 +149,20 @@ public:
 
    void test();
 
+   std::size_t size() const { return nodes.size(); }
+
 private:
    const AEGPO2& po;
    UHBContext context;
    UHBConstraints constraints;
    std::vector<Node> nodes;
 
+   void construct_nodes();
    void construct_nodes_po();
    void construct_nodes_tfo(unsigned spec_depth);
    void construct_edges_po_tfo();
+   void construct_nodes_addr_defs();
+   void construct_nodes_addr_refs();
    void construct_aliases(llvm::AliasAnalysis& AA);
    void construct_com();
 
@@ -179,116 +184,16 @@ private:
    NodeRange node_range() const {
       return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
    }
-   
-#if 0
-   template <typename... Ts>
-   NodeRef add_node(Ts&&... ts) {
-      const NodeRef ref {static_cast<unsigned>(nodes.size())};
-      nodes.emplace_back(std::forward<Ts>(ts)...);
+
+   void find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
+                          std::unordered_set<NodeRef>& out) const;
+
+   NodeRef add_node(const Node& node) {
+      const NodeRef ref = size();
+      nodes.push_back(node);
+      graph.add_node(ref);
       return ref;
    }
-#endif
-
-   NodeRef find_upstream_def(NodeRef node, const llvm::Value *addr_ref) const;
 };
-
-
-
-
-template <Inst::Kind KIND, typename OutputIt>
-void AEG::find_sourced_memops(NodeRef org, OutputIt out) const {
-   const Node& org_node = lookup(org);
-   const z3::expr& org_addr = org_node.addr_refs.at(0).second;
-   
-   std::deque<CondNode> todo;
-   const auto& init_preds = po.po.rev.at(org);
-   std::transform(init_preds.begin(), init_preds.end(), std::front_inserter(todo),
-                  [&] (NodeRef ref) {
-                     return CondNode {ref, context.TRUE};
-                  });
-
-   while (!todo.empty()) {
-      const CondNode& cn = todo.back();
-      const Node& node = lookup(cn.ref);
-
-      if (node.inst.kind == KIND) {
-         const z3::expr same_addr = org_addr == node.addr_refs.at(0).second;
-         const z3::expr path_taken = node.po;
-         *out++ = CondNode {cn.ref, cn.cond && same_addr && path_taken};
-         for (NodeRef pred : po.po.rev.at(cn.ref)) {
-            todo.push_back({pred, cn.cond && !same_addr && path_taken});
-         }
-      }
-      
-      todo.pop_back();
-   }
-                  
-}
-
-template <typename OutputIt>
-void AEG::find_sourced_writes(NodeRef read, OutputIt out) const {
-   find_sourced_memops<Inst::WRITE>(read, out);
-}
-
-template <typename OutputIt>
-void AEG::find_sourced_reads(NodeRef write, OutputIt out) const {
-   find_sourced_memops<Inst::READ>(write, out);
-}
-
-#if 0
-template <typename OutputIt>
-void AEG::find_sourced_writes(NodeRef read, OutputIt out) const {
-   const Node& read_node = lookup(read);
-   assert(read_node.addr_refs.size() == 1);
-   const z3::expr& read_addr = read_node.addr_refs.at(0).second;
-   
-   std::deque<CondNode> todo;
-   const auto& init_preds = po.po.rev.at(read);
-   std::transform(init_preds.begin(), init_preds.end(), std::front_inserter(todo),
-                  [&] (NodeRef ref) {
-                     return CondNode {ref, context.TRUE};
-                  });
-
-   while (!todo.empty()) {
-      const CondNode& cn = todo.back();
-      const Node& node = lookup(cn.ref);
-
-      if (node.inst.kind == Inst::WRITE) {
-         const z3::expr same_addr = read_addr == node.addr_refs.at(0).second;
-         const z3::expr path_taken = node.po;
-         *out++ = CondNode {cn.ref, cn.cond && same_addr && path_taken};
-         for (NodeRef pred : po.po.rev.at(cn.ref)) {
-            todo.emplace_back(pred, cn.cond && !same_addr && path_taken);
-         }
-      }
-      
-      todo.pop_back();
-   }
-                  
-}
-#endif
-
-template <typename OutputIt>
-void AEG::find_preceding_writes(NodeRef write, OutputIt out) const {
-   const Node& write_node = lookup(write);
-   const z3::expr& write_addr = write_node.addr_refs.at(0).second;
-
-   std::deque<NodeRef> todo;
-   const auto& init_preds = po.po.rev.at(write);
-   std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(todo));
-
-   while (!todo.empty()) {
-      NodeRef ref = todo.back();
-      todo.pop_back();
-      const Node& node = lookup(ref);
-      if (node.inst.kind == Inst::WRITE) {
-         const z3::expr same_addr = write_addr == node.addr_refs.at(0).second;
-         const z3::expr path_taken = node.po;
-         *out++ = CondNode {ref, same_addr && path_taken};
-         const auto& preds = po.po.rev.at(ref);
-         std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
-      }
-   }
-}
 
 

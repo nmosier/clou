@@ -5,7 +5,6 @@
 
 #include "z3-util.h"
 #include "aeg.h"
-#include "mcfg.h"
 #include "config.h"
 
 /* TODO
@@ -96,7 +95,7 @@ digraph G {
          << "tfo: " << node.tfo << "\n"
          << "tfo_depth: " << node.tfo_depth << "\n";
 
-#if 0
+#if 1
       if (node.addr_def) {
          ss << "addr (def): " << *node.addr_def << "\n";
       }
@@ -210,9 +209,8 @@ void AEG::test() {
  *  - Self-alias checks always returns 'may alias' to generalize across loops.
  */
 
-
-#if 0
-AEG::NodeRef AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref) const {
+void AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
+                            std::unordered_set<NodeRef>& out) const {
    /* Use BFS */
    std::deque<NodeRef> queue;
    const auto& init_preds = po.po.rev.at(node);
@@ -223,15 +221,13 @@ AEG::NodeRef AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref) c
       queue.pop_back();
       const Node& node = lookup(nr);
       if (node.inst.addr_def == addr_ref) {
-         return nr;
+         out.insert(nr);
+      } else {
+         const auto& preds = po.po.rev.at(nr);
+         std::copy(preds.begin(), preds.end(), std::front_inserter(queue));
       }
-      const auto& preds = po.po.rev.at(nr);
-      std::copy(preds.begin(), preds.end(), std::front_inserter(queue));
    }
-
-   throw std::logic_error("address definition not found");
 }
-#endif
 
 #if 0
 template <typename Pred>
@@ -271,8 +267,65 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
    construct_nodes_tfo(spec_depth);
    logv(2) << "Constructing edges po tfo\n";
    construct_edges_po_tfo();
+   logv(2) << "Constructing nodes addr defs\n";
+   construct_nodes_addr_defs();
+   logv(2) << "Constructing nodes addr refs\n";
+   construct_nodes_addr_refs();
    logv(2) << "Constructing aliases\n";
    construct_aliases(AA);
+   logv(2) << "Constructing com\n";
+   construct_com();
+}
+
+void AEG::construct_nodes_addr_defs() {
+   for (Node& node : nodes) {
+      if (node.inst.addr_def) {
+         node.addr_def = context.make_int();
+      }
+   }
+}
+
+void AEG::construct_nodes_addr_refs() {
+   std::unordered_map<const llvm::Argument *, z3::expr> main_args;
+   
+   for (NodeRef ref = 0; ref < size(); ++ref) {
+      const AEGPO2::Node& po_node = po.lookup(ref);
+      Node& node = lookup(ref);
+      for (const llvm::Value *V : node.inst.addr_refs) {
+         const auto defs_it = po_node.refs.find(V);
+         z3::expr e {context.context};
+         if (defs_it == po_node.refs.end()) {
+            const llvm::Argument *A = llvm::cast<llvm::Argument>(V);
+            auto main_args_it = main_args.find(A);
+            if (main_args_it == main_args.end()) {
+               main_args_it = main_args.emplace(A, context.make_int()).first;
+            }
+            e = main_args_it->second;
+         } else {
+            const AEGPO2::NodeRefSet& defs = defs_it->second;
+
+            /* If defs only has one element (likely case), then we can just lookup that element's 
+             * address definition integer. Otherwise, we define a new symbolic int that must be equal 
+             * to one of the possiblities.
+             */
+            const auto lookup_def = [&] (NodeRef def) {
+               return *lookup(def).addr_def;
+            };
+            if (defs.size() == 1) {
+               e = lookup_def(*defs.begin());
+            } else {
+               e = context.make_int();
+               if (defs.size() != 0) {
+                  node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
+                                                          [&] (NodeRef def) {
+                                                             return lookup_def(def) == e;
+                                                          }, context.FALSE));
+               }
+            }
+         }
+         node.addr_refs.emplace_back(V, e);
+      }
+   }
 }
 
 void AEG::construct_nodes_po() {
@@ -358,6 +411,63 @@ void AEG::construct_edges_po_tfo() {
 }
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
+   using ID = AEGPO2::ID;
+   struct Info {
+      ID id;
+      const llvm::Value *V;
+      z3::expr e;
+   };
+   std::vector<Info> addrs;
+   std::unordered_set<std::pair<ID, const llvm::Value *>> seen;
+   for (NodeRef i = 0; i < size(); ++i) {
+      const Node& node = lookup(i);
+      if (node.addr_def) {
+         const ID& id = *po.lookup(i).id;
+         const llvm::Value *V = node.inst.I;
+         addrs.push_back({id, V, *node.addr_def});
+         [[maybe_unused]] const auto res = seen.emplace(id, V);
+         assert(res.second);
+      }
+   }
+
+   // check for arguments
+   for (NodeRef i = 0; i < size(); ++i) {
+      const Node& node = lookup(i);
+      const AEGPO2::Node& po_node = po.lookup(i);
+      for (const llvm::Value *V : node.inst.addr_refs) {
+         if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+            const ID id {po_node.id->func, {}};
+            if (seen.emplace(id, V).second) {
+               const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),
+                                            [&] (const auto& p) {
+                                               return p.first == V;
+                                            });
+               assert(it != node.addr_refs.end());
+               addrs.push_back({id, V, it->second});
+            }
+         }
+      }
+   }
+   
+   // add constraints
+   for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
+      for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
+         if (po.alias_valid(it1->id, it2->id)) {
+            const auto alias_res = AA.alias(it1->V, it2->V);
+            switch (alias_res) {
+            case llvm::NoAlias:
+               constraints(it1->e != it2->e);
+               break;
+            case llvm::MayAlias:
+               break;
+            case llvm::MustAlias:
+               constraints(it1->e == it2->e);
+               break;
+            default: std::abort();
+            }
+         }
+      }
+   }
 }
 
 void AEG::construct_com() {
@@ -414,6 +524,72 @@ void AEG::construct_com() {
             e.exists = node.po && read.cond;
             graph.insert(read.ref, ref, e);
          }
+      }
+   }
+}
+
+
+template <Inst::Kind KIND, typename OutputIt>
+void AEG::find_sourced_memops(NodeRef org, OutputIt out) const {
+   const Node& org_node = lookup(org);
+   const z3::expr& org_addr = org_node.addr_refs.at(0).second;
+   
+   std::deque<CondNode> todo;
+   const auto& init_preds = po.po.rev.at(org);
+   std::transform(init_preds.begin(), init_preds.end(), std::front_inserter(todo),
+                  [&] (NodeRef ref) {
+                     return CondNode {ref, context.TRUE};
+                  });
+
+   while (!todo.empty()) {
+      const CondNode& cn = todo.back();
+      const Node& node = lookup(cn.ref);
+
+      if (node.inst.kind == KIND) {
+         const z3::expr same_addr = org_addr == node.addr_refs.at(0).second;
+         const z3::expr path_taken = node.po;
+         *out++ = CondNode {cn.ref, cn.cond && same_addr && path_taken};
+         for (NodeRef pred : po.po.rev.at(cn.ref)) {
+            todo.push_back({pred, cn.cond && !same_addr && path_taken});
+         }
+      }
+      
+      todo.pop_back();
+   }
+                  
+}
+
+
+
+template <typename OutputIt>
+void AEG::find_sourced_writes(NodeRef read, OutputIt out) const {
+   find_sourced_memops<Inst::WRITE>(read, out);
+}
+
+template <typename OutputIt>
+void AEG::find_sourced_reads(NodeRef write, OutputIt out) const {
+   find_sourced_memops<Inst::READ>(write, out);
+}
+
+template <typename OutputIt>
+void AEG::find_preceding_writes(NodeRef write, OutputIt out) const {
+   const Node& write_node = lookup(write);
+   const z3::expr& write_addr = write_node.addr_refs.at(0).second;
+
+   std::deque<NodeRef> todo;
+   const auto& init_preds = po.po.rev.at(write);
+   std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(todo));
+
+   while (!todo.empty()) {
+      NodeRef ref = todo.back();
+      todo.pop_back();
+      const Node& node = lookup(ref);
+      if (node.inst.kind == Inst::WRITE) {
+         const z3::expr same_addr = write_addr == node.addr_refs.at(0).second;
+         const z3::expr path_taken = node.po;
+         *out++ = CondNode {ref, same_addr && path_taken};
+         const auto& preds = po.po.rev.at(ref);
+         std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
       }
    }
 }

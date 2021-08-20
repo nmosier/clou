@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#if 0
 template <typename Class>
 class NodeRef {
 public:
@@ -28,3 +29,4 @@ namespace std {
       }
    };
 }
+#endif

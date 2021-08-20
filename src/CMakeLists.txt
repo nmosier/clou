@@ -4,10 +4,8 @@ add_library(lcm MODULE
   lcm.cc
   util.cc
   addr.cc
-  mcfg.cc
   aeg-po2.cc
   config.cc
-  cfg.cc
   aeg.cc
   inst.cc
   aeg-expanded.cc

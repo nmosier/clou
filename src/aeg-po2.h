@@ -11,29 +11,9 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/LoopInfo.h>
 
-#include "noderef.h"
 #include "binrel.h"
 #include "lcm.h"
-
-// TODO: Resign this so it's a pure variant.
-// TODO: Maybe avoid templating nodes too; just use one node definition.
-struct AEGPO_Node_Base {
-   using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
-   Variant v;
-   std::optional<unsigned> func_id;
-   std::vector<unsigned> loop_id;
-   const Variant& operator()() const { return v; }
-   Variant& operator()() { return v; }
-
-   AEGPO_Node_Base() {} // TODO: remove this?
-   template <typename Arg>
-   AEGPO_Node_Base(const Arg& arg): v(arg) {}
-   static AEGPO_Node_Base make_entry() { return AEGPO_Node_Base {Entry {}}; }
-   static AEGPO_Node_Base make_exit() { return AEGPO_Node_Base {Exit {}}; }
-   static AEGPO_Node_Base make(const llvm::Instruction *I) { return AEGPO_Node_Base {I}; }
-};
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node);
+#include "hash.h"
 
 /* How to determine if you can use AA results to check whether A aliases B:
  * - Must be the case that A.func_id == B.func_id
@@ -43,8 +23,38 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO_Node_Base& node
 
 class AEGPO2 {
 public:
-   using Node = AEGPO_Node_Base;
    using NodeRef = std::size_t;
+   using NodeRefSet = std::unordered_set<NodeRef>;
+   using NodeRefVec = std::vector<NodeRef>;
+   using FuncID = unsigned;
+   using LoopID = unsigned;
+
+   // TODO: Need to use stack for loops too
+   struct ID {
+      FuncID func;
+      std::vector<LoopID> loop;
+      bool operator==(const ID& other) const {
+         return func == other.func && loop == other.loop;
+      }
+   };
+   
+   struct Node {
+      using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
+      
+      Variant v;
+      std::optional<ID> id;
+      std::unordered_map<const llvm::Value *, NodeRefSet> refs;
+      
+      const Variant& operator()() const { return v; }
+      Variant& operator()() { return v; }
+
+      Node() {} // TODO: remove this?
+      template <typename Arg>
+      explicit Node(const Arg& arg): v(arg) {}
+      static Node make_entry() { return Node {Entry {}}; }
+      static Node make_exit() { return Node {Exit {}}; }
+      static Node make(const llvm::Instruction *I) { return Node {I}; }
+   };
    using Rel = binrel<NodeRef>;
    Rel po;
    NodeRef entry;
@@ -55,11 +65,7 @@ public:
    Node& lookup(NodeRef ref) { return nodes.at(ref); }
    const Node& lookup(NodeRef ref) const { return nodes.at(ref); }
 
-   using NodeRefSet = std::unordered_set<NodeRef>;
-
    llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
-
-
 
    void dump_graph(const std::string& path) const {
       po.group().dump_graph(path, [&] (auto& os, const auto& group) {
@@ -71,6 +77,10 @@ public:
 
    std::size_t size() const { return nodes.size(); }
 
+   static bool alias_valid(const ID& a, const ID& b);
+   static bool alias_valid(const Node& a, const Node& b);
+   bool alias_valid(NodeRef a, NodeRef b) const { return alias_valid(lookup(a), lookup(b)); }
+   
 protected:
    NodeRef add_node(const Node& node) {
       const NodeRef ref = size();
@@ -87,10 +97,11 @@ protected:
       po.erase(src, dst);
    }
 
-   static bool alias_valid(const Node& a, const Node& b);
-
    void prune();   
 };
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node);
+
 
 /* Functions and loops may have multiple exits.
  * For functions, these are return instructions.
@@ -111,3 +122,12 @@ protected:
  * For all of these, they must have exactly one entering instruction and any number of exiting 
  * instructions (for now, we can assume >= 1 exits).
  */
+
+namespace std {
+   template <>
+   struct hash<AEGPO2::ID> {
+      std::size_t operator()(const AEGPO2::ID& id) const {
+         return hash_ordered_tuple(id.func, id.loop);
+      }
+   };
+}
