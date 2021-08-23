@@ -34,3 +34,7 @@ target_compile_options(loops PRIVATE -fno-rtti)
 if(APPLE)
   target_link_options(loops PRIVATE -undefined dynamic_lookup)
 endif()
+
+add_executable(tarjan-test
+  tarjan-test.cc
+  )

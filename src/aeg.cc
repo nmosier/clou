@@ -50,8 +50,10 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
 UHBNode::UHBNode(const Inst& inst, UHBContext& c):
-   inst(inst), po(c.make_bool()), tfo(c.make_bool()), tfo_depth(c.make_int()),
-   constraints(c) {}
+   inst(inst), po(c.make_bool()),
+   tfo(c.make_bool()), tfo_depth(c.make_int()),
+   xsread(c.FALSE), xswrite(c.FALSE),
+   constraints() {}
 
 
 void AEG::dump_graph(const std::string& path) const {
@@ -229,25 +231,6 @@ void AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
    }
 }
 
-#if 0
-template <typename Pred>
-void AEG::for_each_pred(NodeRef ref, Pred pred) {
-   std::deque<NodeRef> todo;
-   const auto& init_preds = graph.rev.at(ref);
-   std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(todo));
-
-   while (!todo.empty()) {
-      const NodeRef ref = todo.back();
-      todo.pop_back();
-      if (pred(ref)) {
-         const auto& preds = graph.rev.at(ref);
-         std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
-      }
-   }
-}
-#endif
-
-
 void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
    // initialize nodes
    std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
@@ -275,30 +258,33 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
    construct_aliases(AA);
    logv(2) << "Constructing com\n";
    construct_com();
+   logv(2) << "Constructing comx\n";
+   construct_comx();
 }
 
 void AEG::construct_nodes_addr_defs() {
    for (Node& node : nodes) {
       if (node.inst.addr_def) {
-         node.addr_def = context.make_int();
+         node.addr_def = UHBAddress {context};
       }
    }
 }
 
 void AEG::construct_nodes_addr_refs() {
-   std::unordered_map<const llvm::Argument *, z3::expr> main_args;
+   std::unordered_map<const llvm::Argument *, UHBAddress> main_args;
    
    for (NodeRef ref = 0; ref < size(); ++ref) {
       const AEGPO2::Node& po_node = po.lookup(ref);
       Node& node = lookup(ref);
       for (const llvm::Value *V : node.inst.addr_refs) {
          const auto defs_it = po_node.refs.find(V);
-         z3::expr e {context.context};
+         std::optional<UHBAddress> e;
+         // z3::expr e {context.context};
          if (defs_it == po_node.refs.end()) {
             const llvm::Argument *A = llvm::cast<llvm::Argument>(V);
             auto main_args_it = main_args.find(A);
             if (main_args_it == main_args.end()) {
-               main_args_it = main_args.emplace(A, context.make_int()).first;
+               main_args_it = main_args.emplace(A, UHBAddress {context}).first;
             }
             e = main_args_it->second;
          } else {
@@ -314,16 +300,20 @@ void AEG::construct_nodes_addr_refs() {
             if (defs.size() == 1) {
                e = lookup_def(*defs.begin());
             } else {
-               e = context.make_int();
+               e = UHBAddress {context};
                if (defs.size() != 0) {
                   node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                           [&] (NodeRef def) {
-                                                             return lookup_def(def) == e;
+                                                             return lookup_def(def).po == e->po;
+                                                          }, context.FALSE));
+                  node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
+                                                          [&] (NodeRef def) {
+                                                             return lookup_def(def).tfo == e->tfo;
                                                           }, context.FALSE));
                }
             }
          }
-         node.addr_refs.emplace_back(V, e);
+         node.addr_refs.emplace_back(V, *e);
       }
    }
 }
@@ -424,7 +414,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
       if (node.addr_def) {
          const ID& id = *po.lookup(i).id;
          const llvm::Value *V = node.inst.I;
-         addrs.push_back({id, V, *node.addr_def});
+         addrs.push_back({id, V, node.addr_def->po});
          [[maybe_unused]] const auto res = seen.emplace(id, V);
          assert(res.second);
       }
@@ -443,7 +433,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                                                return p.first == V;
                                             });
                assert(it != node.addr_refs.end());
-               addrs.push_back({id, V, it->second});
+               addrs.push_back({id, V, it->second.po});
             }
          }
       }
@@ -472,14 +462,14 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 
 void AEG::construct_com() {
    assert(po.nodes.size() == nodes.size());
-   
+
    /* construct rf */
    for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
       const Node& node = lookup(ref);
       if (node.inst.kind == Inst::READ) {
          /* get set of possible writes */
          std::vector<CondNode> writes;
-         find_sourced_writes(ref, std::back_inserter(writes));
+         find_sourced_memops(Inst::WRITE, ref, std::back_inserter(writes));
 
          /* add edges */
          for (const CondNode& write : writes) {
@@ -496,7 +486,7 @@ void AEG::construct_com() {
       if (node.inst.kind == Inst::WRITE) {
          /* get set of possible writes */
          std::vector<CondNode> writes;
-         find_preceding_writes(ref, std::back_inserter(writes));
+         find_preceding_memops(Inst::WRITE, ref, std::back_inserter(writes));
 
          /* add edges */
          for (const CondNode& write : writes) {
@@ -516,7 +506,7 @@ void AEG::construct_com() {
       if (node.inst.kind == Inst::WRITE) {
          /* get set of possible reads */
          std::vector<CondNode> reads;
-         find_sourced_reads(ref, std::back_inserter(reads));
+         find_preceding_memops(Inst::READ, ref, std::back_inserter(reads));
 
          /* add edges */
          for (const CondNode& read : reads) {
@@ -529,10 +519,10 @@ void AEG::construct_com() {
 }
 
 
-template <Inst::Kind KIND, typename OutputIt>
-void AEG::find_sourced_memops(NodeRef org, OutputIt out) const {
+template <typename OutputIt>
+void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const {
    const Node& org_node = lookup(org);
-   const z3::expr& org_addr = org_node.addr_refs.at(0).second;
+   const z3::expr& org_addr = org_node.addr_refs.at(0).second.po;
    
    std::deque<CondNode> todo;
    const auto& init_preds = po.po.rev.at(org);
@@ -544,54 +534,265 @@ void AEG::find_sourced_memops(NodeRef org, OutputIt out) const {
    while (!todo.empty()) {
       const CondNode& cn = todo.back();
       const Node& node = lookup(cn.ref);
-
-      if (node.inst.kind == KIND) {
-         const z3::expr same_addr = org_addr == node.addr_refs.at(0).second;
+      const auto& preds = po.po.rev.at(cn.ref);
+      if (node.inst.kind == kind) {
+         const z3::expr same_addr = org_addr == node.addr_refs.at(0).second.po;
          const z3::expr path_taken = node.po;
          *out++ = CondNode {cn.ref, cn.cond && same_addr && path_taken};
-         for (NodeRef pred : po.po.rev.at(cn.ref)) {
-            todo.push_back({pred, cn.cond && !same_addr && path_taken});
+         for (NodeRef pred : preds) {
+            todo.push_front({pred, cn.cond && !same_addr && path_taken});
          }
+      } else {
+         std::transform(preds.begin(), preds.end(), std::front_inserter(todo),
+                        [&] (NodeRef pred) -> CondNode {
+                           return {pred, cn.cond};
+                        });
       }
+
       
       todo.pop_back();
    }
                   
 }
 
-
-
 template <typename OutputIt>
-void AEG::find_sourced_writes(NodeRef read, OutputIt out) const {
-   find_sourced_memops<Inst::WRITE>(read, out);
-}
-
-template <typename OutputIt>
-void AEG::find_sourced_reads(NodeRef write, OutputIt out) const {
-   find_sourced_memops<Inst::READ>(write, out);
-}
-
-template <typename OutputIt>
-void AEG::find_preceding_writes(NodeRef write, OutputIt out) const {
+void AEG::find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const {
    const Node& write_node = lookup(write);
-   const z3::expr& write_addr = write_node.addr_refs.at(0).second;
+   const z3::expr& write_addr = write_node.addr_refs.at(0).second.po;
 
    std::deque<NodeRef> todo;
+   std::unordered_set<NodeRef> seen;
    const auto& init_preds = po.po.rev.at(write);
    std::copy(init_preds.begin(), init_preds.end(), std::front_inserter(todo));
 
    while (!todo.empty()) {
       NodeRef ref = todo.back();
       todo.pop_back();
+      
+      if (!seen.insert(ref).second) {
+         continue;
+      }
+      
       const Node& node = lookup(ref);
-      if (node.inst.kind == Inst::WRITE) {
-         const z3::expr same_addr = write_addr == node.addr_refs.at(0).second;
+      if (node.inst.kind == kind) {
+         const z3::expr same_addr = write_addr == node.addr_refs.at(0).second.po;
          const z3::expr path_taken = node.po;
          *out++ = CondNode {ref, same_addr && path_taken};
-         const auto& preds = po.po.rev.at(ref);
-         std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
       }
+      const auto& preds = po.po.rev.at(ref);
+      std::copy(preds.begin(), preds.end(), std::front_inserter(todo));
    }
 }
 
 
+void AEG::construct_comx() {
+   /* Set xsread, xswrite */
+   std::unordered_set<NodeRef> xswrites;
+   std::unordered_set<NodeRef> xsreads;
+   for (NodeRef i = 0; i < size(); ++i) {
+      Node& node = lookup(i);
+      switch (node.inst.kind) {
+      case Inst::READ:
+         node.xsread = context.TRUE;
+         node.xswrite = context.make_bool();
+         xsreads.insert(i);
+         xswrites.insert(i);
+         // TODO: need to constrain when this happens
+         break;
+      case Inst::WRITE:
+         node.xsread = context.TRUE;
+         node.xswrite = context.TRUE;
+         xsreads.insert(i);
+         xswrites.insert(i);
+         break;
+      default:
+         break;
+      }
+   }
+
+
+   /* add rfx */
+   /* We could just blindly add all possible combinations and then later build on this to reduce
+    * the number of possible cycles.
+    */
+
+   /* Or, alternatively, do it in a more intelligent way: create all possible edges, attach
+    * a boolean to them, and then enforce that there is exactly one incoming node with this 
+    * edge.
+    *
+    * Basically, you construct the skeleton manually, and then use FOL/Alloy-like operators to
+    * put constraints on these.
+    * 
+    * For example, rfx. We construct an overapproximation of the rfx relation -- add edges from 
+    * a read to all writes of the same xstate.
+    * Then, apply the FOL invariant that XSReads have exactly one incoming rfx edge.
+    * fol::FORALL XSRead r | fol::ONE XSWrite w (w - rfx -> r)
+    */
+   
+   for (NodeRef xsread : xsreads) {
+      const Node& xsr = lookup(xsread);
+      for (NodeRef xswrite : xswrites) {
+         const Node& xsw = lookup(xswrite);
+         const z3::expr path = xsr.get_exec() && xsw.get_exec();
+         const z3::expr is_xstate = xsr.xsread && xsw.xswrite;
+         const z3::expr same_xstate = xsr.same_xstate(xsw);
+         const z3::expr exists = path && is_xstate && same_xstate;
+         add_optional_edge(xswrite, xsread, UHBEdge {UHBEdge::RFX, exists});
+      }
+      
+      // add special rfx edges with ENTRY
+      add_optional_edge(entry, xsread, UHBEdge {UHBEdge::RFX, xsr.get_exec() && xsr.xsread});
+   }
+
+   /* Constrain rfx edges */
+   for (NodeRef xsread : xsreads) {
+      std::vector<std::shared_ptr<Edge>> es;
+      get_incoming_edges(xsread, std::back_inserter(es), UHBEdge::RFX);
+      const z3::expr constr = util::one_of(es.begin(), es.end(), [] (const auto & e) {
+         return e->exists;
+      }, context.TRUE, context.FALSE);
+      lookup(xsread).constraints(constr);
+   }
+
+   /* Adding cox is easy -- just predicate edges on po/tfo of each node and whether they access
+    * the same xstate.
+    * How to select which nodes to consider? 
+    * Considering all will cause an edge blowup. 
+    */
+
+   /* add cox */
+   for (auto it1 = xswrites.begin(); it1 != xswrites.end(); ++it1) { 
+      const Node& n1 = lookup(*it1);
+      for (auto it2 = std::next(it1); it2 != xswrites.end(); ++it2) {
+         const Node& n2 = lookup(*it2);
+         const z3::expr path = n1.get_exec() && n2.get_exec();
+         const z3::expr is_xstate = n1.xswrite && n2.xswrite;
+         const z3::expr same_xstate = n1.same_xstate(n2);
+         const z3::expr exists = path && is_xstate && same_xstate;
+         add_bidir_edge(*it1, *it2, UHBEdge {UHBEdge::COX, exists});
+      }
+      add_unidir_edge(entry, *it1, UHBEdge {UHBEdge::COX, n1.get_exec() && n1.xswrite});
+   }
+
+   /* READs only perform an XSWrite if there are no previous READ/WRITEs to that address. 
+    * When do we need competing pairs, anyway?
+    * Only with upstream instructions.
+    * For now, just use a hard-coded limit.
+    *
+    * Also, for now don't constrain the XSWrite boolean for READs. We can deal with this later.
+    * We need to somehow enforce with comx that tfo executes before po.
+    * 
+    * For each node:
+    * First consider po case: 
+    */
+
+
+   std::vector<graph_type::Cycle> cycles;
+   graph.cycles(std::back_inserter(cycles), [] (const UHBEdge& e) -> bool {
+      switch (e.kind) {
+      case UHBEdge::PO:
+      case UHBEdge::TFO:
+      case UHBEdge::COX:
+      case UHBEdge::RFX:
+      case UHBEdge::FRX:
+         return true;
+      default:
+         return false;
+      }
+   });
+   for (const auto& cycle : cycles) {
+      const auto f =
+         std::transform_reduce(cycle.edges.begin(), cycle.edges.end(), context.FALSE,
+                               util::logical_or<z3::expr>(),
+                               [&] (const std::vector<UHBEdge>& es) -> z3::expr {
+                                  return !std::transform_reduce(es.begin(), es.end(), context.FALSE,
+                                                                util::logical_or<z3::expr>(),
+                                                                [] (const UHBEdge& e) {
+                                                                   return e.exists;
+                                                                });
+
+                               });
+      constraints(f);
+      logv(2) << util::to_string(f) << "\n";
+   }
+}
+
+#if 0
+template <typename OutputIt>
+void AEG::find_comx_window(NodeRef ref, unsigned distance, unsigned spec_depth,
+                           OutputIt out) const {
+   /* Find predecessors exactly distance away */
+   struct Entry {
+      NodeRef ref;
+      unsigned distance;
+   };
+   
+   std::deque<Entry> po_todo {{ref, distance}};
+   std::unordered_set<NodeRef> tfo_todo;
+   std::unordered_set<NodeRef> po_set;
+   std::unordered_set<NodeRef> tfo_set;
+
+   // first explore po
+   while (!todo.empty()) {
+      const Entry& ent = todo.back();
+
+      if (ent.distance == 0) {
+         continue;
+      }
+
+      // output this node
+      po_set.insert(ent.ref);
+
+      const auto& preds = po.po.rev.at(ent.ref);
+      std::transform(preds.begin(), preds.end(), std::front_inserter(todo),
+                     [&] (NodeRef pred) -> Entry {
+                        return {pred, distance - 1};
+                     });
+
+      todo.pop_back();
+   }
+
+   // now explore tfo
+   
+   for (NodeRef ref : po_set) {
+      
+   }
+
+   std::copy(set.begin(), set.end(), out);
+}
+#endif
+
+void AEG::add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e) {
+   UHBEdge e1 = e;
+   UHBEdge e2 = e;
+   const z3::expr dir = context.make_bool();
+   e1.exists &=  dir;
+   e2.exists &= !dir;
+   add_unidir_edge(a, b, e1);
+   add_unidir_edge(b, a, e2);
+}
+
+void AEG::add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e_) {
+   UHBEdge e = e_;
+   const z3::expr constr = e.exists;
+   e.exists = context.make_bool();
+   e.constraints(z3::implies(e.exists, constr));
+   graph.insert(src, dst, e);
+}
+
+std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
+   switch (c.exprs.size()) {
+   case 0:
+      break;
+   case 1:
+      os << c.exprs.front();
+      break;
+   default:
+      os << std::reduce(std::next(c.exprs.begin()), c.exprs.end(), c.exprs.front(),
+                        [] (const z3::expr& a, const z3::expr& b) -> z3::expr {
+                           return a && b;
+                        });
+      break;
+   }
+   return os;
+}

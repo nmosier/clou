@@ -31,11 +31,11 @@ private:
 };
 
 struct UHBConstraints {
-   const z3::expr TRUE;
    std::vector<z3::expr> exprs;
 
-   UHBConstraints(const UHBContext& ctx): TRUE(ctx.TRUE) {}
-   
+   UHBConstraints() {}
+   explicit UHBConstraints(const z3::expr& expr): exprs({expr}) {}
+
    void add_to(z3::solver& solver) const {
       for (const z3::expr& expr : exprs) {
          solver.add(expr, util::to_string(expr).c_str());
@@ -51,35 +51,52 @@ struct UHBConstraints {
    }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
-   return os <<
-      std::reduce(c.exprs.begin(), c.exprs.end(), c.TRUE,
-                  [] (const z3::expr& a, const z3::expr& b) {
-                     return a && b;
-                  }); // .simplify();
-}
-
+std::ostream& operator<<(std::ostream& os, const UHBConstraints& c);
 
 struct UHBAddress {
-   const llvm::Value *value;
-   z3::expr class_id;
-   z3::expr instance_id;
+   z3::expr po;
+   z3::expr tfo;
+   UHBAddress(UHBContext& ctx): po(ctx.make_int()), tfo(ctx.make_int()) {}
 };
+
+inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {
+   return os << "(po)" << x.po << " (tfo)" << x.tfo;
+}
 
 struct UHBNode {
    Inst inst;
    z3::expr po;  // program order variable
    z3::expr tfo; // transient fetch order variable
    z3::expr tfo_depth; // transient depth
-   std::optional<z3::expr> addr_def;
-   std::vector<std::pair<const llvm::Value *, z3::expr>> addr_refs;
+   std::optional<UHBAddress> addr_def;
+   std::vector<std::pair<const llvm::Value *, UHBAddress>> addr_refs;
+   z3::expr xsread;
+   z3::expr xswrite;
    UHBConstraints constraints;
+
+   z3::expr get_addr_def() const {
+      // TODO: Do we need to add an extra ite to qualify based on tfo bool too?
+      return z3::ite(po, addr_def->po, addr_def->tfo);
+   }
+
+   z3::expr get_addr_ref(std::size_t idx) const {
+      const UHBAddress& addr = addr_refs.at(idx).second;
+      return z3::ite(po, addr.po, addr.tfo);
+   }
+
+   z3::expr get_exec() const {
+      return po || tfo;
+   }
    
    void simplify() {
       po = po.simplify();
       tfo = tfo.simplify();
       tfo_depth = tfo_depth.simplify();
       constraints.simplify();
+   }
+
+   z3::expr same_xstate(const UHBNode& other) const {
+      return get_addr_ref(0) == other.get_addr_ref(0);
    }
 
    UHBNode(const Inst& inst, UHBContext& c);
@@ -112,7 +129,9 @@ struct UHBEdge {
    static Kind kind_fromstr(const std::string& s);
 
    UHBEdge(Kind kind, UHBContext& ctx):
-      kind(kind), exists(ctx.make_bool()), constraints(ctx) {} 
+      kind(kind), exists(ctx.make_bool()) {}
+
+   UHBEdge(Kind kind, const z3::expr& exists): kind(kind), exists(exists) {}
 
    struct Hash {
       size_t operator()(const UHBEdge& x) const { return std::hash<Kind>()(x.kind); }
@@ -123,6 +142,9 @@ struct UHBEdge {
 };
 
 std::ostream& operator<<(std::ostream& os, const UHBEdge& e);
+inline std::ostream& operator<<(std::ostream& os, UHBEdge::Kind kind) {
+   return os << UHBEdge::kind_tostr(kind);
+}
 
 class AEG {
 public:
@@ -140,7 +162,7 @@ public:
    const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
    Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
 
-   explicit AEG(const AEGPO2& po): po(po), context(), constraints(context) {}
+   explicit AEG(const AEGPO2& po): po(po), context(), constraints() {}
 
    void dump_graph(llvm::raw_ostream& os) const;
    void dump_graph(const std::string& path) const;
@@ -150,6 +172,8 @@ public:
    void test();
 
    std::size_t size() const { return nodes.size(); }
+
+   using Path = std::vector<NodeRef>;
 
 private:
    const AEGPO2& po;
@@ -165,19 +189,16 @@ private:
    void construct_nodes_addr_refs();
    void construct_aliases(llvm::AliasAnalysis& AA);
    void construct_com();
+   void construct_comx();
 
    struct CondNode {
       NodeRef ref;
       z3::expr cond;
    }; 
-   template <Inst::Kind KIND, typename OutputIt>
-   void find_sourced_memops(NodeRef org, OutputIt out) const;
    template <typename OutputIt>
-   void find_sourced_writes(NodeRef read, OutputIt out) const;
+   void find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const;
    template <typename OutputIt>
-   void find_sourced_reads(NodeRef read, OutputIt out) const;
-   template <typename OutputIt>
-   void find_preceding_writes(NodeRef write, OutputIt out) const;
+   void find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const;
    
 
    using NodeRange = util::RangeContainer<NodeRef>;
@@ -193,6 +214,29 @@ private:
       nodes.push_back(node);
       graph.add_node(ref);
       return ref;
+   }
+
+   template <typename OutputIt>
+   void find_comx_window(NodeRef ref, unsigned distance, unsigned spec_depth, OutputIt out) const;
+
+   void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
+      graph.insert(src, dst, e);
+   }
+
+   void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e);
+   void add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e);
+
+   template <typename OutputIt>
+   OutputIt get_incoming_edges(NodeRef dst, OutputIt out, UHBEdge::Kind kind) {
+      for (const auto& p : graph.rev.at(dst)) {
+         std::cerr << "constr ";
+         out = std::copy_if(p.second.begin(), p.second.end(), out, [kind] (const auto& e) {
+            std::cerr << " " << e->kind;
+            return e->kind == kind;
+         });
+         std::cerr << "\n";
+      }
+      return out;
    }
 };
 

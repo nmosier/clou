@@ -242,6 +242,30 @@ namespace util {
       template <typename... Args>
       T operator()(Args&&... args) const { return T {std::forward<Args>(args)...}; }
    };
-   
-}
 
+   template <typename T>
+   struct logical_or {
+      auto operator()(const T& a, const T& b) const { return a || b; }
+   };
+
+   template <typename T>
+   struct logical_and {
+      auto operator()(const T& a, const T& b) const { return a && b; }
+   };
+
+
+   template <typename T>
+   T replace(T& oldval, const T& newval) {
+      const T res = oldval;
+      oldval = newval;
+      return res;
+   }
+
+   template <typename T>
+   T replace(T& oldval, T&& newval) {
+      const T res = oldval;
+      oldval = newval;
+      return res;
+   }
+
+}

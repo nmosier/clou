@@ -19,6 +19,13 @@ void AEGPO_Expanded::construct(const AEGPO2& in) {
                     std::front_inserter(queue));
       queue.pop_back();
    }
+
+   /* set exit */
+   const auto exit_it = std::find_if(nodes.begin(), nodes.end(), [] (const Node& node) {
+      return std::holds_alternative<Exit>(node.v);
+   });
+   assert(exit_it != nodes.end());
+   this->exit = exit_it - nodes.begin();
 }
 
 /* NOTE: spec_depth is the depth of in_src.
