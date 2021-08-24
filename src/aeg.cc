@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <deque>
 #include <unordered_set>
+#include <fstream>
 
 #include "z3-util.h"
 #include "aeg.h"
@@ -87,12 +88,7 @@ digraph G {
 
       std::stringstream ss;
       ss << node.inst.kind_tostr() << "\n";
-      {
-         std::string s;
-         llvm::raw_string_ostream ss_ {s};
-         ss_ << node.inst;
-         ss << s << "\n";
-      }
+      ss << node.inst << "\n";
       ss << "po: " << node.po << "\n"
          << "tfo: " << node.tfo << "\n"
          << "tfo_depth: " << node.tfo_depth << "\n";
@@ -152,6 +148,8 @@ void AEG::simplify() {
 void AEG::test() {
    z3::solver solver {context.context};
 
+   simplify();
+
    /* display stats */
    if (verbose >= 3) {
       auto& os = llvm::errs();
@@ -170,21 +168,20 @@ void AEG::test() {
    }
    
 
-   // add edge constraints 
+   // add edge constraints
+   std::unordered_map<std::string, unsigned> names;
    graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
-      std::stringstream ss;
-      ss << src << "->" << dst;
       edge.constraints.add_to(solver);
    });
-
+   
    // add node constraints 
    for (NodeRef ref : node_range()) {
       lookup(ref).constraints.add_to(solver);
    }
-
+   
    // add main constraints
    constraints.add_to(solver);
-
+   
    // check node 15
    // solver.add(lookup(NodeRef {15}).po);
    
@@ -197,7 +194,12 @@ void AEG::test() {
       }
       break;
    }
-   case z3::sat:     llvm::errs() << "sat"    ; break;
+   case z3::sat: {
+      llvm::errs() << "sat";
+      const z3::model model = solver.get_model();
+      output_execution("out/exec.dot", model);
+      break;
+   }
    case z3::unknown: llvm::errs() << "unknown"; break;
    }
    
@@ -460,12 +462,87 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
    }
 }
 
+#if 0
+std::optional<z3::expr> AEG::check_no_intervening_writes(NodeRef src, NodeRef dst) const {
+   /* TODO: 
+    * Visit the nodes in postorder, so that we know the full constraints of each node before
+    * visiting successors, in order to avoid path explosion.
+    *
+    */
+   
+   z3::expr acc = context.TRUE;
+   const Node& node = lookup(src);
+   if (node.inst.kind == Inst::WRITE) {
+      acc = z3::implies(node.po, node.addr_refs.at(0).po != lookup(src).addr_refs.at(0).po)
+   }
+   for (NodeRef pred : po.po.rev.at(src)) {
+      if (pred != dst) {
+         acc &= check_no_intervening_writes(pred, dst);
+      }
+   }
+   return acc;
+}
+#else
+z3::expr AEG::check_no_intervening_writes(NodeRef read, NodeRef write) const {
+   /* Approach:
+    * Use the postorder to be able to efficiently generate subpredicates.
+    * For nodes of which `read` is an ancestor, it should all be false.
+    * For nodes that are an ancestor of `read`, it should be computed accordingly.
+    * All nodes start out as nullopt. All children must be nullopt to propogate.
+    */
+   const Node& read_node = lookup(read);
+   std::vector<NodeRef> order;
+   po.postorder(std::back_inserter(order));
+   std::unordered_map<NodeRef, std::optional<z3::expr>> fs;
+   for (NodeRef ref : order) {
+      const auto& succs = po.po.fwd.at(ref);
+      std::optional<z3::expr> out;
+      for (NodeRef succ : succs) {
+         if (const auto& in = fs.at(succ)) {
+            out = out ? (*in && *out) : *in;
+         }
+      }
+      if (out) {
+         const Node& ref_node = lookup(ref);
+         if (ref_node.inst.kind == Inst::WRITE) {
+            *out &= lookup(ref).addr_refs.at(0).second.po != read_node.addr_refs.at(0).second.po;
+         }
+      } else {
+         if (ref == read) {
+            out = context.TRUE;
+         }
+      }
+      fs.emplace(ref, out);
+   }
+   const auto& write_succs = po.po.fwd.at(write);
+   return util::all_of(write_succs.begin(), write_succs.end(), [&] (NodeRef succ) -> z3::expr {
+      const auto x = fs.at(succ);
+      return x ? *x : context.TRUE;
+   }, context.TRUE);
+}
+#endif
+                                          
 void AEG::construct_com() {
    assert(po.nodes.size() == nodes.size());
 
+   // get reads and writes
+   std::vector<NodeRef> reads;
+   std::vector<NodeRef> writes;
+   for (NodeRef ref : node_range()) {
+      switch (lookup(ref).inst.kind) {
+      case Inst::READ:
+         reads.push_back(ref);
+         break;
+      case Inst::WRITE:
+         writes.push_back(ref);
+         break;
+      default: break;
+      }
+   }
+   
    /* construct rf */
-   for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
-      const Node& node = lookup(ref);
+   for (NodeRef ref : reads) {
+      Node& node = lookup(ref);
       if (node.inst.kind == Inst::READ) {
          /* get set of possible writes */
          std::vector<CondNode> writes;
@@ -478,8 +555,15 @@ void AEG::construct_com() {
             graph.insert(write.ref, ref, e);
          }
       }
-   }
 
+      std::vector<std::shared_ptr<Edge>> rfs;
+      get_incoming_edges(ref, std::back_inserter(rfs), Edge::RF);
+      const z3::expr one = util::one_of(rfs.begin(), rfs.end(), [] (const auto& ep) {
+         return ep->exists;
+      }, context.TRUE, context.FALSE);
+      node.constraints(one);
+   }
+   
    /* construct co */
    for (NodeRef ref = 0; ref < po.nodes.size(); ++ref) {
       const Node& node = lookup(ref);
@@ -519,6 +603,7 @@ void AEG::construct_com() {
 }
 
 
+#if 0
 template <typename OutputIt>
 void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const {
    const Node& org_node = lookup(org);
@@ -554,6 +639,52 @@ void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const 
    }
                   
 }
+#else
+template <typename OutputIt>
+void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const {
+   std::unordered_map<NodeRef, std::optional<z3::expr>> nos;
+   std::unordered_map<NodeRef, std::optional<z3::expr>> yesses;
+   std::vector<NodeRef> order;
+   po.postorder(std::back_inserter(order));
+
+   const Node& org_node = lookup(org);
+   for (NodeRef ref : order) {
+      std::optional<z3::expr> out;
+      for (NodeRef succ : po.po.fwd.at(ref)) {
+         if (const auto& in = nos.at(succ)) {
+            out = out ? (*out && *in) : *in;
+         }
+      }
+      std::optional<z3::expr> yes;
+      std::optional<z3::expr> no;
+      if (out) {
+         const Node& ref_node = lookup(ref);
+         if (ref_node.inst.kind == kind) {
+            const z3::expr same_addr =
+               ref_node.addr_refs.at(0).second.po == org_node.addr_refs.at(0).second.po;
+            yes = *out && ref_node.po && same_addr;
+            no = *out && z3::implies(ref_node.po, !same_addr);
+         } else {
+            yes = std::nullopt;
+            no = out;
+         }
+      } else if (ref == org) {
+         yes = std::nullopt;
+         no = context.TRUE;
+      } else {
+         yes = std::nullopt;
+         no = std::nullopt;
+      }
+      nos.emplace(ref, no);
+      yesses.emplace(ref, yes);
+   }
+   for (const auto& yes : yesses) {
+      if (yes.second) {
+         *out++ = {yes.first, *yes.second};
+      }
+   }
+}
+#endif
 
 template <typename OutputIt>
 void AEG::find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const {
@@ -644,7 +775,24 @@ void AEG::construct_comx() {
       add_optional_edge(entry, xsread, UHBEdge {UHBEdge::RFX, xsr.get_exec() && xsr.xsread});
    }
 
+   /* rfx constraint: 
+    * for any edge from po to tfo, require that the po node must be an ancestor of the tfo node.
+    */
+#if 1
+   graph.for_each_edge([&] (NodeRef write, NodeRef read, Edge& e) {
+      if (e.kind == Edge::RFX) {
+         const Node& nw = lookup(write);
+         const Node& nr = lookup(read); 
+         const bool is_anc = is_ancestor(write, read);
+         e.constraints(z3::implies(e.exists,
+                                   z3::implies(nw.po && nr.tfo, context.to_expr(is_anc))));
+      }
+   });
+#endif
+   
+
    /* Constrain rfx edges */
+#if 1
    for (NodeRef xsread : xsreads) {
       std::vector<std::shared_ptr<Edge>> es;
       get_incoming_edges(xsread, std::back_inserter(es), UHBEdge::RFX);
@@ -653,6 +801,7 @@ void AEG::construct_comx() {
       }, context.TRUE, context.FALSE);
       lookup(xsread).constraints(constr);
    }
+#endif
 
    /* Adding cox is easy -- just predicate edges on po/tfo of each node and whether they access
     * the same xstate.
@@ -796,3 +945,89 @@ std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
    }
    return os;
 }
+
+
+void AEG::output_execution(std::ostream& os, const z3::model& model) const {
+   // using GNode = AEGPO2::Node::Variant;
+   // using GEdge = UHBEdge::Kind;
+
+   os << R"=(
+digraph G {
+  overlap = scale;
+  splines = true;
+
+)=";
+
+   // define nodes
+   unsigned next_id = 0;
+   std::unordered_map<NodeRef, std::string> names;
+   for (NodeRef ref : node_range()) {
+      const Node& node = lookup(ref);
+      if (model.eval(node.get_exec()).bool_value() == Z3_L_TRUE) {
+         const std::string name = std::string("n") + std::to_string(next_id);
+         names.emplace(ref, name);
+         ++next_id;
+
+         os << name << " ";
+         std::stringstream ss;
+         ss << node.inst << "\n";
+
+         switch (node.inst.kind) {
+         case Inst::WRITE:
+         case Inst::READ:
+            ss << "{" << model.eval(node.get_addr_ref(0)) << "}"
+               << "\n";
+            break;
+         default: break;
+         }
+         
+         dot::emit_kvs(os, "label", ss.str());
+         os << ";\n";
+      }
+   }
+
+   graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
+      if (model.eval(edge.exists).bool_value() == Z3_L_TRUE) {
+         os << names.at(src) << " -> " << names.at(dst) << " ";
+         dot::emit_kvs(os, "label", util::to_string(edge.kind));
+         os << ";\n";
+      }
+   });
+
+   os << "}\n";
+}
+
+void AEG::output_execution(const std::string& path, const z3::model& model) const {
+   std::ofstream ofs {path};
+   output_execution(ofs, model);
+}
+
+bool AEG::is_ancestor(NodeRef parent, NodeRef child) const {
+   return is_ancestor_a(parent, child);
+}
+
+bool AEG::is_ancestor_a(NodeRef parent, NodeRef child) const {
+   if (parent == child) {
+      return true;
+   }
+   bool acc = false;
+   for (NodeRef pred : po.po.rev.at(child)) {
+      acc = acc || is_ancestor_a(parent, pred);
+   }
+   return acc;
+}
+
+
+bool AEG::is_ancestor_b(NodeRef parent, NodeRef child) const {
+   std::vector<NodeRef> order;
+   po.postorder(std::back_inserter(order));
+   const auto child_it = std::find(order.begin(), order.end(), child);
+   const auto parent_it = std::find(order.begin(), order.end(), parent);
+   if (parent_it >= child_it) {
+      return is_ancestor_a(parent, child);
+   } else {
+      // parent comes before child in postorder, so can't possibly be an ancestor
+      return false;
+   }
+}
+

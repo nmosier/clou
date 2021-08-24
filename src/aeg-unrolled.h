@@ -101,7 +101,4 @@ private:
       }
    }
 
-   template <typename OutputIt>
-   void reverse_postorder(OutputIt out) const;
-   bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
 };

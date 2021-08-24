@@ -3,6 +3,7 @@
 #include <string>
 #include <cassert>
 #include <unordered_set>
+#include <sstream>
 
 #include <llvm/IR/Instruction.h>
 #include <llvm/Analysis/AliasAnalysis.h>
@@ -26,6 +27,10 @@ public:
    const z3::expr TRUE;
    const z3::expr FALSE;
 
+   z3::expr to_expr(bool b) const {
+      return b ? TRUE : FALSE;
+   }
+
 private:
    unsigned id_ = 0;
 };
@@ -38,7 +43,9 @@ struct UHBConstraints {
 
    void add_to(z3::solver& solver) const {
       for (const z3::expr& expr : exprs) {
-         solver.add(expr, util::to_string(expr).c_str());
+         std::stringstream ss;
+         ss << expr << ":" << this;
+         solver.add(expr, ss.str().c_str());
       }
    }
    void operator()(const z3::expr& clause) {
@@ -234,10 +241,21 @@ private:
             std::cerr << " " << e->kind;
             return e->kind == kind;
          });
-         std::cerr << "\n";
+        std::cerr << "\n";
       }
       return out;
    }
+
+   void output_execution(std::ostream& os, const z3::model& model) const;
+   void output_execution(const std::string& path, const z3::model& model) const;
+
+   z3::expr check_no_intervening_writes(NodeRef src, NodeRef dst) const;
+   // z3::expr check_no_intervening_writes_rec(NodeRef src, NodeRef
+
+   bool is_ancestor(NodeRef parent, NodeRef child) const;
+   bool is_ancestor_a(NodeRef, NodeRef) const;
+   bool is_ancestor_b(NodeRef, NodeRef) const;
+   
 };
 
 

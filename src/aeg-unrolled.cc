@@ -225,32 +225,6 @@ void AEGPO_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids)
    construct_loop_forest(&LF, port, ids);
 }
 
-bool AEGPO_Unrolled::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
-   if (done.find(ref) != done.end()) {
-      return true;
-   }
-
-   bool acc = true;
-   for (NodeRef succ : po.fwd.at(ref)) {
-      acc &= postorder_rec(done, order, succ);
-   }
-
-   if (acc) {
-      done.insert(ref);
-      order.push_back(ref);
-   }
-
-   return acc;
-}
-
-template <typename OutputIt>
-void AEGPO_Unrolled::reverse_postorder(OutputIt out) const {
-   std::unordered_set<NodeRef> done;
-   std::vector<NodeRef> order;
-   postorder_rec(done, order, entry);
-   std::copy(order.rbegin(), order.rend(), out) ;
-}
-
 void AEGPO_Unrolled::pass_resolve_addr_refs() {
    // use a reverse postorder traversal
    std::unordered_map<NodeRef, Binding> bindings;

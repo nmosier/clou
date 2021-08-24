@@ -104,3 +104,21 @@ bool AEGPO2::alias_valid(const Node& a, const Node& b) {
    }
    return alias_valid(*a.id, *b.id);
 }
+
+bool AEGPO2::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
+   if (done.find(ref) != done.end()) {
+      return true;
+   }
+
+   bool acc = true;
+   for (NodeRef succ : po.fwd.at(ref)) {
+      acc &= postorder_rec(done, order, succ);
+   }
+
+   if (acc) {
+      done.insert(ref);
+      order.push_back(ref);
+   }
+
+   return acc;
+}

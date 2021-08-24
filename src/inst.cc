@@ -1,4 +1,7 @@
+#include <iostream>
+
 #include "inst.h"
+#include "llvm-util.h"
 
 const char *Inst::kind_tostr(Kind kind) {
    XM_ENUM_TOSTR(INST_KIND_X, kind, "(invalid)");
@@ -39,7 +42,7 @@ void Inst::set_addr() {
    }
 }
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Inst& inst) {
+std::ostream& operator<<(std::ostream& os, const Inst& inst) {
    os << inst.kind_tostr();
    switch (inst.kind) {
    case Inst::Kind::ENTRY:

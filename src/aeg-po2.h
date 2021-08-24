@@ -80,8 +80,16 @@ public:
    static bool alias_valid(const ID& a, const ID& b);
    static bool alias_valid(const Node& a, const Node& b);
    bool alias_valid(NodeRef a, NodeRef b) const { return alias_valid(lookup(a), lookup(b)); }
+
+   template <typename OutputIt>
+   void reverse_postorder(OutputIt out) const;
+
+   template <typename OutputIt>
+   void postorder(OutputIt out) const;
    
 protected:
+   bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
+   
    NodeRef add_node(const Node& node) {
       const NodeRef ref = size();
       nodes.push_back(node);
@@ -131,3 +139,21 @@ namespace std {
       }
    };
 }
+
+
+template <typename OutputIt>
+void AEGPO2::reverse_postorder(OutputIt out) const {
+   std::unordered_set<NodeRef> done;
+   std::vector<NodeRef> order;
+   postorder_rec(done, order, entry);
+   std::copy(order.rbegin(), order.rend(), out) ;
+}
+
+template <typename OutputIt>
+void AEGPO2::postorder(OutputIt out) const {
+   std::unordered_set<NodeRef> done;
+   std::vector<NodeRef> order;
+   postorder_rec(done, order, entry);
+   std::copy(order.begin(), order.end(), out);
+}
+

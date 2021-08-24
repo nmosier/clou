@@ -39,4 +39,4 @@ struct Inst {
    explicit Inst(const Arg& arg) { set(arg); }
 };
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Inst& inst);
+std::ostream& operator<<(std::ostream& os, const Inst& inst);
