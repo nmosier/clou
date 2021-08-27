@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <memory>
 #include <optional>
+#include <iostream>
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
@@ -31,7 +32,7 @@ public:
 
    // TODO: Need to use stack for loops too
    struct ID {
-      FuncID func;
+      FuncID func = 0;
       std::vector<LoopID> loop;
       bool operator==(const ID& other) const {
          return func == other.func && loop == other.loop;
@@ -49,16 +50,23 @@ public:
       Variant& operator()() { return v; }
 
       Node() {} // TODO: remove this?
+
+      template <typename Arg>
+      explicit Node(const Arg& arg, std::optional<ID> id): v(arg), id(id) {}
+      
+#if 0
       template <typename Arg>
       explicit Node(const Arg& arg): v(arg) {}
-      static Node make_entry() { return Node {Entry {}}; }
-      static Node make_exit() { return Node {Exit {}}; }
-      static Node make(const llvm::Instruction *I) { return Node {I}; }
+#endif
+      static Node make_entry() { return Node {Entry {}, std::nullopt}; }
+      static Node make_exit() { return Node {Exit {}, std::nullopt}; }
+      // static Node make(const llvm::Instruction *I) { return Node {I}; }
    };
    using Rel = binrel<NodeRef>;
    Rel po;
    NodeRef entry;
    NodeRef exit;
+   const unsigned num_specs;
 
    std::vector<Node> nodes;
 
@@ -86,16 +94,13 @@ public:
 
    template <typename OutputIt>
    void postorder(OutputIt out) const;
+
+   AEGPO2(unsigned num_specs): num_specs(num_specs) {}
    
 protected:
    bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
    
-   NodeRef add_node(const Node& node) {
-      const NodeRef ref = size();
-      nodes.push_back(node);
-      po.add_node(ref);
-      return ref;
-   }   
+   NodeRef add_node(const Node& node);
    
    void add_edge(NodeRef src, NodeRef dst) {
       po.insert(src, dst);

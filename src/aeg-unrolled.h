@@ -5,7 +5,8 @@
 
 class AEGPO_Unrolled: public AEGPO2 {
 public:
-   explicit AEGPO_Unrolled(llvm::Function& F, unsigned num_unrolls = 2):
+   explicit AEGPO_Unrolled(llvm::Function& F, unsigned num_specs, unsigned num_unrolls):
+      AEGPO2(num_specs),
       F(F),
       num_unrolls(num_unrolls) {
       if (num_unrolls == 0) {
@@ -23,8 +24,8 @@ private:
    struct IDs {
       ID id;
       std::vector<FuncID> callstack;
-      FuncID next_func;
-      LoopID next_loop;
+      FuncID next_func = 0;
+      LoopID next_loop = 0;
 
       void push() {
          callstack.push_back(id.func);

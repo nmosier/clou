@@ -6,17 +6,15 @@
 #include "lcm.h"
 #include "aeg-po2.h"
 #include "binrel.h"
+#include "config.h"
 
 class AEGPO_Expanded: public AEGPO2 {
 public:
-   explicit AEGPO_Expanded(unsigned num_specs = 2):
-      num_specs(num_specs) {}
+   explicit AEGPO_Expanded(unsigned num_specs): AEGPO2(num_specs) {}
 
    void construct(const AEGPO2& in);
 
 private:
-   const unsigned num_specs;
-
    using NodeMap = std::unordered_map<NodeRef, NodeRef>;
 
    struct Task {

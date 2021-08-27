@@ -40,14 +40,18 @@ struct LCMPass : public llvm::FunctionPass {
    virtual bool runOnFunction(llvm::Function& F) override {
       llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
 
+      const unsigned num_specs = 2;
+      const unsigned num_unrolls = 2;
+
       /* Construct AEG */
       logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
-      AEGPO_Unrolled aegpo_unrolled {F};
+      AEGPO_Unrolled aegpo_unrolled {F, num_specs, num_unrolls};
       aegpo_unrolled.construct();
+      std::cerr << "outputting\n";
       output(aegpo_unrolled, "aegpo", F);
 
       logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
-      AEGPO_Expanded aegpo_expanded {};
+      AEGPO_Expanded aegpo_expanded {num_specs};
       aegpo_expanded.construct(aegpo_unrolled);
       logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
               << aegpo_expanded.size() << " (expanded)\n";

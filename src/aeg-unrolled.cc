@@ -22,8 +22,7 @@ void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& por
    if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(I)) {
       construct_call(C, port, ids); 
    } else {
-      Node node {I};
-      node.id = ids.id;
+      Node node {I, ids.id};
       port.entry = add_node(node);
       port.exits = {{I->getParent(), port.entry}};
    }

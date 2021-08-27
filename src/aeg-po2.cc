@@ -19,6 +19,10 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
    if (node.id) {
       os << " F" << node.id->func;
       os << " L";
+      if (node.id->loop.size() != 0) {
+         llvm::errs() << "nonzero loop size\n";
+      }
+         
       for (auto loop_id : node.id->loop) {
          os << loop_id << ",";
       }
@@ -122,3 +126,14 @@ bool AEGPO2::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) con
 
    return acc;
 }
+
+AEGPO2::NodeRef AEGPO2::add_node(const Node& node) {
+      if (node.id && node.id->loop.size() != 0) {
+         std::cerr << "nonzero loop size\n";
+         llvm::errs() << node << "\n";
+      }
+      const NodeRef ref = size();
+      nodes.push_back(node);
+      po.add_node(ref);
+      return ref;
+   }   

@@ -14,6 +14,7 @@
  *     to skip deleted nodes.
  */
 
+unsigned constraint_counter = 0;
 
 std::ostream& operator<<(std::ostream& os, const UHBEdge& e) {
    os << e.kind_tostr() << " " << e.exists << "\n"
@@ -181,28 +182,43 @@ void AEG::test() {
    
    // add main constraints
    constraints.add_to(solver);
-   
-   // check node 15
-   // solver.add(lookup(NodeRef {15}).po);
-   
-   switch (solver.check()) {
-   case z3::unsat: {
-      llvm::errs() << "unsat\n";
-      const auto& core = solver.unsat_core();
-      for (const auto& expr : core) {
-         llvm::errs() << util::to_string(expr) << "\n";
+
+   constexpr unsigned max_nexecs = 16;
+   unsigned nexecs = 0;
+   while (nexecs < max_nexecs) {
+      switch (solver.check()) {
+      case z3::unsat: {
+         llvm::errs() << "unsat\n";
+         const auto& core = solver.unsat_core();
+         for (const auto& expr : core) {
+            llvm::errs() << util::to_string(expr) << "\n";
+         }
+         goto done;
       }
-      break;
+      case z3::sat: {
+         llvm::errs() << "sat";
+         const z3::model model = solver.get_model();
+         output_execution(std::string("out/exec") + std::to_string(nexecs++) + ".dot", model);
+
+         // add constraints
+         z3::expr same_sol = context.TRUE;
+         for (unsigned i = 0; i < model.size(); ++i) {
+            const z3::func_decl decl = model[i];
+            if (decl.range().is_bool()) {
+               same_sol &= decl() == model.get_const_interp(decl);
+            }
+         }
+         solver.add(!same_sol);
+         break;
+      }
+      case z3::unknown:
+         llvm::errs() << "unknown";
+         goto done;
+      }
    }
-   case z3::sat: {
-      llvm::errs() << "sat";
-      const z3::model model = solver.get_model();
-      output_execution("out/exec.dot", model);
-      break;
-   }
-   case z3::unknown: llvm::errs() << "unknown"; break;
-   }
-   
+
+ done:
+   std::cerr << "found " << nexecs << " executions\n";
 }
 
 /* Using alias analysis to construct address variables. 
@@ -246,12 +262,22 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
       graph.add_node(ref);
    }
 
+   // add entry, exit
+   entry = 0;
+   const auto exit_it = std::find_if(nodes.begin(), nodes.end(), [] (const Node& node) -> bool {
+      return node.inst.kind == Inst::EXIT;
+   });
+   exit = exit_it - nodes.begin();
+   
+
    logv(2) << "Constructing nodes po\n";
    construct_nodes_po();
    logv(2) << "Constructing nodes tfo\n";
    construct_nodes_tfo(spec_depth);
-   logv(2) << "Constructing edges po tfo\n";
-   construct_edges_po_tfo();
+   logv(2) << "Constructing po\n";
+   construct_po();
+   logv(2) << "Constructing tfo\n";
+   construct_tfo();
    logv(2) << "Constructing nodes addr defs\n";
    construct_nodes_addr_defs();
    logv(2) << "Constructing nodes addr refs\n";
@@ -376,30 +402,59 @@ void AEG::construct_nodes_tfo(unsigned spec_depth) {
    }
 }
 
-void AEG::construct_edges_po_tfo() {
-   /* When does a po edge exist between two nodes?
-    * (1) po must hold for both nodes.
-    * (2) One must directly follow the other.
-    *
-    */
+void AEG::construct_po() {
+   // add edges
+   for (NodeRef src : node_range()) {
+      // TODO: This can be simplified if there's only one successor
+      for (NodeRef dst : po.po.fwd.at(src)) {
+         graph.insert(src, dst, Edge {Edge::PO, context});
+      }
+   }
 
-   for (NodeRef ref : node_range()) {
-      const Node& node = lookup(ref);
-      const auto& succs = po.po.fwd.at(ref);
-      for (NodeRef succ_ref : succs) {
-         const Node& succ = lookup(succ_ref);
-         {
-            UHBEdge edge {UHBEdge::PO, context};
-            edge.constraints(edge.exists == (node.po && succ.po));
-            graph.insert(ref, succ_ref, edge);
+   // constrain edges
+   for (const auto v : node_range2()) {
+      const auto constrain = [&] (Direction dir, NodeRef exclude) {
+         if (v.ref != exclude) {
+            const auto edges = get_edges(dir, v.ref, Edge::PO);
+            const auto f = util::one_of(edges, [] (const auto& edge) -> z3::expr {
+               return edge->exists;
+            }, context.TRUE, context.FALSE);
+            v.node.constraints(f);
          }
-         {
-            UHBEdge edge {UHBEdge::TFO, context};
-            edge.constraints(edge.exists == ((node.po || node.tfo) && succ.tfo));
-            graph.insert(ref, succ_ref, edge);
+      };
+      constrain(Direction::IN, entry);
+      constrain(Direction::OUT, exit);
+   }
+
+   graph.for_each_edge([&] (NodeRef src, NodeRef dst, Edge& edge) {
+      edge.constraints(z3::implies(edge.exists, lookup(src).po && lookup(dst).po));
+   });
+}
+
+void AEG::construct_tfo() {
+   // add edges
+   for (NodeRef src : node_range()) {
+      for (NodeRef dst : po.po.fwd.at(src)) {
+         if (po.po.rev.at(dst).size() == 1) {
+            graph.insert(src, dst, Edge {Edge::TFO, context});
          }
       }
    }
+
+   // constrain edges
+   for (const auto v : node_range2()) {
+      // at most one successor
+      const auto edges = get_edges(Direction::OUT, v.ref, Edge::TFO);
+      const auto f = util::lone_of(edges.begin(), edges.end(), [] (const Edge& edge) -> z3::expr {
+         return edge.exists;
+      }, context.TRUE, context.FALSE);
+      v.node.constraints(f);
+   }
+
+   graph.for_each_edge([&] (NodeRef src, NodeRef dst, Edge& edge) {
+      const auto f = lookup(src).get_exec() && lookup(dst).tfo;
+      edge.constraints(z3::implies(edge.exists, f));
+   });
 }
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
@@ -557,7 +612,7 @@ void AEG::construct_com() {
       }
 
       std::vector<std::shared_ptr<Edge>> rfs;
-      get_incoming_edges(ref, std::back_inserter(rfs), Edge::RF);
+      get_edges(Direction::IN, ref, std::back_inserter(rfs), Edge::RF);
       const z3::expr one = util::one_of(rfs.begin(), rfs.end(), [] (const auto& ep) {
          return ep->exists;
       }, context.TRUE, context.FALSE);
@@ -664,6 +719,9 @@ void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const 
                ref_node.addr_refs.at(0).second.po == org_node.addr_refs.at(0).second.po;
             yes = *out && ref_node.po && same_addr;
             no = *out && z3::implies(ref_node.po, !same_addr);
+         } else if (ref == entry) {
+            yes = out;
+            no = out;
          } else {
             yes = std::nullopt;
             no = out;
@@ -686,6 +744,7 @@ void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const 
 }
 #endif
 
+// TODO: Rewrite this using postorder.
 template <typename OutputIt>
 void AEG::find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const {
    const Node& write_node = lookup(write);
@@ -759,7 +818,8 @@ void AEG::construct_comx() {
     * Then, apply the FOL invariant that XSReads have exactly one incoming rfx edge.
     * fol::FORALL XSRead r | fol::ONE XSWrite w (w - rfx -> r)
     */
-   
+
+#if 1
    for (NodeRef xsread : xsreads) {
       const Node& xsr = lookup(xsread);
       for (NodeRef xswrite : xswrites) {
@@ -789,20 +849,47 @@ void AEG::construct_comx() {
       }
    });
 #endif
-   
 
+#else
+
+   for (NodeRef read : xsreads) {
+      const Node& read_node = lookup(read);
+      std::vector<CondNode> writes;
+      find_sourced_xsaccesses(XSAccess::XSWRITE, read, std::back_inserter(writes));
+
+      std::cerr << "rfx: " << read << " ->";
+
+      for (const CondNode& write : writes) {
+         std::cerr << " " << write.ref;
+         
+         add_optional_edge(write.ref, read, UHBEdge {
+               UHBEdge::RFX, read_node.get_exec() && read_node.xsread && write.cond
+            });
+      }
+      std::cerr << "\n";
+
+#if 0
+      // add special rfx edges with ENTRY
+      add_optional_edge(entry, read, UHBEdge {
+            UHBEdge::RFX,
+            read_node.get_exec() && read_node.xsread
+         });
+#endif
+   }
+#endif
+   
    /* Constrain rfx edges */
 #if 1
    for (NodeRef xsread : xsreads) {
       std::vector<std::shared_ptr<Edge>> es;
-      get_incoming_edges(xsread, std::back_inserter(es), UHBEdge::RFX);
+      get_edges(Direction::IN, xsread, std::back_inserter(es), UHBEdge::RFX);
       const z3::expr constr = util::one_of(es.begin(), es.end(), [] (const auto & e) {
          return e->exists;
       }, context.TRUE, context.FALSE);
       lookup(xsread).constraints(constr);
    }
 #endif
-
+   
    /* Adding cox is easy -- just predicate edges on po/tfo of each node and whether they access
     * the same xstate.
     * How to select which nodes to consider? 
@@ -840,7 +927,7 @@ void AEG::construct_comx() {
    graph.cycles(std::back_inserter(cycles), [] (const UHBEdge& e) -> bool {
       switch (e.kind) {
       case UHBEdge::PO:
-      case UHBEdge::TFO:
+         // case UHBEdge::TFO:
       case UHBEdge::COX:
       case UHBEdge::RFX:
       case UHBEdge::FRX:
@@ -946,11 +1033,7 @@ std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
    return os;
 }
 
-
 void AEG::output_execution(std::ostream& os, const z3::model& model) const {
-   // using GNode = AEGPO2::Node::Variant;
-   // using GEdge = UHBEdge::Kind;
-
    os << R"=(
 digraph G {
   overlap = scale;
@@ -1031,3 +1114,216 @@ bool AEG::is_ancestor_b(NodeRef parent, NodeRef child) const {
    }
 }
 
+
+template <typename OutputIt>
+void AEG::find_sourced_xsaccesses(XSAccess kind, NodeRef org, OutputIt out) const {
+   OptionalNodeExprMap nos_po, yesses_po, nos_tfo, yesses_tfo;
+   find_sourced_xsaccesses_po(kind, org, entry, yesses_po, nos_po);
+   find_sourced_xsaccesses_tfo(kind, org, entry, 0, nos_po, yesses_tfo, nos_tfo);
+
+   // output unified map
+   for (NodeRef ref : node_range()) {
+      auto yes_po = yesses_po[ref];
+      auto yes_tfo = yesses_tfo[ref];
+      if (yes_po || yes_tfo) {
+         z3::expr yes = context.TRUE;
+         if (yes_po) {
+            yes &= *yes_po;
+         }
+         if (yes_tfo) {
+            yes &= *yes_tfo;
+         }
+         *out++ = {ref, yes};
+      }
+   }
+}
+
+std::optional<z3::expr> AEG::find_sourced_xsaccesses_po
+(XSAccess kind, NodeRef org, NodeRef ref, OptionalNodeExprMap& yesses,
+ OptionalNodeExprMap& nos) const {
+   {
+      const auto it = nos.find(ref);
+      if (it != nos.end()) {
+         return it->second;
+      }
+   }
+
+   auto& yes = yesses[ref];
+   auto& no = nos[ref];
+   
+   if (org == ref) {
+      yes = context.FALSE;
+      return no = context.TRUE;
+   }
+   
+   const auto& succs = po.po.fwd.at(ref);
+   std::optional<z3::expr> out;
+   for (const NodeRef succ : succs) {
+      if (const auto in = find_sourced_xsaccesses_po(kind, org, succ, yesses, nos)) {
+         out = out ? (*out && *in) : *in;
+      }
+   }
+
+   
+   // we haven't seen org yet
+   if (!out) {
+      return no = yes = std::nullopt;
+   }
+
+   const Node& org_node = lookup(org);
+
+   no = yes = out;
+
+   // add constraints for current node
+   {
+      const Node& ref_node = lookup(ref);
+      const z3::expr *xsaccess;
+      switch (kind) {
+      case XSREAD:
+         xsaccess = &ref_node.xsread;
+         break;
+      case XSWRITE:
+         xsaccess = &ref_node.xswrite;
+         break;
+      }
+      if (!xsaccess->is_false()) {
+         const z3::expr same_xstate = ref_node.same_xstate(org_node);
+         const z3::expr precond = ref_node.po && *xsaccess;
+         *no &= z3::implies(precond, !same_xstate);
+         *yes &= precond && same_xstate;
+      } else if (ref != entry) {
+         // doesn't access, so yes should be false
+         yes = context.FALSE;
+      }
+   }
+
+   // add constraints for tfo
+   {
+      std::vector<NodeRef> todo;
+      std::vector<NodeRef> next;
+      std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
+      for (unsigned i = 1; i < po.num_specs; ++i) { // start @ 1 because succs are 1 step away
+         for (const NodeRef ref : todo) {
+            const Node& ref_node = lookup(ref);
+            
+            // add constraint
+            const z3::expr is_xsaccess = ref_node.get_xsaccess(kind);
+            if (!is_xsaccess.is_false()) {
+               const z3::expr same_xstate = ref_node.same_xstate(org_node);
+               const z3::expr f = z3::implies(ref_node.tfo && is_xsaccess, !same_xstate);
+               *no &= f;
+               *yes &= f;
+            }
+
+            const auto& succs = po.po.fwd.at(ref);
+            std::copy(succs.begin(), succs.end(), std::back_inserter(next));
+         }
+         todo = std::move(next);
+      }
+   }
+
+   return no;
+}
+
+
+std::optional<z3::expr> AEG::find_sourced_xsaccesses_tfo(XSAccess kind, NodeRef org, NodeRef ref,
+                                                         unsigned spec_depth,
+                                                         OptionalNodeExprMap& nos_po,
+                                                         OptionalNodeExprMap& yesses_tfo,
+                                                         OptionalNodeExprMap& nos_tfo) const {
+   /* For a tfo node that is at the max speculative depth, look back to all possible speculative 
+    * forks -- it's the disjunction of those conditions.
+    * Otherwise, a tfo node is simply the disjunction of its tfo successors.
+    *
+    */
+   
+   {
+      const auto it = nos_tfo.find(ref);
+      if (it != nos_tfo.end()) {
+         return it->second;
+      }
+   }
+
+   auto& yes = yesses_tfo[ref];
+   auto& no = nos_tfo[ref];
+
+   if (org == ref) {
+      yes = context.FALSE;
+      return no = context.TRUE;
+   }
+
+   std::optional<z3::expr> out;
+
+   if (spec_depth == po.num_specs) {
+      
+      /* max speculative depth reached, so look at all possible source speculative forks,
+       * which will be given in `forks` */
+      std::unordered_set<NodeRef> todo;
+      std::unordered_set<NodeRef> next;
+      std::unordered_set<NodeRef> forks;
+      const auto& init_preds = po.po.rev.at(ref);
+      std::copy(init_preds.begin(), init_preds.end(), std::inserter(todo, todo.end()));
+
+      // get speculative forks
+      for (unsigned i = 1; i < po.num_specs; ++i) { // start @ 1 because preds are 1 step away
+         for (const NodeRef ref : todo) {
+            const auto& succs = po.po.fwd.at(ref);
+            if (succs.size() > 1) {
+               // speculative fork
+               forks.insert(ref);
+            }
+            const auto& preds = po.po.rev.at(ref);
+            std::copy(preds.begin(), preds.end(), std::inserter(next, next.end()));
+         }
+         todo = std::move(next);
+      }
+
+      // add po constraints for each speculative fork
+      for (const NodeRef fork : forks) {
+         if (const auto& in = nos_po.at(fork)) {
+            out = out ? (*out && *in) : *in;
+         }
+      }
+      
+   } else {
+
+      // recurse
+      const auto& succs = po.po.fwd.at(ref);
+      for (const NodeRef succ : succs) {
+         if (const auto in = find_sourced_xsaccesses_tfo(kind, org, succ, spec_depth + 1,
+                                                         nos_po, yesses_tfo, nos_tfo)) {
+            out = out ? (*out && *in) : *in;
+         }
+      }
+      
+   }
+
+   if (!out) {
+      // we haven't seen org yet
+      return no = yes = std::nullopt;
+   }
+   
+   const Node& org_node = lookup(org);
+   no = yes = out;
+
+   // add constraints for current node
+   {
+      const Node& ref_node = lookup(ref);
+      const z3::expr *xsaccess;
+      switch (kind) {
+      case XSREAD:
+         xsaccess = &ref_node.xsread;
+         break;
+      case XSWRITE:
+         xsaccess = &ref_node.xswrite;
+         break;
+      }
+      if (!xsaccess->is_false()) {
+         const z3::expr same_xstate = ref_node.same_xstate(org_node);
+         *no &= z3::implies(ref_node.tfo, !same_xstate);
+         *yes &= ref_node.tfo && same_xstate;
+      }
+   }
+
+   return no;
+}

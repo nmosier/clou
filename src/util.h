@@ -161,24 +161,6 @@ namespace util {
       }, p);
    }
 
-   // TODO: Rewrite using transform_reduce.
-   template <typename T, typename InputIt, typename UnaryPredicate>
-   T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
-      T disj = false_val;
-      for (auto it1 = begin; it1 != end; ++it1) {
-         const T conj = all_of(begin, end, [&] (const auto& val) {
-            auto pred = p(val);
-            if (&val != &*it1) {
-               pred = !pred;
-            }
-            return pred;
-         }, true_val);
-         disj = disj || conj;
-         // disj |= conj;
-      }
-      return disj;
-   }
-
    template <typename T, typename InputIt, typename UnaryPredicate>
    T any_of(InputIt begin, InputIt end, UnaryPredicate p, T false_val) {
       return std::transform_reduce(begin, end, false_val,
@@ -186,7 +168,31 @@ namespace util {
                                       return a || b;
                                    }, p);
    }
-   
+
+   template <typename T, typename InputIt, typename UnaryPredicate>
+   T lone_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
+      // pairwise NAND
+      T acc = true_val;
+      for (auto it1 = begin; it1 != end; ++it1) {
+         for (auto it2 = std::next(it1); it2 != end; ++it2) {
+            acc = acc && !(*it1 && *it2);
+         }
+      }
+      return acc;
+   }
+
+   template <typename T, typename InputIt, typename UnaryPredicate>
+   T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_value, T false_value) {
+      const T cond1 = any_of(begin, end, p, false_value);
+      const T cond2 = lone_of(begin, end, p, true_value, false_value);
+      return cond1 && cond2;
+   }
+
+   template <typename T, typename Container, typename UnaryPredicate>
+   T one_of(const Container& container, UnaryPredicate p, T true_value, T false_value) {
+      return one_of(container.begin(), container.end(), p, true_value, false_value);
+   }
+
    template <typename T>
    class RangeIterator {
    public:
@@ -269,3 +275,7 @@ namespace util {
    }
 
 }
+
+enum class Direction {
+   IN, OUT
+};

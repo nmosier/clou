@@ -21,6 +21,18 @@ public:
    NNEMap fwd;
    NNEMap rev;
 
+   NNEMap& operator()(Direction dir) {
+      switch (dir) {
+      case Direction::IN: return rev;
+      case Direction::OUT: return fwd;
+      default: std::abort();
+      }
+   }
+
+   const NNEMap& operator()(Direction dir) const {
+      return const_cast<NNEMap&>(const_cast<Graph&>(*this)(dir));
+   }
+
    void insert(const Node& src, const Node& dst, const Edge& edge) {
       std::shared_ptr<Edge> edgeptr = std::make_shared<Edge>(edge);
       fwd[src][dst].push_back(edgeptr);

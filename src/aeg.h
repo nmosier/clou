@@ -15,6 +15,10 @@
 #include "inst.h"
 #include "util.h"
 
+enum XSAccess {
+   XSREAD, XSWRITE
+};
+
 class UHBContext {
 public:
    UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
@@ -35,6 +39,8 @@ private:
    unsigned id_ = 0;
 };
 
+extern unsigned constraint_counter;
+
 struct UHBConstraints {
    std::vector<z3::expr> exprs;
 
@@ -44,11 +50,19 @@ struct UHBConstraints {
    void add_to(z3::solver& solver) const {
       for (const z3::expr& expr : exprs) {
          std::stringstream ss;
-         ss << expr << ":" << this;
-         solver.add(expr, ss.str().c_str());
+         ss << expr << ":" << constraint_counter++;
+         try {
+            solver.add(expr, ss.str().c_str());
+         } catch (const z3::exception& e) {
+            logv(0) << e.what() << "\n";
+            std::abort();
+         }
       }
    }
    void operator()(const z3::expr& clause) {
+      if (clause.simplify().is_false()) {
+         throw std::logic_error("adding constraint 'false'");
+      }
       exprs.push_back(clause);
    }
    void simplify() {
@@ -106,6 +120,14 @@ struct UHBNode {
       return get_addr_ref(0) == other.get_addr_ref(0);
    }
 
+   z3::expr get_xsaccess(XSAccess kind) const {
+      switch (kind) {
+      case XSAccess::XSREAD: return xsread;
+      case XSAccess::XSWRITE: return xswrite;
+      default: std::abort();
+      }
+   }
+
    UHBNode(const Inst& inst, UHBContext& c);
 };
 
@@ -160,7 +182,8 @@ public:
    using Edge = UHBEdge;
    using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
 
-   static inline const NodeRef entry {0};
+   NodeRef entry;
+   NodeRef exit;
 
    graph_type graph;
 
@@ -191,7 +214,8 @@ private:
    void construct_nodes();
    void construct_nodes_po();
    void construct_nodes_tfo(unsigned spec_depth);
-   void construct_edges_po_tfo();
+   void construct_po();
+   void construct_tfo();
    void construct_nodes_addr_defs();
    void construct_nodes_addr_refs();
    void construct_aliases(llvm::AliasAnalysis& AA);
@@ -206,11 +230,82 @@ private:
    void find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const;
    template <typename OutputIt>
    void find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const;
+
+   using OptionalNodeExprMap = std::unordered_map<NodeRef, std::optional<z3::expr>>;
+   
+   template <typename OutputIt>
+   void find_sourced_xsaccesses(XSAccess kind, NodeRef org, OutputIt out) const;
+   std::optional<z3::expr> find_sourced_xsaccesses_po(XSAccess kind, NodeRef org, NodeRef ref,
+                                                      OptionalNodeExprMap& yesses,
+                                                      OptionalNodeExprMap& nos) const;
+   std::optional<z3::expr> find_sourced_xsaccesses_tfo(XSAccess kind, NodeRef org, NodeRef ref,
+                                                       unsigned spec_depth,
+                                                       OptionalNodeExprMap& nos_po,
+                                                       OptionalNodeExprMap& yesses_tfo,
+                                                       OptionalNodeExprMap& nos_tfo) const;
+   
    
 
    using NodeRange = util::RangeContainer<NodeRef>;
    NodeRange node_range() const {
       return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
+   }
+
+
+   template <typename AEG_, typename Node_>
+   class NodeIterator_Base {
+   public:
+      NodeIterator_Base() {}
+      NodeIterator_Base(AEG_ *aeg, NodeRef ref): aeg(aeg), ref(ref) {}
+
+      struct value_type {
+         const NodeRef ref;
+         Node_& node;
+      };
+
+      value_type operator*() const {
+         return value_type {ref, aeg->lookup(ref)};
+      }
+
+      NodeIterator_Base& operator++() {
+         ++ref;
+         return *this;
+      }
+
+      NodeIterator_Base& operator++(int) {
+         return ++*this;
+      }
+
+      bool operator==(const NodeIterator_Base& other) const {
+         if (aeg != other.aeg) {
+            throw std::logic_error("comparing node iterators from two different AEGs");
+         }
+         return ref == other.ref;
+      }
+
+      bool operator!=(const NodeIterator_Base& other) const {
+         return !(*this == other);
+      }
+
+   private:
+      AEG_ * const aeg = nullptr;
+      NodeRef ref;
+   };
+   using NodeIterator = NodeIterator_Base<AEG, Node>;
+   using ConstNodeIterator = NodeIterator_Base<const AEG, const Node>;
+
+   auto node_range2() {
+      return llvm::iterator_range<NodeIterator> {
+         NodeIterator{this, 0UL},
+         NodeIterator{this, size()}
+      };
+   }
+
+   auto node_range2() const {
+      return llvm::iterator_range<ConstNodeIterator> {
+         ConstNodeIterator{this, 0UL},
+         ConstNodeIterator{this, size()}
+      };
    }
 
    void find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
@@ -234,16 +329,20 @@ private:
    void add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e);
 
    template <typename OutputIt>
-   OutputIt get_incoming_edges(NodeRef dst, OutputIt out, UHBEdge::Kind kind) {
-      for (const auto& p : graph.rev.at(dst)) {
-         std::cerr << "constr ";
+   OutputIt get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) {
+      const auto& map = graph(dir);
+      for (const auto& p : map.at(ref)) {
          out = std::copy_if(p.second.begin(), p.second.end(), out, [kind] (const auto& e) {
-            std::cerr << " " << e->kind;
             return e->kind == kind;
          });
-        std::cerr << "\n";
       }
       return out;
+   }
+
+   std::vector<std::shared_ptr<Edge>> get_edges(Direction dir, NodeRef ref, UHBEdge::Kind kind) {
+      std::vector<std::shared_ptr<Edge>> es;
+      get_edges(dir, ref, std::back_inserter(es), kind);
+      return es;
    }
 
    void output_execution(std::ostream& os, const z3::model& model) const;
