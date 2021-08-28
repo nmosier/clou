@@ -114,7 +114,7 @@ public:
          }
       }
    }
-
+    
    /* How to convert strongly connected components into minimal cycles?
     *
     */

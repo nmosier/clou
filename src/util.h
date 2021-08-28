@@ -175,7 +175,7 @@ namespace util {
       T acc = true_val;
       for (auto it1 = begin; it1 != end; ++it1) {
          for (auto it2 = std::next(it1); it2 != end; ++it2) {
-            acc = acc && !(*it1 && *it2);
+            acc = acc && !(p(*it1) && p(*it2));
          }
       }
       return acc;
@@ -279,3 +279,11 @@ namespace util {
 enum class Direction {
    IN, OUT
 };
+
+inline std::ostream& operator<<(std::ostream& os, Direction dir) {
+    switch (dir) {
+        case Direction::IN: return os << "IN";
+        case Direction::OUT: return os << "OUT";
+        default: return os << "(invalid)";
+    }
+}

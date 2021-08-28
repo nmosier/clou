@@ -25,48 +25,59 @@ public:
    
    z3::context context;
 
-   z3::expr make_bool() { return context.bool_const(std::to_string(id_++).c_str()); }
-   z3::expr make_int() { return context.int_const(std::to_string(id_++).c_str()); }
+   z3::expr make_bool(const std::string& s = "") {
+       return context.bool_const(get_name(s).c_str());
+   }
+    
+   z3::expr make_int(const std::string& s = "") {
+       return context.int_const(get_name(s).c_str());
+   }
 
    const z3::expr TRUE;
    const z3::expr FALSE;
-
+   
    z3::expr to_expr(bool b) const {
       return b ? TRUE : FALSE;
    }
 
 private:
-   unsigned id_ = 0;
+    std::unordered_map<std::string, unsigned> next;
+    
+    std::string get_name(const std::string& s) {
+        unsigned& idx = next[s];
+        return s + std::to_string(idx++);
+    }
 };
 
 extern unsigned constraint_counter;
 
 struct UHBConstraints {
-   std::vector<z3::expr> exprs;
+    std::vector<std::pair<z3::expr, std::string>> exprs;
 
    UHBConstraints() {}
-   explicit UHBConstraints(const z3::expr& expr): exprs({expr}) {}
+    explicit UHBConstraints(const z3::expr& expr, const std::string& name): exprs({{expr, name}}) {}
 
    void add_to(z3::solver& solver) const {
-      for (const z3::expr& expr : exprs) {
+      for (const auto& p : exprs) {
          std::stringstream ss;
-         ss << expr << ":" << constraint_counter++;
+         ss << p.first << ":" << p.second << ":" << constraint_counter++;
          try {
-            solver.add(expr, ss.str().c_str());
+            solver.add(p.first, ss.str().c_str());
          } catch (const z3::exception& e) {
             logv(0) << e.what() << "\n";
             std::abort();
          }
       }
    }
-   void operator()(const z3::expr& clause) {
+   void operator()(const z3::expr& clause, const std::string& name = "") {
       if (clause.simplify().is_false()) {
          throw std::logic_error("adding constraint 'false'");
       }
-      exprs.push_back(clause);
+      exprs.emplace_back(clause, name);
    }
    void simplify() {
-      std::for_each(exprs.begin(), exprs.end(), [] (z3::expr& e) {
+      std::for_each(exprs.begin(), exprs.end(), [] (auto& p) {
+          z3::expr& e = p.first;
          e = e.simplify();
       });
    }
@@ -75,20 +86,20 @@ struct UHBConstraints {
 std::ostream& operator<<(std::ostream& os, const UHBConstraints& c);
 
 struct UHBAddress {
-   z3::expr po;
-   z3::expr tfo;
-   UHBAddress(UHBContext& ctx): po(ctx.make_int()), tfo(ctx.make_int()) {}
+   z3::expr arch;
+   z3::expr trans;
+   UHBAddress(UHBContext& ctx): arch(ctx.make_int("arch")), trans(ctx.make_int("trans")) {}
 };
 
 inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {
-   return os << "(po)" << x.po << " (tfo)" << x.tfo;
+   return os << "(arch)" << x.arch << " (trans)" << x.trans;
 }
 
 struct UHBNode {
    Inst inst;
-   z3::expr po;  // program order variable
-   z3::expr tfo; // transient fetch order variable
-   z3::expr tfo_depth; // transient depth
+   z3::expr arch;  // program order variable
+   z3::expr trans; // transient fetch order variable
+   z3::expr trans_depth; // transient depth
    std::optional<UHBAddress> addr_def;
    std::vector<std::pair<const llvm::Value *, UHBAddress>> addr_refs;
    z3::expr xsread;
@@ -97,22 +108,22 @@ struct UHBNode {
 
    z3::expr get_addr_def() const {
       // TODO: Do we need to add an extra ite to qualify based on tfo bool too?
-      return z3::ite(po, addr_def->po, addr_def->tfo);
+      return z3::ite(arch, addr_def->arch, addr_def->trans);
    }
 
    z3::expr get_addr_ref(std::size_t idx) const {
       const UHBAddress& addr = addr_refs.at(idx).second;
-      return z3::ite(po, addr.po, addr.tfo);
+      return z3::ite(arch, addr.arch, addr.trans);
    }
 
    z3::expr get_exec() const {
-      return po || tfo;
+      return arch || trans;
    }
    
    void simplify() {
-      po = po.simplify();
-      tfo = tfo.simplify();
-      tfo_depth = tfo_depth.simplify();
+      arch = arch.simplify();
+      trans = trans.simplify();
+      trans_depth = trans_depth.simplify();
       constraints.simplify();
    }
 
@@ -157,8 +168,8 @@ struct UHBEdge {
    const char *kind_tostr() const { return kind_tostr(kind); }
    static Kind kind_fromstr(const std::string& s);
 
-   UHBEdge(Kind kind, UHBContext& ctx):
-      kind(kind), exists(ctx.make_bool()) {}
+   UHBEdge(Kind kind, UHBContext& ctx, const std::string& name = ""): // TODO: add name
+      kind(kind), exists(ctx.make_bool(name)) {}
 
    UHBEdge(Kind kind, const z3::expr& exists): kind(kind), exists(exists) {}
 
@@ -210,10 +221,12 @@ private:
    UHBContext context;
    UHBConstraints constraints;
    std::vector<Node> nodes;
+    
+    unsigned num_specs() const { return po.num_specs; }
 
-   void construct_nodes();
-   void construct_nodes_po();
-   void construct_nodes_tfo(unsigned spec_depth);
+   void construct_exec();
+   void construct_arch();
+   void construct_trans();
    void construct_po();
    void construct_tfo();
    void construct_nodes_addr_defs();
@@ -321,7 +334,7 @@ private:
    template <typename OutputIt>
    void find_comx_window(NodeRef ref, unsigned distance, unsigned spec_depth, OutputIt out) const;
 
-   void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
+    void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
       graph.insert(src, dst, e);
    }
 
@@ -354,7 +367,35 @@ private:
    bool is_ancestor(NodeRef parent, NodeRef child) const;
    bool is_ancestor_a(NodeRef, NodeRef) const;
    bool is_ancestor_b(NodeRef, NodeRef) const;
-   
+    
+    template <typename Function>
+    void for_each_edge(Function f) {
+        graph.for_each_edge(f);
+    }
+    
+    template <typename Function>
+    void for_each_edge(Function f) const {
+        graph.for_each_edge(f);
+    }
+    
+    template <typename Function>
+    void for_each_edge(Edge::Kind kind, Function f) {
+        graph.for_each_edge([&] (NodeRef src, NodeRef dst, Edge& edge) {
+            if (edge.kind == kind) {
+                f(src, dst, edge);
+            }
+        });
+    }
+    
+    template <typename Function>
+    void for_each_edge(Edge::Kind kind, Function f) const {
+        graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
+            if (edge.kind == kind) {
+                f(src, dst, edge);
+            }
+        });
+    }
+
 };
 
 
