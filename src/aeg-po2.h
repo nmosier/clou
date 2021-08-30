@@ -22,7 +22,7 @@
  * 
  */
 
-class AEGPO2 {
+class AEGPO {
 public:
    using NodeRef = std::size_t;
    using NodeRefSet = std::unordered_set<NodeRef>;
@@ -95,7 +95,7 @@ public:
    template <typename OutputIt>
    void postorder(OutputIt out) const;
 
-   AEGPO2(unsigned num_specs): num_specs(num_specs) {}
+   AEGPO(unsigned num_specs): num_specs(num_specs) {}
    
 protected:
    bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
@@ -113,7 +113,7 @@ protected:
    void prune();   
 };
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node);
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node);
 
 
 /* Functions and loops may have multiple exits.
@@ -138,8 +138,8 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node);
 
 namespace std {
    template <>
-   struct hash<AEGPO2::ID> {
-      std::size_t operator()(const AEGPO2::ID& id) const {
+   struct hash<AEGPO::ID> {
+      std::size_t operator()(const AEGPO::ID& id) const {
          return hash_ordered_tuple(id.func, id.loop);
       }
    };
@@ -147,7 +147,7 @@ namespace std {
 
 
 template <typename OutputIt>
-void AEGPO2::reverse_postorder(OutputIt out) const {
+void AEGPO::reverse_postorder(OutputIt out) const {
    std::unordered_set<NodeRef> done;
    std::vector<NodeRef> order;
    postorder_rec(done, order, entry);
@@ -155,7 +155,7 @@ void AEGPO2::reverse_postorder(OutputIt out) const {
 }
 
 template <typename OutputIt>
-void AEGPO2::postorder(OutputIt out) const {
+void AEGPO::postorder(OutputIt out) const {
    std::unordered_set<NodeRef> done;
    std::vector<NodeRef> order;
    postorder_rec(done, order, entry);

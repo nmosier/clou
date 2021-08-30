@@ -10,7 +10,7 @@
  */
 
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node) {
    std::visit(util::overloaded {
          [&] (Entry) { os << "<ENTRY>"; },
          [&] (Exit)  { os << "<EXIT>";  },
@@ -30,7 +30,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO2::Node& node) {
    return os;
 }
 
-void AEGPO2::prune() {
+void AEGPO::prune() {
    std::unordered_set<NodeRef> todo;
    for (NodeRef i = 0; i < nodes.size(); ++i) {
       if (i != exit) {
@@ -89,7 +89,7 @@ void AEGPO2::prune() {
    po = std::move(new_po);
 }
 
-bool AEGPO2::alias_valid(const ID& a, const ID& b) {
+bool AEGPO::alias_valid(const ID& a, const ID& b) {
    if (a.func != b.func) {
       return false;
    }
@@ -102,14 +102,14 @@ bool AEGPO2::alias_valid(const ID& a, const ID& b) {
    return true;
 }
 
-bool AEGPO2::alias_valid(const Node& a, const Node& b) {
+bool AEGPO::alias_valid(const Node& a, const Node& b) {
    if (!(a.id && b.id)) {
       return false;
    }
    return alias_valid(*a.id, *b.id);
 }
 
-bool AEGPO2::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
+bool AEGPO::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
    if (done.find(ref) != done.end()) {
       return true;
    }
@@ -127,7 +127,7 @@ bool AEGPO2::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) con
    return acc;
 }
 
-AEGPO2::NodeRef AEGPO2::add_node(const Node& node) {
+AEGPO::NodeRef AEGPO::add_node(const Node& node) {
       if (node.id && node.id->loop.size() != 0) {
          std::cerr << "nonzero loop size\n";
          llvm::errs() << node << "\n";

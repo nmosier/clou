@@ -13,3 +13,6 @@ a.out
 .\#*
 out/
 *.bak
+test/
+make/
+xcode/

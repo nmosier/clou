@@ -3,10 +3,10 @@
 #include "aeg-po2.h"
 #include "scoped-map.h"
 
-class AEGPO_Unrolled: public AEGPO2 {
+class AEGPO_Unrolled: public AEGPO {
 public:
    explicit AEGPO_Unrolled(llvm::Function& F, unsigned num_specs, unsigned num_unrolls):
-      AEGPO2(num_specs),
+      AEGPO(num_specs),
       F(F),
       num_unrolls(num_unrolls) {
       if (num_unrolls == 0) {

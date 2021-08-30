@@ -8,11 +8,11 @@
 #include "binrel.h"
 #include "config.h"
 
-class AEGPO_Expanded: public AEGPO2 {
+class AEGPO_Expanded: public AEGPO {
 public:
-   explicit AEGPO_Expanded(unsigned num_specs): AEGPO2(num_specs) {}
+   explicit AEGPO_Expanded(unsigned num_specs): AEGPO(num_specs) {}
 
-   void construct(const AEGPO2& in);
+   void construct(const AEGPO& in);
 
 private:
    using NodeMap = std::unordered_map<NodeRef, NodeRef>;
@@ -24,7 +24,7 @@ private:
       unsigned spec_depth;
    };
    template <typename OutputIt>
-   void construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_dst,
+   void construct_rec(const AEGPO& in, NodeRef in_src, NodeRef in_dst,
                       NodeRef src, unsigned spec_depth, NodeMap& map, OutputIt out);
 
 };

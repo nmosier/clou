@@ -1,0 +1,117 @@
+\documentclass{article}
+
+\usepackage{url}
+\usepackage{graphicx}
+% \usepackage{times}
+\usepackage{tikz}
+\usetikzlibrary{matrix,decorations.text,decorations.pathmorphing,calc,arrows,decorations.markings}
+\usepackage{pgfplots}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage[linesnumbered,lined]{algorithm2e}
+\usepackage{algorithmic}
+\usepackage{amsthm}
+\usepackage{thm-restate}
+\usepackage{tablefootnote}
+\usepackage{multirow,multicol}
+\usepackage[activate={true,noncompatibility}]{microtype}
+\usepackage{units}
+\newtheorem{theorem}{Theorem}[equation]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem*{conjecture*}{Conjecture}
+\newtheorem*{problem}{Problem}
+\newtheorem{claim}[theorem]{Claim}
+\theoremstyle{definition}
+\newtheorem*{remark}{Remark}
+\newtheorem*{example}{Example}
+
+%% If creating a pdf for digital viewing, uncomment the following:
+\usepackage{xcolor}
+\definecolor{darkred}  {rgb}{0.5,0,0}
+\definecolor{darkblue} {rgb}{0,0,0.5}
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+% Color links
+\usepackage[colorlinks = true]{hyperref}
+\hypersetup{
+  urlcolor   = red,         % color of external links
+  linkcolor  = blue,     % color of internal links
+  citecolor  = darkgreen    % color of file links
+}
+
+% Clever references
+\usepackage[nameinlink]{cleveref} % captialise
+\crefname{lemma}{Lemma}{Lemmas}
+\crefname{proposition}{Proposition}{Propositions}
+\crefname{definition}{Definition}{Definitions}
+\crefname{theorem}{Theorem}{Theorems}
+\crefname{conjecture}{Conjecture}{Conjectures}
+\crefname{corollary}{Corollary}{Corollaries}
+\crefname{section}{Section}{Sections}
+\crefname{appendix}{Appendix}{Appendices}
+\crefname{figure}{Fig.}{Figs.}
+\crefname{equation}{Eq.}{Eqs.}
+\crefname{table}{Table}{Tables}
+\crefname{claim}{Claim}{Claims}
+\crefname{chapter}{Chapter}{Chapters}
+
+\newcommand{\po}{\texttt{po}}
+\newcommand{\com}{\texttt{com}}
+\newcommand{\comx}{\texttt{comx}}
+\newcommand{\tfo}{\texttt{tfo}}
+\newcommand{\tfodepth}{\texttt{tfo\_depth}}
+\newcommand{\preds}{\texttt{preds}}
+\newcommand{\succs}{\texttt{succs}}
+\newcommand{\nodes}{\texttt{nodes}}
+
+\title {LCM Fence Synthesis Specification}
+
+\author {Nicholas Mosier}
+
+\begin{document}
+
+\maketitle
+\pagenumbering{roman}
+
+\section{Relations}
+\po \\
+\tfo \\
+
+Assume that
+$\exists! \top \in \nodes \mid \preds [\top] = \emptyset$
+and
+$\exists! \bot \in \nodes \mid \succs [\bot] = \emptyset$.
+
+\section{Constraints}
+\subsection{\po}
+
+A boolean variable $\po [N]$ is created for each AEG node $N$ representing whether this node is architecturally executed in the current execution.
+
+\begin{itemize}
+\item $po [\top]$
+% \item $po [\bot]$
+\item $\forall N \in \nodes \setminus \bot, \bigoplus_{M \in \succs [N]} \po [M]$
+\item $\forall N \in \nodes \setminus \top, \bigvee_{M \in \preds [N]} \po [M]$
+\end{itemize}
+
+\subsection{\tfo}
+
+% Track depth and whether it's tfo
+An integer variable $\tfodepth [N]$ is created for each AEG node $N$ representing the depth from the most recent speculative fork.
+
+\begin{itemize}
+\item $\left( \tfo [N] \implies \neg \po [N] \right)$
+\item $\left| \left\{ M \in \succs [N] \mid \tfo [M] \right\} \right| \leq 1$
+\end{itemize}
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:

@@ -2,7 +2,7 @@
 
 #include "aeg-expanded.h"
 
-void AEGPO_Expanded::construct(const AEGPO2& in) {
+void AEGPO_Expanded::construct(const AEGPO& in) {
    // create entry
    NodeRef in_src = in.entry;
    NodeRef src = add_node(in.lookup(in_src));
@@ -32,7 +32,7 @@ void AEGPO_Expanded::construct(const AEGPO2& in) {
  *
  */
 template <typename OutputIt>
-void AEGPO_Expanded::construct_rec(const AEGPO2& in, NodeRef in_src, NodeRef in_dst,
+void AEGPO_Expanded::construct_rec(const AEGPO& in, NodeRef in_src, NodeRef in_dst,
                                    NodeRef src, unsigned spec_depth, NodeMap& map, OutputIt out) {
    NodeRef dst;
    bool newnode;
