@@ -7,6 +7,7 @@
 #include "z3-util.h"
 #include "aeg.h"
 #include "config.h"
+#include "fol.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -139,6 +140,25 @@ void AEG::test() {
     // add main constraints
     constraints.add_to(solver);
     
+    // list of FOL expressions to evaulate
+    const auto po = fol::edge_rel(*this, Edge::PO);
+    const auto rf = fol::edge_rel(*this, Edge::RF);
+    const auto co = fol::edge_rel(*this, Edge::CO);
+    const auto fr = fol::edge_rel(*this, Edge::FR);
+    const auto com = rf + co + fr;
+    const auto reads = fol::node_rel(*this, Inst::READ);
+    const auto writes = fol::node_rel(*this, Inst::WRITE);
+    const auto arch = fol::node_rel(*this, [] (const auto& p) -> z3::expr {
+        return p.node.arch;
+    });
+    const auto trans = fol::node_rel(*this, [] (const auto& p) -> z3::expr {
+        return p.node.trans;
+    });
+    const auto exprs = std::make_tuple(std::make_pair(po, "po"),
+                                       std::make_pair(fol::irreflexive_transitive_closure(po), "^po"));
+    
+    solver.push();
+    
     constexpr unsigned max_nexecs = 16;
     unsigned nexecs = 0;
     while (nexecs < max_nexecs) {
@@ -154,7 +174,24 @@ void AEG::test() {
             case z3::sat: {
                 llvm::errs() << "sat";
                 const z3::model model = solver.get_model();
-                output_execution(std::string("out/exec") + std::to_string(nexecs++) + ".dot", model);
+                output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", model);
+                
+                // dump evaluated expressions
+                std::ofstream ofs {std::string("out/exec") + std::to_string(nexecs) + ".txt"};
+                util::for_each_in_tuple(exprs, [&] (const auto& pair) {
+                    ofs << pair.second << ":\n";
+                    for (const auto& rel_pair : pair.first) {
+                        if (model.eval(rel_pair.second).is_true()) {
+                            util::for_each_in_tuple(rel_pair.first, [&] (const auto& x) {
+                                ofs << " " << x;
+                            });
+                            ofs << "\n";
+                        }
+                    }
+                    ofs << "\n";
+                });
+                
+                ++nexecs;
                 
                 // add constraints
                 z3::expr same_sol = context.TRUE;
@@ -175,6 +212,48 @@ void AEG::test() {
     
 done:
     std::cerr << "found " << nexecs << " executions\n";
+    
+    solver.pop();
+    
+    // check FOL assertions
+    const auto po_closure = fol::irreflexive_transitive_closure(po);
+    
+    const std::vector<std::tuple<z3::expr, z3::check_result, std::string>> vec = {
+        {fol::some(po, context.context), z3::sat, "some po"},
+        {fol::no(po, context.context), z3::unsat, "no po"},
+        {fol::no(rf, context.context), z3::unsat, "no rf"},
+        {fol::no(reads, context.context), z3::unsat, "no reads"},
+        {fol::some(arch, context.context), z3::sat, "some arch"},
+        {!fol::subset(fol::join(co, co), co, context.context), z3::unsat, "co.co in co"},
+        {!fol::equal(fr, fol::join(fol::inverse(rf), co), context.context), z3::unsat, "fr = ~rf.co"},
+        {!fol::subset(po, po_closure, context.context), z3::unsat, "po in ^po"},
+        {!fol::acyclic(po, context.context), z3::unsat, "acyclic[po]"},
+        {!fol::acyclic(po + com, context.context), z3::unsat, "acyclic[po+com]"}
+    };
+    
+    unsigned passes = 0;
+    unsigned fails = 0;
+    for (const auto& task : vec) {
+        solver.push();
+        solver.add(std::get<0>(task));
+        const auto res = solver.check();
+        if (res != std::get<1>(task)) {
+            std::cerr << "CHECK FAILED: " << std::get<2>(task) << "\n";
+            ++fails;
+            if (res == z3::sat) {
+                // produce model
+                const z3::model model = solver.get_model();
+                output_execution(std::string("out/exec") + std::to_string(nexecs++) + ".dot", model);
+            }
+        } else {
+            ++passes;
+        }
+        solver.pop();
+    }
+    
+    std::cerr << "Passes: " << passes << "\n"
+              << "Fails:  " << fails  << "\n";
+
 }
 
 /* Using alias analysis to construct address variables. 
@@ -443,7 +522,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             
             os << name << " ";
             std::stringstream ss;
-            ss << node.inst << "\n";
+            ss << ref << " " << node.inst << "\n";
             
             switch (node.inst.kind) {
                 case Inst::WRITE:

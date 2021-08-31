@@ -46,6 +46,13 @@ public:
     
     using Path = std::vector<NodeRef>;
     
+    template <typename Function> void for_each_edge(Function f) { graph.for_each_edge(f); }
+    template <typename Function> void for_each_edge(Function f) const { graph.for_each_edge(f); }
+    template <typename Function> void for_each_edge(Edge::Kind kind, Function f);
+    template <typename Function> void for_each_edge(Edge::Kind kind, Function f) const;
+    
+    const UHBContext& ctx() const { return context; }
+    
 private:
     const AEGPO& po;
     UHBContext context;
@@ -102,6 +109,7 @@ private:
     
     
     
+public:
     using NodeRange = util::RangeContainer<NodeRef>;
     NodeRange node_range() const {
         return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
@@ -163,6 +171,7 @@ private:
         };
     }
     
+private:
     void find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
                            std::unordered_set<NodeRef>& out) const;
     
@@ -193,11 +202,6 @@ private:
     bool is_ancestor(NodeRef parent, NodeRef child) const;
     bool is_ancestor_a(NodeRef, NodeRef) const;
     bool is_ancestor_b(NodeRef, NodeRef) const;
-    
-    template <typename Function> void for_each_edge(Function f) { graph.for_each_edge(f); }
-    template <typename Function> void for_each_edge(Function f) const { graph.for_each_edge(f); }
-    template <typename Function> void for_each_edge(Edge::Kind kind, Function f);
-    template <typename Function> void for_each_edge(Edge::Kind kind, Function f) const;
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;

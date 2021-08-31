@@ -299,3 +299,20 @@ inline std::ostream& operator<<(std::ostream& os, Direction dir) {
         default: return os << "(invalid)";
     }
 }
+
+namespace util {
+
+template <std::size_t I, typename Func, typename... Ts>
+void for_each_in_tuple(const std::tuple<Ts...>& tuple, Func func) {
+    if constexpr (I < sizeof...(Ts)) {
+        func(std::get<I>(tuple));
+        for_each_in_tuple<I+1>(tuple, func);
+    }
+}
+
+template <typename Func, typename... Ts>
+void for_each_in_tuple(const std::tuple<Ts...>& tuple, Func func) {
+    return for_each_in_tuple<0>(tuple, func);
+}
+
+}

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "aeg-po2.h"
-#include "scoped-map.h"
 
 class AEGPO_Unrolled: public AEGPO {
 public:

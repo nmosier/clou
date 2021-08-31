@@ -13,6 +13,7 @@ add_library(lcm MODULE
   uhb.cc
   aeg-util.cc
   aeg-construct.cc
+  fol.cc
   )
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
 target_link_libraries(lcm PRIVATE z3 ${LIBPROFILER_LIBRARIES})

@@ -451,7 +451,7 @@ void AEG::construct_comx() {
             const Node& nr = lookup(read);
             const bool is_anc = is_ancestor(write, read);
             e.constraints(z3::implies(e.exists,
-                                      z3::implies(nw.arch && nr.trans, context.to_expr(is_anc))));
+                                      z3::implies(nw.arch && nr.trans, context.bool_val(is_anc))));
         }
     });
 #endif

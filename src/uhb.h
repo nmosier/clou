@@ -31,7 +31,7 @@ public:
     const z3::expr TRUE;
     const z3::expr FALSE;
     
-    z3::expr to_expr(bool b) const {
+    z3::expr bool_val(bool b) const {
         return b ? TRUE : FALSE;
     }
     
