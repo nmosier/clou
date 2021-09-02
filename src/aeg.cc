@@ -154,13 +154,43 @@ void AEG::test() {
     const auto trans = fol::node_rel(*this, [] (const auto& p) -> z3::expr {
         return p.node.trans;
     });
+    const auto rfx = fol::edge_rel(*this, Edge::RFX);
+    const auto cox = fol::edge_rel(*this, Edge::COX);
+    const auto frx = fol::edge_rel(*this, Edge::FRX);
+    const auto comx = rfx + cox + frx;
+    
+    const auto fr_computed = fol::join(fol::inverse(rf), co);
     const auto exprs = std::make_tuple(std::make_pair(po, "po"),
-                                       std::make_pair(fol::irreflexive_transitive_closure(po), "^po"));
+                                       std::make_pair(fol::element<0>(po, context.context), "po[0]"),
+                                       std::make_pair(fol::identity(fol::element<0>(po, context.context)), "po[0]"),
+                                       std::make_pair(fol::irreflexive_transitive_closure(po), "^po"),
+                                       std::make_pair(fol::irreflexive_transitive_closure(po) & fol::identity(fol::element<0>(po, context.context)), "^po & iden"),
+                                       std::make_pair(rfx, "rfx"),
+                                       std::make_pair(cox, "cox"),
+                                       std::make_pair(frx, "frx")
+                                       );
     
     solver.push();
     
-    constexpr unsigned max_nexecs = 16;
     unsigned nexecs = 0;
+    
+    const auto dump_expressions = [&] (const z3::model& model) {
+        std::ofstream ofs {std::string("out/exec") + std::to_string(nexecs) + ".txt"};
+        util::for_each_in_tuple(exprs, [&] (const auto& pair) {
+            ofs << pair.second << ":\n";
+            for (const auto& rel_pair : pair.first) {
+                if (model.eval(rel_pair.second).is_true()) {
+                    util::for_each_in_tuple(rel_pair.first, [&] (const auto& x) {
+                        ofs << " " << x;
+                    });
+                    ofs << "\n";
+                }
+            }
+            ofs << "\n";
+        });
+    };
+    
+    constexpr unsigned max_nexecs = 16;
     while (nexecs < max_nexecs) {
         switch (solver.check()) {
             case z3::unsat: {
@@ -175,21 +205,7 @@ void AEG::test() {
                 llvm::errs() << "sat";
                 const z3::model model = solver.get_model();
                 output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", model);
-                
-                // dump evaluated expressions
-                std::ofstream ofs {std::string("out/exec") + std::to_string(nexecs) + ".txt"};
-                util::for_each_in_tuple(exprs, [&] (const auto& pair) {
-                    ofs << pair.second << ":\n";
-                    for (const auto& rel_pair : pair.first) {
-                        if (model.eval(rel_pair.second).is_true()) {
-                            util::for_each_in_tuple(rel_pair.first, [&] (const auto& x) {
-                                ofs << " " << x;
-                            });
-                            ofs << "\n";
-                        }
-                    }
-                    ofs << "\n";
-                });
+                dump_expressions(model);
                 
                 ++nexecs;
                 
@@ -228,7 +244,11 @@ done:
         {!fol::equal(fr, fol::join(fol::inverse(rf), co), context.context), z3::unsat, "fr = ~rf.co"},
         {!fol::subset(po, po_closure, context.context), z3::unsat, "po in ^po"},
         {!fol::acyclic(po, context.context), z3::unsat, "acyclic[po]"},
-        {!fol::acyclic(po + com, context.context), z3::unsat, "acyclic[po+com]"}
+        {!fol::acyclic(po + com, context.context), z3::unsat, "acyclic[po+com]"},
+        {!fol::equal(rf, fol::inverse(fol::inverse(rf)), context.context), z3::unsat, "rf = ~~rf"},
+        {!fol::acyclic(cox, context.context), z3::unsat, "acyclic[cox]"},
+        {!fol::acyclic(rfx + cox, context.context), z3::unsat, "acyclic[rfx+cox]"},
+        {!fol::acyclic(comx, context.context), z3::unsat, "acyclic[comx]"},
     };
     
     unsigned passes = 0;
@@ -243,7 +263,9 @@ done:
             if (res == z3::sat) {
                 // produce model
                 const z3::model model = solver.get_model();
-                output_execution(std::string("out/exec") + std::to_string(nexecs++) + ".dot", model);
+                output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", model);
+                dump_expressions(model);
+                ++nexecs;
             }
         } else {
             ++passes;
@@ -515,7 +537,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
     std::unordered_map<NodeRef, std::string> names;
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (model.eval(node.get_exec()).bool_value() == Z3_L_TRUE) {
+        if (model.eval(node.get_exec()).is_true()) {
             const std::string name = std::string("n") + std::to_string(next_id);
             names.emplace(ref, name);
             ++next_id;
@@ -545,10 +567,44 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
         }
     }
     
+    // get cycles
+    using Tarjan = tarjan<NodeRef>;
+    Tarjan::DAG dag;
+    const auto is_cycle_edge = [] (const Edge& e) {
+        switch (e.kind) {
+            case Edge::RFX:
+            case Edge::COX:
+                return true;
+            default:
+                return false;
+        }
+    };
+    for_each_edge([&] (const NodeRef src, const NodeRef dst, const Edge& edge) {
+        if (is_cycle_edge(edge) && model.eval(edge.exists).is_true()) {
+            dag[src].insert(dst);
+        }
+    });
+    std::vector<Tarjan::Cycle> cycles;
+    Tarjan(dag, std::back_inserter(cycles));
+    std::unordered_set<std::pair<NodeRef, NodeRef>> cycle_edges;
+    for (Tarjan::Cycle& cycle : cycles) {
+        NodeRef prev = cycle.back();
+        for (auto it = cycle.begin(); it != cycle.end(); ++it) {
+            cycle_edges.emplace(prev, *it);
+            prev = *it;
+        }
+    }
+    
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
-        if (model.eval(edge.exists).bool_value() == Z3_L_TRUE) {
+        if (model.eval(edge.exists).is_true()) {
             os << names.at(src) << " -> " << names.at(dst) << " ";
-            dot::emit_kvs(os, "label", util::to_string(edge.kind));
+            std::string color;
+            if (!is_cycle_edge(edge) || cycle_edges.find(std::make_pair(src, dst)) == cycle_edges.end()) {
+                color = "black";
+            } else {
+                color = "red";
+            }
+            dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(edge.kind)}, {"color", color}});
             os << ";\n";
         }
     });
@@ -824,6 +880,13 @@ AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, UHBEdge::Kind kind) {
    return es;
 }
 
+NodeRefVec AEG::get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const {
+    NodeRefVec res;
+    get_nodes(dir, ref, std::back_inserter(res), kind);
+    return res;
+}
+
+
 const AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const {
     const auto src_it = util::contains(graph.fwd, src);
     if (!src_it) { return nullptr; }
@@ -858,3 +921,4 @@ NodeRef AEG::add_node(const Node& node) {
     graph.add_node(ref);
     return ref;
 }
+

@@ -84,6 +84,9 @@ private:
     void construct_fr(const NodeRefVec& reads, const NodeRefVec& writes,
                       const ClosureMap& pred_reads, const ClosureMap& pred_writes);
     void construct_comx();
+    void construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
+    void construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites);
+    void construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
     
     struct CondNode {
         NodeRef ref;
@@ -191,7 +194,12 @@ private:
     OutputIt get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind);
     
     using EdgePtrVec = std::vector<Edge *>;
-    EdgePtrVec get_edges(Direction dir, NodeRef ref, UHBEdge::Kind kind);
+    EdgePtrVec get_edges(Direction dir, NodeRef ref, Edge::Kind kind);
+    
+    template <typename OutputIt>
+    OutputIt get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) const;
+    
+    NodeRefVec get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
     void output_execution(std::ostream& os, const z3::model& model) const;
     void output_execution(const std::string& path, const z3::model& model) const;
@@ -206,6 +214,12 @@ private:
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;
     z3::expr edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const;
+    
+    template <typename Pred>
+    z3::expr cyclic(Pred pred) const;
+    
+    template <typename Pred>
+    z3::expr acyclic(Pred pred) const { return !cyclic(pred); }
 };
 
 
@@ -254,4 +268,42 @@ void AEG::for_each_edge(Edge::Kind kind, Function f) const {
             f(src, dst, edge);
         }
     });
+}
+
+template <typename Pred>
+z3::expr AEG::cyclic(Pred pred) const {
+    std::vector<graph_type::Cycle> cycles;
+    graph.cycles(std::back_inserter(cycles), pred);
+    
+    const auto op_edges = [&] (const std::vector<Edge>& edges) -> z3::expr {
+        return std::transform_reduce(edges.begin(), edges.end(), context.FALSE, util::logical_or<z3::expr>(),
+                                     [] (const Edge& e) {
+            return e.exists;
+        });
+    };
+    
+    const auto op_cycle = [&] (const graph_type::Cycle& cycle) -> z3::expr {
+        return std::transform_reduce(cycle.edges.begin(), cycle.edges.end(), context.TRUE, util::logical_and<z3::expr>(), op_edges);
+    };
+    
+    const auto op_cycles = [&] (const std::vector<graph_type::Cycle>& cycles) -> z3::expr {
+        return std::transform_reduce(cycles.begin(), cycles.end(), context.FALSE, util::logical_or<z3::expr>(), op_cycle);
+    };
+    
+    return op_cycles(cycles);
+}
+
+
+template <typename OutputIt>
+OutputIt AEG::get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) const {
+    const auto& map = graph(dir);
+    for (const auto& p : map.at(ref)) {
+        for (const auto& edge : p.second) {
+            if (edge->kind == kind) {
+                *out++ = p.first;
+                break;
+            }
+        }
+    }
+    return out;
 }

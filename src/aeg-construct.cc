@@ -35,7 +35,7 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_aliases(AA);
     logv(2) << "Constructing com\n";
     construct_com();
-#if 0
+#if 1
     logv(2) << "Constructing comx\n";
     construct_comx();
 #endif
@@ -60,6 +60,13 @@ void AEG::construct_addr_refs() {
             std::optional<UHBAddress> e;
             // z3::expr e {context.context};
             if (defs_it == po_node.refs.end()) {
+                // DEBUG
+                if (llvm::dyn_cast<llvm::Argument>(V) == nullptr) {
+                    auto& os = llvm::errs();
+                    os << "Expected argument but got " << *V << "\n";
+                    std::abort();
+                }
+                
                 const llvm::Argument *A = llvm::cast<llvm::Argument>(V);
                 auto main_args_it = main_args.find(A);
                 if (main_args_it == main_args.end()) {
@@ -67,7 +74,7 @@ void AEG::construct_addr_refs() {
                 }
                 e = main_args_it->second;
             } else {
-                const AEGPO::NodeRefSet& defs = defs_it->second;
+                const NodeRefSet& defs = defs_it->second;
                 
                 /* If defs only has one element (likely case), then we can just lookup that element's
                  * address definition integer. Otherwise, we define a new symbolic int that must be equal
@@ -264,15 +271,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 
 void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
                        const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
-    // DEBUG: print out pred writes
-    for (const auto& dst : pred_writes) {
-        std::cerr << dst.first << " {";
-        for (NodeRef src : dst.second) {
-            std::cerr << " " << src;
-        }
-        std::cerr << "}\n";
-    }
-    
     // add edges
     for (const NodeRef read : reads) {
         const auto& sourced_writes = pred_writes.at(read);
@@ -295,11 +293,7 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
     for_each_edge(Edge::RF, [&] (const NodeRef write, const NodeRef read, Edge& edge) {
         const auto& sourced_writes = pred_writes.at(read);
         const auto f = util::all_of(sourced_writes.begin(), sourced_writes.end(), [&] (const NodeRef other_write) -> z3::expr {
-            if (other_write == write) {
-                return context.TRUE;
-            } else {
-                return edge_exists(other_write, write, Edge::CO);
-            }
+            return !edge_exists(write, other_write, Edge::CO);
         }, context.TRUE);
         edge.constraints(z3::implies(edge.exists, f), "rf-recent-write");
     });
@@ -308,7 +302,8 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
     for (const NodeRef read : reads) {
         const auto rfs = get_edges(Direction::IN, read, Edge::RF);
         const auto f = util::any_of(rfs.begin(), rfs.end(), [] (const auto& ep) { return ep->exists; }, context.FALSE);
-        lookup(read).constraints(f, "rf-required");
+        Node& read_node = lookup(read);
+        read_node.constraints(z3::implies(read_node.arch, f), "rf-required");
     }
 }
 
@@ -345,9 +340,11 @@ void AEG::construct_com() {
     for (NodeRef ref : node_range()) {
         switch (lookup(ref).inst.kind) {
             case Inst::READ:
+            case Inst::EXIT:
                 reads.push_back(ref);
                 break;
             case Inst::WRITE:
+            case Inst::ENTRY:
                 writes.push_back(ref);
                 break;
             default: break;
@@ -381,6 +378,124 @@ void AEG::construct_com() {
     construct_fr(reads, writes, pred_reads, pred_writes);
 }
 
+
+void AEG::construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
+    // add edges
+    for (const NodeRef xread : xreads) {
+        for (const NodeRef xwrite : xwrites) {
+            if (xread != xwrite) {
+                add_optional_edge(xwrite, xread, UHBEdge(Edge::RFX, context.TRUE));
+            }
+        }
+    }
+
+    // same xstate
+    for_each_edge(Edge::RFX, [&] (const NodeRef xw, const NodeRef xr, Edge& edge) {
+        edge.constraints(z3::implies(edge.exists, lookup(xw).same_xstate(lookup(xr))), "rfx-same-xstate");
+    });
+    
+    // execution condition
+    for_each_edge(Edge::RFX, [&] (const NodeRef xw, const NodeRef xr, Edge& edge) {
+        edge.constraints(z3::implies(edge.exists, lookup(xw).get_exec() && lookup(xr).get_exec()), "rfx-exec-cond");
+    });
+    
+    // required
+    for (const NodeRef xread : xreads) {
+        Node& xread_node = lookup(xread);
+        const auto rfxs = get_edges(Direction::IN, xread, Edge::RFX);
+        const auto f = util::one_of(rfxs.begin(), rfxs.end(), [] (const Edge *ep) -> z3::expr {
+            return ep->exists;
+        }, context.TRUE, context.FALSE);
+        xread_node.constraints(z3::implies(xread_node.get_exec(), f), "rfx-required");
+    }
+}
+
+void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
+    // add edges
+    for (auto it1 = xwrites.begin(); it1 != xwrites.end(); ++it1) {
+        for (auto it2 = std::next(it1); it2 != xwrites.end(); ++it2) {
+            add_bidir_edge(*it1, *it2, Edge {Edge::COX, context.TRUE});
+        }
+    }
+    
+    // same xstate
+    for_each_edge(Edge::COX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
+        edge.constraints(z3::implies(edge.exists, lookup(src).same_xstate(lookup(dst))));
+    });
+    
+    // execution condition
+    for_each_edge(Edge::COX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
+        edge.constraints(z3::implies(edge.exists, lookup(src).get_exec() && lookup(dst).get_exec()));
+    });
+    
+    // total order -- already taken care of by specifying bidirectional edge
+    
+    // acyclic
+    this->constraints(acyclic([] (const Edge& edge) -> bool {
+        return edge.kind == Edge::COX;
+    }));
+}
+
+void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
+    // add edges + definition
+    for (const NodeRef u : xreads) {
+        for (const NodeRef v : xwrites) {
+            if (u != v) {
+                NodeRefSet rfxs, coxs;
+                get_nodes(Direction::IN, u, std::inserter(rfxs, rfxs.end()), Edge::RFX);
+                get_nodes(Direction::IN, v, std::inserter(coxs, coxs.end()), Edge::COX);
+                std::vector<NodeRef> common;
+                util::set_intersection(rfxs, coxs, std::back_inserter(common));
+                z3::expr acc = context.FALSE;
+                for (const NodeRef w : common) {
+                    acc = acc || (edge_exists(w, u, Edge::RFX) && edge_exists(w, v, Edge::COX));
+                }
+                acc = acc.simplify();
+                if (!acc.is_false()) {
+                    add_unidir_edge(u, v, Edge {Edge::FRX, acc});
+                }
+            }
+        }
+    }
+}
+
+#if 1
+void AEG::construct_comx() {
+    /* Set xsread, xswrite */
+    std::unordered_set<NodeRef> xswrites {entry};
+    std::unordered_set<NodeRef> xsreads {exit};
+    for (NodeRef i = 0; i < size(); ++i) {
+        Node& node = lookup(i);
+        switch (node.inst.kind) {
+            case Inst::READ:
+                node.xsread = context.TRUE;
+                node.xswrite = context.make_bool();
+                xsreads.insert(i);
+                xswrites.insert(i);
+                // TODO: need to constrain when READ is an xswrite.
+                break;
+            case Inst::WRITE:
+                node.xsread = context.TRUE;
+                node.xswrite = context.TRUE;
+                xsreads.insert(i);
+                xswrites.insert(i);
+                break;
+            default:
+                break;
+        }
+    }
+    
+    construct_rfx(xsreads, xswrites);
+    construct_cox(xsreads, xswrites);
+    construct_frx(xsreads, xswrites);
+    
+    // prevent rfx, cox cycles
+    for_each_edge(Edge::RFX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
+        const auto f = !(edge.exists && edge_exists(dst, src, Edge::COX));
+        edge.constraints(f, "no-rfx-cox-cycle");
+    });
+}
+#else
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
     std::unordered_set<NodeRef> xswrites;
@@ -557,3 +672,4 @@ void AEG::construct_comx() {
         logv(2) << util::to_string(f) << "\n";
     }
 }
+#endif

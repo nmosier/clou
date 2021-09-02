@@ -115,7 +115,6 @@ struct UHBNode {
 
 struct UHBEdge {
 #define UHBEDGE_KIND_X(X)                       \
-X(FORK)                                      \
 X(PO)                                        \
 X(TFO)                                       \
 X(RF)                                        \

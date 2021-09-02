@@ -127,7 +127,7 @@ bool AEGPO::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) cons
    return acc;
 }
 
-AEGPO::NodeRef AEGPO::add_node(const Node& node) {
+NodeRef AEGPO::add_node(const Node& node) {
       if (node.id && node.id->loop.size() != 0) {
          std::cerr << "nonzero loop size\n";
          llvm::errs() << node << "\n";

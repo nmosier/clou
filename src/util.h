@@ -315,4 +315,19 @@ void for_each_in_tuple(const std::tuple<Ts...>& tuple, Func func) {
     return for_each_in_tuple<0>(tuple, func);
 }
 
+template <typename Container1, typename Container2, typename OutputIt>
+OutputIt set_intersection(const Container1& small, const Container2& large, OutputIt out) {
+    if (small.size() > large.size()) {
+        return set_intersection(large, small, out);
+    }
+
+    for (const auto& x : small) {
+        if (large.find(x) != large.end()) {
+            *out++ = x;
+        }
+    }
+    
+    return out;
+}
+
 }

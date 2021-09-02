@@ -53,6 +53,15 @@ struct relation {
     
     bool empty() const { return map.empty(); }
     std::size_t size() const { return map.size(); }
+    
+    template <typename UnaryOp>
+    z3::expr update(const Tuple& tuple, const z3::expr& dfl, UnaryOp op) {
+        auto it = find(tuple);
+        if (it == end()) {
+            it = emplace(tuple, dfl).first;
+        }
+        return it->second = op(it->second);
+    }
 
     relation() = default;
     relation(const relation& other) = default;
@@ -138,22 +147,21 @@ relation<Ts...> operator-(const relation<Ts...>& a, const relation<Ts...>& b) {
 }
 
 template <typename... Ts>
-relation<Ts...>& operator&=(relation<Ts...>& a, const relation<Ts...>& b) {
-    for (const auto& pair : b) {
+relation<Ts...> operator&(const relation<Ts...>& a, const relation<Ts...>& b) {
+    relation<Ts...> res;
+    for (const auto& pair : a) {
         const auto& tuple = pair.first;
-        const auto it = a.find(tuple);
-        if (it != a.end()) {
-            it->second = it->second && pair.second;
+        const auto it = b.find(tuple);
+        if (it != b.end()) {
+            res.emplace(tuple, pair.second && it->second);
         }
     }
-    return a;
+    return res;
 }
 
 template <typename... Ts>
-relation<Ts...> operator&(const relation<Ts...>& a, const relation<Ts...>& b) {
-    relation<Ts...> res = a;
-    res &= b;
-    return res;
+relation<Ts...>& operator&=(relation<Ts...>& a, const relation<Ts...>& b) {
+    return a = a & b;
 }
 
 template <size_t I, typename... Ts>
@@ -228,10 +236,16 @@ auto join(const R1& a, const R2& b) {
             const auto& t2 = p2.first;
             if (std::get<Size1-1>(t1) == std::get<0>(t2)) {
                 const auto out_tuple = join_tuples(t1, t2);
-                out.emplace(out_tuple, p1.second && p2.second);
+                const auto it = out.find(out_tuple);
+                if (it == out.end()) {
+                    out.emplace(out_tuple, p1.second && p2.second);
+                } else {
+                    it->second = it->second || (p1.second && p2.second);
+                }
             }
         }
     }
+    
     return out;
 }
 
@@ -374,7 +388,7 @@ auto element(const relation<Ts...>& a, z3::context& ctx) {
         const auto elt = std::get<N>(p.first);
         const auto it = res.find(elt);
         if (it != res.end()) {
-            it->second = it->second && p.second;
+            it->second = it->second || p.second;
         } else {
             res.emplace(elt, p.second);
         }
@@ -459,7 +473,7 @@ z3::expr cyclic(const relation<T,T>& a, z3::context& ctx) {
     const relation<T> srcs = element<0>(a, ctx);
     const relation<T,T> id = identity(srcs);
     const relation<T,T> closure = irreflexive_transitive_closure(a);
-    return subset(id, closure, ctx);
+    return some(id & closure, ctx);
 }
 
 template <typename T>

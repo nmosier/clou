@@ -126,7 +126,7 @@ public:
    };
 
    template <typename OutputIt, typename Pred>
-   void cycles(OutputIt out, Pred pred) {
+   void cycles(OutputIt out, Pred pred) const {
       /* For now, just use simple algorithm. Use Johnson's Algorithm 
        * (https://www.cs.tufts.edu/comp/150GA/homeworks/hw1/Johnson%2075.PDF)
        * if runtime becomes an issue.

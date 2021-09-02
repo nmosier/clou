@@ -15,6 +15,7 @@
 #include "binrel.h"
 #include "lcm.h"
 #include "hash.h"
+#include "noderef.h"
 
 /* How to determine if you can use AA results to check whether A aliases B:
  * - Must be the case that A.func_id == B.func_id
@@ -24,9 +25,6 @@
 
 class AEGPO {
 public:
-   using NodeRef = std::size_t;
-   using NodeRefSet = std::unordered_set<NodeRef>;
-   using NodeRefVec = std::vector<NodeRef>;
    using FuncID = unsigned;
    using LoopID = unsigned;
 

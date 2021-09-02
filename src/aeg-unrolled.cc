@@ -230,13 +230,6 @@ void AEGPO_Unrolled::pass_resolve_addr_refs() {
    std::vector<NodeRef> order;
    reverse_postorder(std::back_inserter(order));
 
-   // DEBUG
-   llvm::errs() << "Reverse postorder:";
-   for (NodeRef ref : order) {
-      llvm::errs() << " " << ref;
-   }
-   llvm::errs() << "\n";
-
    for (NodeRef ref : order) {
       Node& node = lookup(ref);
 
@@ -261,5 +254,25 @@ void AEGPO_Unrolled::pass_resolve_addr_refs() {
       }
 
       bindings.emplace(ref, binding);      
+   }
+}
+
+
+std::optional<NodeRefSet> AEGPO_Unrolled::Binding::bind(const llvm::Value *V) const {
+   if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
+       if (insts.find(I) == insts.end()) {
+           llvm::errs() << "Binding error for instruction " << *I << "\n";
+           std::abort();
+       }
+      return insts.at(I);
+   } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+      const auto arg_it = args.find(A);
+      if (arg_it == args.end()) {
+         return std::nullopt;
+      } else {
+         return arg_it->second;
+      }
+   } else {
+      return std::nullopt;
    }
 }
