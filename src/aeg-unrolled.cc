@@ -18,17 +18,22 @@ void AEGPO_Unrolled::construct() {
    pass_resolve_addr_refs();
 }
 
-void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {
+void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
    if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(I)) {
-      construct_call(C, port, ids); 
+      construct_call(C, port, ids);
    } else {
-      Node node {I, ids.id};
-      port.entry = add_node(node);
+       const Node node {I, ids.id};
+       port.entry = add_node(node);
       port.exits = {{I->getParent(), port.entry}};
    }
 }
 
 void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
+    /* add call instruction */
+    const Node node {C, ids.id};
+    const NodeRef inst_entry = add_node(node);
+    const Port inst_port {inst_entry, {{C->getParent(), inst_entry}}};
+    
    const llvm::Function *F = C->getCalledFunction();
    const FuncID caller_id = ids.id.func;
    ids.push();
@@ -42,8 +47,13 @@ void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& id
       params[{callee_id, &*FA_it}] = {caller_id, *CA_it};
    }
    
-   construct_function(C->getCalledFunction(), port, ids);
+    Port func_port;
+   construct_function(C->getCalledFunction(), func_port, ids);
    ids.pop();
+    
+    connect(inst_port.exits.begin(), inst_port.exits.end(), func_port.entry);
+    
+    port = {inst_port.entry, func_port.exits};
 }
 
 void AEGPO_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids) {

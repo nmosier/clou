@@ -8,18 +8,26 @@ const char *Inst::kind_tostr(Kind kind) {
 }
 
 void Inst::set_kind() {
-   const bool read = I->mayReadFromMemory();
-   const bool write = I->mayWriteToMemory();
-   assert(!(read && write)); // LLVM-IR shouldn't allow this.
-   if (read) {
-      kind = Kind::READ;
-   } else if (write) {
-      kind = Kind::WRITE;
-   } else if (I->getOpcode() == llvm::Instruction::Fence) {
-      kind = Kind::FENCE;
-   } else {
-      kind = Kind::OTHER;
-   }
+    switch (I->getOpcode()) {
+        case llvm::Instruction::Call:
+            kind = Kind::OTHER;
+            break;
+        default: {
+            const bool read = I->mayReadFromMemory();
+            const bool write = I->mayWriteToMemory();
+            assert(!(read && write)); // LLVM-IR shouldn't allow this.
+            if (read) {
+               kind = Kind::READ;
+            } else if (write) {
+               kind = Kind::WRITE;
+            } else if (I->getOpcode() == llvm::Instruction::Fence) {
+               kind = Kind::FENCE;
+            } else {
+               kind = Kind::OTHER;
+            }
+            break;
+        }
+    }
 }
 
 void Inst::set_addr() {
