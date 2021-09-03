@@ -17,6 +17,9 @@
 #include "noderef.h"
 
 class AEG {
+private:
+    const AEGPO& po;
+    UHBContext context; // this is because all other members depend on this context
 public:
     using Node = UHBNode;
     using NodeRef = std::size_t;
@@ -52,10 +55,8 @@ public:
     template <typename Function> void for_each_edge(Edge::Kind kind, Function f) const;
     
     const UHBContext& ctx() const { return context; }
-    
+   
 private:
-    const AEGPO& po;
-    UHBContext context;
     UHBConstraints constraints;
     std::vector<Node> nodes;
     
