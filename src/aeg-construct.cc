@@ -55,6 +55,7 @@ void AEG::construct_addr_refs() {
     for (NodeRef ref = 0; ref < size(); ++ref) {
         const AEGPO::Node& po_node = po.lookup(ref);
         Node& node = lookup(ref);
+        
         for (const llvm::Value *V : node.inst.addr_refs) {
             const auto defs_it = po_node.refs.find(V);
             std::optional<UHBAddress> e;
@@ -154,6 +155,7 @@ void AEG::construct_trans() {
 }
 
 void AEG::construct_po() {
+#if 0
     // add edges
     for (NodeRef src : node_range()) {
         // TODO: This can be simplified if there's only one successor
@@ -181,8 +183,10 @@ void AEG::construct_po() {
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, Edge& edge) {
         edge.constraints(z3::implies(edge.exists, lookup(src).arch && lookup(dst).arch), "po-exec");
     });
+#endif
 }
 
+#if 0
 void AEG::construct_tfo() {
     // add edges
     for (NodeRef src : node_range()) {
@@ -208,6 +212,75 @@ void AEG::construct_tfo() {
         edge.constraints(z3::implies(edge.exists, f), "tfo-exec");
     });
 }
+#else
+void AEG::construct_tfo() {
+    /* Consider multiple cases for tfo destination nodes.
+     * If all predecessors have one successor, then that is the exact set.
+     *
+     * Condider each (pred, dst) pair in turn.
+     * If the predecessor has one successor, then just add the tfo edge (pred, dst).
+     * If the predecessor has multiple successors, add the tfo edge (pred, dst) but also add tfo edges from other successors of the predecessor up until a node has multiple predecessors.
+     */
+    for (const NodeRef dst : node_range()) {
+        const Node& dst_node = lookup(dst);
+        for (const NodeRef src : po.po.rev.at(dst)) {
+            const Node& src_node = lookup(src);
+            add_optional_edge(src, dst, Edge {Edge::TFO, src_node.get_exec() && dst_node.trans || src_node.arch && dst_node.arch});
+            
+            const auto& succs = po.po.fwd.at(src);
+            NodeRefVec todo;
+            NodeRefSet seen;
+            std::copy(succs.begin(), succs.end(), std::back_inserter(todo));
+            while (!todo.empty()) {
+                const NodeRef ref = todo.back();
+                todo.pop_back();
+                
+                if (seen.insert(ref).second) {
+                    const auto& ref_preds = po.po.rev.at(ref);
+                    if (ref_preds.size() == 1) {
+                        const Node& ref_node = lookup(ref);
+                        add_optional_edge(ref, dst, Edge {Edge::TFO, ref_node.trans && dst_node.arch});
+                        const auto& ref_succs = po.po.fwd.at(ref);
+                        std::copy(ref_succs.begin(), ref_succs.end(), std::back_inserter(todo));
+                    }
+                }
+            }
+        }
+    }
+    
+    // exactly one predecessor
+    for (const NodeRef dst : node_range()) {
+        if (dst != entry) {
+            const auto tfos = get_edges(Direction::IN, dst, Edge::TFO);
+            const auto f = util::one_of(tfos.begin(), tfos.end(), [] (const auto& edge) {
+                return edge->exists;
+            }, context.TRUE, context.FALSE);
+            Node& node = lookup(dst);
+            node.constraints(z3::implies(node.get_exec(), f));
+        }
+    }
+    
+    // exactly one successor
+    for (const NodeRef ref : node_range()) {
+        if (ref != exit) {
+            const auto tfos = get_edges(Direction::OUT, ref, Edge::TFO);
+            const auto f = util::one_of(tfos.begin(), tfos.end(), [] (const auto &edge) {
+                return edge->exists;
+            }, context.TRUE, context.FALSE);
+            Node& node = lookup(ref);
+            node.constraints(z3::implies(node.get_exec(), f));
+        }
+    }
+    
+    // acyclic
+    const auto f = acyclic([] (const auto& edge) {
+        return edge.exists && edge.kind == Edge::TFO;
+    });
+    constraints(f);
+}
+
+#endif
+
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     using ID = AEGPO::ID;

@@ -9,7 +9,6 @@
 \newcommand{\READ}{\texttt{READ}}
 \newcommand{\WRITE}{\texttt{WRITE}}
 
-\newcommand{\po}{\texttt{po}}
 \newcommand{\tfo}{\texttt{tfo}}
 \newcommand{\com}{\texttt{com}}
 \newcommand{\comx}{\texttt{comx}}
@@ -44,6 +43,8 @@
 \newcommand{\xwrites}{\texttt{xwrites}}
 \newcommand{\xreads}{\texttt{xreads}}
 \newcommand{\xstate}{\texttt{xstate}}
+
+\newcommand{\tfocands}{\tfo_\texttt{cands}}
 
 \title{LCM SMT Formulas}
 \author{Nicholas Mosier}
@@ -86,13 +87,13 @@ enum Kind {ENTRY, EXIT, READ, WRITE, FENCE, OTHER};
 \begin{itemize}
 \item Exclusive architectural/transient execution: $\neg \left( v.\arch \wedge v.\trans \right)$.
 \item Program entry node is architecturally executed: $\top.\arch$.
-\item Limit transient execution depth: $v.\tfo \implies v.\transdepth < \numspecs$.
+\item Limit transient execution depth: $v.\trans \implies v.\transdepth < \numspecs$.
 \item Calculating transient depth \transdepth:
   \begin{itemize}
   \item Architectural execution resets transient depth:
     $v.\arch \implies v.\transdepth = 0$.
   \item Transient fetch increments transient depth:
-    $\tfo(u,v) \implies v.\transdepth = u.\transdepth + 1$.
+    $\tfo(u,v) \wedge v.\trans \implies v.\transdepth = u.\transdepth + 1$.
   \end{itemize}
 \item xstate accesses:
   \begin{itemize}
@@ -117,45 +118,41 @@ enum Kind {ENTRY, EXIT, READ, WRITE, FENCE, OTHER};
   \succs  & $O(1)$ per entry  & a map $\nodes \to 2^\nodes$ mapping nodes to their successors in the final CFG \\\hline
 \end{tabular}
 
-\section{\po}
 
-Domain: $\po(u,v)$ is defined for all $u,v \in \nodes$ such that $v \in \succs[u]$.
+\section{\tfo}
+Domain: $\tfo(u,v)$ is defined for all $u \in \nodes, v \in \tfocands[u]$.
+\\
+Candidate sets (define $\tfocands$):
+\begin{itemize}
+\item Program entry: $\preds[v] = \emptyset \implies \tfocands[v] = \emptyset$.
+\item Single predecessor: $\preds[v] = \{u\} \implies \ldots$
+  \begin{itemize}
+  \item ...only successor $\succs[u] = \{v\} \implies \tfocands[v] = \{u\}$.
+  \item ...other successors
+    \begin{align*}
+      \lvert \succs[u] \rvert > 1 \implies \tfocands[v] = \left\{ x \in \nodes \mid 
+      \begin{align*}
+        x \in \succs[u] \vee \\
+        \left( \preds[x] = \{w\} \wedge w \in \tfocands[v] \right)
+      \end{align*}
+      \right\}
+    \end{align*}
+  \end{itemize}
+\end{itemize}
 \\
 Constraints:
 \begin{itemize}
 \item Exactly one predecessor:
-  $\forall v \in \nodes \setminus \{\top\}, v.\arch \implies \exists!\, u \in \preds[v] \mid
-  \po(u,v).$
-\item Exactly one successor: $\forall v \in \nodes \setminus \{\bot\}, v.\arch \implies
-  \exists!\, u \in \succs[v] \mid \po(u,v).$
-\item Execution conditions: $\po(u,v) \implies u.\arch \wedge v.\arch.$
-\end{itemize}
-Complexity:
-\begin{itemize}
-\item Edge count: $O(N)$
-\item Constraints: $O(N)$
-\end{itemize}
+  $\forall v \in \nodes \setminus \{\top\}, v.\exec \implies \exists!\, u \in \nodes \mid \tfo(u,v)$.
+\item Exactly one successor:
+  $\forall u \in \nodes \setminus \{\bot\}, u.\exec \implies \exists!\, v \in \nodes \mid \tfo(u,v)$.
 
-\section{\tfo}
+\item Execution condition:
+  $\forall u, v \in \nodes, \tfo(u,v) \implies u.\exec \wedge v.\exec$.
 
-Domain: $\tfo(u,v)$ is defined for all $u,v \in \nodes$ such that $v \in \succs[u]$ and $\preds[v] = \{u\}$.
-(Note that this last requirement is sound due to the loop-free CFG expansion step.)
-\\
-Constraints:
-\begin{itemize}
-\item Execution conditions: $\tfo(u,v) \implies \left( u.\arch \vee u.\trans \right) \wedge v.\trans.$
-\item At most one successor:
-  $\forall u \in \nodes, \forall \mbox{ distinct } v,w \in \nodes, \neg \left( \tfo(u,v) \wedge \tfo(u, w) \right).$
-\item Transient execution requires incoming tfo edge:
-  $\forall u \in \nodes, u.\trans \implies \exists v \in \nodes \mid
-  \tfo(u,v).$
+\item Acyclic:
+  % TODO: Finish writing up this section.
 \end{itemize}
-Complexity:
-\begin{itemize}
-\item Edge count: $O(N)$
-\item Constraints: $O(N)$
-\end{itemize}
-
 
 \section{\rf}
 Domain: $\rf(u,v)$ is defined for all $u,v \in \nodes$ such that $u \in \writes \wedge v \in \reads \wedge u \in \closure{\preds}[v]$.
