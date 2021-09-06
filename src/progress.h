@@ -13,8 +13,10 @@ public:
         update();
     }
     
+    Progress(std::size_t total, unsigned precision = 2): os(&std::cerr), cur(0), total(total), precision(precision), scale(std::pow(10, precision)) {}
+    
     Progress& operator++() {
-        assert(cur < total);
+        // assert(cur < total);
         const auto old = raw();
         ++cur;
         const auto new_ = raw();
@@ -25,10 +27,13 @@ public:
     }
     
     void update() const {
-        *os << "\r" << std::setprecision(precision) << 100.0 * raw() / scale;
+        char *buf = new char [precision + 8];
+        sprintf(buf, "%*.*f%%", precision + 1, std::min<int>(precision - 2, 0), 100.0 * raw() / scale);
+        *os << "\r" << buf;
         if (cur == total) {
             *os << "\n";
         }
+        delete[] buf;
     }
     
 private:

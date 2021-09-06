@@ -2,6 +2,7 @@
 
 #include "aeg-expanded.h"
 #include "aeg-unrolled.h"
+#include "util.h"
 
 void AEGPO_Expanded::construct(const AEGPO_Unrolled& in) {
    // create entry
@@ -12,7 +13,7 @@ void AEGPO_Expanded::construct(const AEGPO_Unrolled& in) {
 
    std::deque<Task> queue;
    for (NodeRef in_dst : in.po.fwd.at(in_src)) {
-      queue.push_back({in_src, in_dst, src, 0});
+      queue.push_back({in_src, in_dst, src, num_specs}); // since ENTRY will never be speculatively executed
    }
    while (!queue.empty()) {
       const Task& task = queue.back();
@@ -27,6 +28,13 @@ void AEGPO_Expanded::construct(const AEGPO_Unrolled& in) {
    });
    assert(exit_it != nodes.end());
    this->exit = exit_it - nodes.begin();
+    
+    // DEBUG: print added nodes
+    for (const auto& pair : expansions) {
+        if (pair.second.size() > 1) {
+            logv(3) << "expanded node " << pair.second.size() << " times: " << in.lookup(pair.first) << "\n";
+        }
+    }
     
     // remaining tasks
     resolve_refs(in);
@@ -43,7 +51,8 @@ void AEGPO_Expanded::construct_rec(const AEGPO_Unrolled& in, NodeRef in_src, Nod
    
    /* check whether to merge or duplicate node */
    ++spec_depth;
-   if (spec_depth < num_specs) {
+
+   if (spec_depth <= num_specs) {
       /* create private node */
       dst = add_node(in.lookup(in_dst));
       newnode = true;
@@ -74,6 +83,7 @@ void AEGPO_Expanded::construct_rec(const AEGPO_Unrolled& in, NodeRef in_src, Nod
       for (NodeRef next_in_dst : succs) {
          *out++ = Task {next_in_src, next_in_dst, dst, spec_depth};
       }
+       expansions[in_dst].insert(dst);
    }
 }
 

@@ -160,3 +160,4 @@ void AEGPO::postorder(OutputIt out) const {
    std::copy(order.begin(), order.end(), out);
 }
 
+std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id);

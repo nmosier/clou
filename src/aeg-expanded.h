@@ -25,6 +25,10 @@ private:
       NodeRef src;
       unsigned spec_depth;
    };
+    
+    // DEBUG: expansion map
+    std::unordered_map<NodeRef, NodeRefSet> expansions;
+    
    template <typename OutputIt>
    void construct_rec(const AEGPO_Unrolled& in, NodeRef in_src, NodeRef in_dst,
                       NodeRef src, unsigned spec_depth, NodeMap& map, OutputIt out);

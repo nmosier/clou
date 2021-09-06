@@ -65,6 +65,7 @@ struct UHBAddress {
     z3::expr arch;
     z3::expr trans;
     UHBAddress(UHBContext& ctx): arch(ctx.make_int("arch")), trans(ctx.make_int("trans")) {}
+    UHBAddress(const z3::expr& arch, const z3::expr& trans): arch(arch), trans(trans) {}
 };
 
 inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {

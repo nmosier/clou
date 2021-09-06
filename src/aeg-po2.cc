@@ -137,3 +137,15 @@ NodeRef AEGPO::add_node(const Node& node) {
       po.add_node(ref);
       return ref;
    }   
+
+std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id) {
+    os << "F" << id.func << " L{";
+    for (auto it = id.loop.begin(); it != id.loop.end(); ++it) {
+        if (it != id.loop.begin()) {
+            os << " ";
+        }
+        os << *it;
+    }
+    os << "}";
+    return os;
+}
