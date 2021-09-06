@@ -481,4 +481,45 @@ z3::expr acyclic(const relation<T,T>& a, z3::context& ctx) {
     return !cyclic(a, ctx);
 }
 
+template <typename... Ts>
+using for_func = std::function<z3::expr (const relation<Ts...>&)>;
+
+template <typename... Ts>
+z3::expr for_all(const relation<Ts...>& rel, const for_func<Ts...>& f, z3::context& ctx) {
+    return util::all_of(rel.begin(), rel.end(), [&] (const auto& pair) {
+        relation<Ts...> item;
+        item.map.insert(pair);
+        return z3::implies(pair.second, f(item));
+    }, ctx.bool_val(true));
+}
+
+template <typename... Ts>
+z3::expr for_some(const relation<Ts...>& rel, const for_func<Ts...>& f, z3::context& ctx) {
+    return util::any_of(rel.begin(), rel.end(), [&] (const auto& pair) {
+        return pair.second && f(pair.first);
+    }, ctx.bool_val(false));
+}
+
+template <typename... Ts>
+z3::expr for_one(const relation<Ts...>& rel, const for_func<Ts...>& f, z3::context& ctx) {
+    return util::one_of(rel.begin(), rel.end(), [&] (const auto& pair) {
+        return pair.second && f(pair.first);
+    }, ctx.bool_val(true), ctx.bool_val(false));
+}
+
+template <typename... Ts>
+z3::expr for_lone(const relation<Ts...>& rel, const for_func<Ts...>& f, z3::context& ctx) {
+    return util::lone_of(rel.begin(), rel.end(), [&] (const auto& pair) {
+        return pair.second && f(pair.first);
+    }, ctx.bool_val(true), ctx.bool_val(false));
+}
+
+template <typename... Ts>
+z3::expr for_none(const relation<Ts...>& rel, const for_func<Ts...>& f, z3::context& ctx) {
+    return util::none_of(rel.begin(), rel.end(), [&] (const auto& pair) {
+        return pair.second && f(pair.first);
+    }, ctx.bool_val(true), ctx.bool_val(false));
+}
+
+
 }

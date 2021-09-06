@@ -6,11 +6,13 @@
 #include <sstream>
 #include <type_traits>
 #include <numeric>
+#include <iterator>
 
 #include <llvm/IR/Function.h>
 #include <llvm/Support/Format.h>
 
 #include "binrel.h"
+#include "assert-util.h"
 
 extern const char *prog;
 
@@ -170,6 +172,44 @@ T any_of(InputIt begin, InputIt end, UnaryPredicate p, T false_val) {
 }
 
 template <typename T, typename InputIt, typename UnaryPredicate>
+std::vector<T> count_of(InputIt begin, InputIt end, UnaryPredicate p, T true_value, T false_value) {
+    std::vector<T> prev_zero;
+    std::vector<T> prev_one;
+    for (auto it = begin; it != end; ++it) {
+        const T t = p(*it);
+        prev_zero.push_back(!t);
+        prev_one.push_back(t);
+    }
+    
+    if (prev_zero.empty()) {
+        return {true_value, false_value};
+    }
+    
+    // pad to the nearest power of 2
+    while ((prev_zero.size() & (prev_zero.size() - 1)) != 0) {
+        prev_zero.push_back(true_value);
+        prev_one.push_back(false_value);
+    }
+    
+    while (prev_zero.size() > 1) {
+        std::vector<T> cur_zero, cur_one;
+        for (std::size_t n = 0; n < prev_zero.size() / 2; ++n) {
+            const auto l = n * 2;
+            const auto r = l + 1;
+            cur_zero.push_back(prev_zero.at(l) && prev_zero.at(r));
+            cur_one.push_back((prev_one.at(l) && prev_zero.at(r)) ||
+                              (prev_zero.at(l) && prev_one.at(r)));
+        }
+        prev_zero = std::move(cur_zero);
+        prev_one = std::move(cur_one);
+    }
+
+    assert_eq(prev_one.size(), (std::size_t) 1);
+    return {prev_zero.front(), prev_one.front()};
+}
+
+#if 0
+template <typename T, typename InputIt, typename UnaryPredicate>
 T lone_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
     // pairwise NAND
     T acc = true_val;
@@ -180,17 +220,69 @@ T lone_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val)
     }
     return acc;
 }
+#else
+template <typename T, typename InputIt, typename UnaryPredicate>
+T lone_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
+    const auto res = zero_one_of(begin, end, p, true_val, false_val);
+    return res.at(0) || res.at(1);
+}
+#endif
 
+#if 0
 template <typename T, typename InputIt, typename UnaryPredicate>
 T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_value, T false_value) {
     const T cond1 = any_of(begin, end, p, false_value);
     const T cond2 = lone_of(begin, end, p, true_value, false_value);
     return cond1 && cond2;
 }
+#elif 0
+template <typename T, typename InputIt, typename UnaryPredicate>
+T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_value, T false_value) {
+    std::vector<T> prev_zero;
+    std::vector<T> prev_one;
+    for (auto it = begin; it != end; ++it) {
+        const T t = p(*it);
+        prev_zero.push_back(!t);
+        prev_one.push_back(t);
+    }
+    
+    // pad to the nearest power of 2
+    while ((prev_zero.size() & (prev_zero.size() - 1)) != 0) {
+        prev_zero.push_back(true_value);
+        prev_one.push_back(false_value);
+    }
+    
+    while (prev_zero.size() > 1) {
+        std::vector<T> cur_zero, cur_one;
+        for (std::size_t n = 0; n < prev_zero.size() / 2; ++n) {
+            const auto l = n * 2;
+            const auto r = l + 1;
+            cur_zero.push_back(prev_zero.at(l) && prev_zero.at(r));
+            cur_one.push_back((prev_one.at(l) && prev_zero.at(r)) ||
+                              (prev_zero.at(l) && prev_one.at(r)));
+        }
+        prev_zero = std::move(cur_zero);
+        prev_one = std::move(cur_one);
+    }
+
+    assert(prev_one.size() == 1);
+    return prev_one.front();
+}
+#else
+template <typename T, typename InputIt, typename UnaryPredicate>
+T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
+    return count_of(begin, end, p, true_val, false_val).at(1);
+}
+#endif
 
 template <typename T, typename Container, typename UnaryPredicate>
 T one_of(const Container& container, UnaryPredicate p, T true_value, T false_value) {
     return one_of(container.begin(), container.end(), p, true_value, false_value);
+}
+
+template <typename T, typename InputIt, typename UnaryPredicate>
+T none_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
+    return !util::any_of(begin, end, p, false_val);
 }
 
 template <typename T>

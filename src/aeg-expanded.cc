@@ -1,8 +1,9 @@
 #include <deque>
 
 #include "aeg-expanded.h"
+#include "aeg-unrolled.h"
 
-void AEGPO_Expanded::construct(const AEGPO& in) {
+void AEGPO_Expanded::construct(const AEGPO_Unrolled& in) {
    // create entry
    NodeRef in_src = in.entry;
    NodeRef src = add_node(in.lookup(in_src));
@@ -26,13 +27,16 @@ void AEGPO_Expanded::construct(const AEGPO& in) {
    });
    assert(exit_it != nodes.end());
    this->exit = exit_it - nodes.begin();
+    
+    // remaining tasks
+    resolve_refs(in);
 }
 
 /* NOTE: spec_depth is the depth of in_src.
  *
  */
 template <typename OutputIt>
-void AEGPO_Expanded::construct_rec(const AEGPO& in, NodeRef in_src, NodeRef in_dst,
+void AEGPO_Expanded::construct_rec(const AEGPO_Unrolled& in, NodeRef in_src, NodeRef in_dst,
                                    NodeRef src, unsigned spec_depth, NodeMap& map, OutputIt out) {
    NodeRef dst;
    bool newnode;
@@ -43,7 +47,6 @@ void AEGPO_Expanded::construct_rec(const AEGPO& in, NodeRef in_src, NodeRef in_d
       /* create private node */
       dst = add_node(in.lookup(in_dst));
       newnode = true;
-      llvm::errs() << "private " << dst << "\n";
    } else {
       /* merge with or create public node */
       const auto it = map.find(in_dst);
@@ -56,7 +59,6 @@ void AEGPO_Expanded::construct_rec(const AEGPO& in, NodeRef in_src, NodeRef in_d
          dst = it->second;
          newnode = false;
       }
-      llvm::errs() << "public " << dst << "\n";
    }
    
    po.insert(src, dst);
@@ -73,4 +75,72 @@ void AEGPO_Expanded::construct_rec(const AEGPO& in, NodeRef in_src, NodeRef in_d
          *out++ = Task {next_in_src, next_in_dst, dst, spec_depth};
       }
    }
+}
+
+void AEGPO_Expanded::resolve_refs(const AEGPO_Unrolled& in) {
+    /* Approach
+     * We want to bind all llvm::Argument's and llvm::Instruction's. We should leave other kinds of llvm::Value's alone.
+     */
+    
+    std::vector<NodeRef> order;
+    reverse_postorder(std::back_inserter(order));
+    using Translations = AEGPO_Unrolled::Translations;
+    using Key = Translations::Key;
+    using Map = std::unordered_map<Key, NodeRefSet, Key::Hash>;
+    std::unordered_map<NodeRef, Map> maps;
+    
+    for (const NodeRef ref : order) {
+        // merge incoming
+        Map map;
+        for (const NodeRef pred : po.rev.at(ref)) {
+            const Map& a = maps.at(pred);
+            for (const auto& p : a) {
+                map[p.first].insert(p.second.begin(), p.second.end());
+            }
+        }
+        
+        const Node& node = lookup(ref);
+        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+            map[Key {node.id->func, *Ip}].insert(ref);
+        }
+        
+        maps[ref] = std::move(map);
+    }
+    
+    /* Now resolve refs */
+    for (const NodeRef ref : order) {
+        Node& node = lookup(ref);
+        node.refs.clear();
+        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+            const auto *I = *Ip;
+            for (const llvm::Value *V : I->operand_values()) {
+                enum ValueKind {
+                    INST, ARG, OTHER
+                } kind;
+                if (llvm::dyn_cast<llvm::Instruction>(V)) {
+                    kind = INST;
+                } else if (llvm::dyn_cast<llvm::Argument>(V)) {
+                    kind = ARG;
+                } else {
+                    kind = OTHER;
+                }
+
+                if (kind != OTHER) {
+                    std::vector<Key> sources;
+                    in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
+                    const Map& map = maps.at(ref);
+                    for (const Key& source : sources) {
+                        const auto it = map.find(source);
+                        if (kind == INST) {
+                            assert(it != map.end());
+                        }
+                        if (it != map.end()) {
+                            const NodeRefSet& refs = it->second;
+                            node.refs[V].insert(refs.begin(), refs.end());
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

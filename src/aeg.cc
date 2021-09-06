@@ -142,6 +142,7 @@ void AEG::test() {
     
     // list of FOL expressions to evaulate
     const auto po = fol::edge_rel(*this, Edge::PO);
+    const auto tfo = fol::edge_rel(*this, Edge::TFO);
     const auto rf = fol::edge_rel(*this, Edge::RF);
     const auto co = fol::edge_rel(*this, Edge::CO);
     const auto fr = fol::edge_rel(*this, Edge::FR);
@@ -154,10 +155,14 @@ void AEG::test() {
     const auto trans = fol::node_rel(*this, [] (const auto& p) -> z3::expr {
         return p.node.trans;
     });
+    const auto exec = arch + trans;
     const auto rfx = fol::edge_rel(*this, Edge::RFX);
     const auto cox = fol::edge_rel(*this, Edge::COX);
     const auto frx = fol::edge_rel(*this, Edge::FRX);
     const auto comx = rfx + cox + frx;
+    
+    const auto top = fol::node_rel(*this, Inst::ENTRY);
+    const auto bot = fol::node_rel(*this, Inst::EXIT);
     
     const auto fr_computed = fol::join(fol::inverse(rf), co);
     const auto exprs = std::make_tuple(std::make_pair(po, "po"),
@@ -235,8 +240,14 @@ done:
     const auto po_closure = fol::irreflexive_transitive_closure(po);
     
     const std::vector<std::tuple<z3::expr, z3::check_result, std::string>> vec = {
-        {fol::some(po, context.context), z3::sat, "some po"},
-        {fol::no(po, context.context), z3::unsat, "no po"},
+        {!fol::for_all(exec - bot, fol::for_func<NodeRef> {[&] (const fol::relation<NodeRef>& node) -> z3::expr {
+            return fol::one(fol::join(node, tfo), context.context);
+        }}, context.context), z3::unsat, "tfo succ"},
+        {!fol::for_all(exec - top, fol::for_func<NodeRef> {[&] (const fol::relation<NodeRef>& node) -> z3::expr {
+            return fol::one(fol::join(tfo, node), context.context);
+        }}, context.context), z3::unsat, "tfo pred"},
+        {!fol::one(exec & top, context.context), z3::unsat, "one top"},
+        {!fol::one(exec & bot, context.context), z3::unsat, "one bot"},
         {fol::no(rf, context.context), z3::unsat, "no rf"},
         {fol::no(reads, context.context), z3::unsat, "no reads"},
         {fol::some(arch, context.context), z3::sat, "some arch"},

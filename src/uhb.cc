@@ -59,7 +59,7 @@ void UHBConstraints::add_to(z3::solver& solver) const {
 }
 
 void UHBConstraints::operator()(const z3::expr& clause, const std::string& name) {
-   if (clause.simplify().is_false()) {
+   if (clause.is_false()) {
       throw std::logic_error("adding constraint 'false'");
    }
    exprs.emplace_back(clause, name);

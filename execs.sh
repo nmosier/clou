@@ -1,5 +1,3 @@
 #!/bin/bash
 
-for DOT in out/exec*.dot; do
-    dot -Tpdf -O $DOT
-done
+find out/ -name 'exec*.dot' -print0 | xargs -0 dot -Tpdf -O

@@ -49,9 +49,55 @@ private:
         std::vector<const llvm::Loop *> loops;
     };
     
-    using ParameterMap = std::unordered_map<std::pair<FuncID, const llvm::Argument *>,
-    std::pair<FuncID, const llvm::Value *>>;
-    ParameterMap params;
+    struct Translations {
+        struct Key {
+            FuncID id;
+            const llvm::Value *V;
+            Key(FuncID id, const llvm::Value *V): id(id), V(V) {}
+            struct Hash {
+                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_tuple(key.id, key.V)); }
+            };
+            bool operator==(const Key& other) const { return id == other.id && V == other.V; }
+        };
+        
+        struct Value {
+            FuncID id;
+            using ValueSet = std::unordered_set<const llvm::Value *>;
+            ValueSet Vs;
+            Value(FuncID id): id(id) {}
+            Value(FuncID id, const ValueSet& Vs): id(id), Vs(Vs) {}
+        };
+        
+        using Map = std::unordered_map<Key, Value, Key::Hash>;
+        
+        Map map;
+        
+        template <typename OutputIt>
+        OutputIt lookup(const Key& key, OutputIt out) const {
+            std::vector<Key> todo {key};
+            std::unordered_set<Key, Key::Hash> seen;
+            std::unordered_set<Key, Key::Hash> done;
+            
+            while (!todo.empty()) {
+                const Key key = todo.back();
+                todo.pop_back();
+                if (seen.insert(key).second) {
+                    const auto it = map.find(key);
+                    if (it == map.end()) {
+                        done.insert(key);
+                    } else {
+                        for (const llvm::Value *V : it->second.Vs) {
+                            todo.emplace_back(it->second.id, V);
+                        }
+                    }
+                }
+            }
+            
+            return std::copy(done.begin(), done.end(), out);
+        }
+    };
+    
+    Translations translations;
     
     void construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids);
     void construct_call(const llvm::CallBase *C, Port& port, IDs& ids);
@@ -88,4 +134,5 @@ private:
         }
     }
     
+    friend class AEGPO_Expanded;
 };

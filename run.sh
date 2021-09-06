@@ -24,4 +24,4 @@ done
 
 shift $((OPTIND-1))
 
-LCM_ARGS="-oout -vv" $DEBUGGER clang -o /dev/null -Xclang -load -Xclang src/liblcm.so -c "$@"
+LCM_ARGS="-oout -vvv" $DEBUGGER clang -o /dev/null -Xclang -load -Xclang src/liblcm.so -c "$@"
