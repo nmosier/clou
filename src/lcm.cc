@@ -1,5 +1,6 @@
 #include <optional>
 #include <string>
+#include <signal.h>
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -65,7 +66,9 @@ struct LCMPass : public llvm::FunctionPass {
       });
       AEG aeg {aegpo_expanded};
       aeg.construct(2, AA);
+#if 0
       output(aeg, "aeg", F);
+#endif
       ProfilerStop();
 
       llvm::errs() << "Testing...\n";

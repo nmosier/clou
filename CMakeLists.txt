@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.16)
 
 project(lcm-llvm)
 
-set(CMAKE_CXX_STANDARD 20 REQUIRED)
+set(CMAKE_CXX_STANDARD 17 REQUIRED)
 find_package(LLVM REQUIRED CONFIG)
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 find_package(Z3 REQUIRED)

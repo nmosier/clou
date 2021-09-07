@@ -8,6 +8,7 @@
 #include "aeg.h"
 #include "config.h"
 #include "fol.h"
+#include "progress.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -64,7 +65,9 @@ void AEG::dump_graph(llvm::raw_ostream& os) const {
         }
 #endif
         
-        ss << "constraints: " << node.constraints << "\n";
+        if (dump_constraints) {
+            ss << "constraints: " << node.constraints << "\n";
+        }
         
         dot::emit_kvs(os, "label", ss.str());
         os << ";\n";
@@ -91,15 +94,21 @@ void AEG::dump_graph(llvm::raw_ostream& os) const {
 
 
 void AEG::simplify() {
-    unsigned count = 0;
+    Progress progress {nodes.size()};
     std::for_each(nodes.begin(), nodes.end(), [&] (Node& node) {
-        llvm::errs() << ++count << "\n";
         node.simplify();
+        ++progress;
     });
+    progress.done();
+    
     constraints.simplify();
-    graph.for_each_edge([] (NodeRef, NodeRef, Edge& edge) {
+    
+    progress = Progress(nedges);
+    graph.for_each_edge([&] (NodeRef, NodeRef, Edge& edge) {
         edge.simplify();
+        ++progress;
     });
+    progress.done();
 }
 
 
@@ -523,7 +532,7 @@ void AEG::add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e_, const s
     const z3::expr constr = e.exists;
     e.exists = context.make_bool(name);
     e.constraints(z3::implies(e.exists, constr));
-    graph.insert(src, dst, e);
+    add_unidir_edge(src, dst, e);
 }
 
 namespace {
@@ -582,6 +591,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
         }
     }
     
+#if 0
     // get cycles
     using Tarjan = tarjan<NodeRef>;
     Tarjan::DAG dag;
@@ -609,16 +619,21 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             prev = *it;
         }
     }
+#endif
     
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
         if (model.eval(edge.exists).is_true()) {
             os << names.at(src) << " -> " << names.at(dst) << " ";
             std::string color;
+#if 0
             if (!is_cycle_edge(edge) || cycle_edges.find(std::make_pair(src, dst)) == cycle_edges.end()) {
                 color = "black";
             } else {
                 color = "red";
             }
+#else
+            color = "black";
+#endif
             dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(edge.kind)}, {"color", color}});
             os << ";\n";
         }

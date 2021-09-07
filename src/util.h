@@ -121,7 +121,11 @@ std::string format(const std::string& fmt, Args&&... args) {
 
 
 inline std::string format_graph_path(const std::string& fmt, const llvm::Function& F) {
+#ifdef __APPLE__
     return format(fmtcheck(fmt.c_str(), "%s.dot"), F.getName().str().c_str());
+#else
+    return format(fmt.c_str(), F.getName().str().c_str());
+#endif
 }
 
 

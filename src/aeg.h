@@ -59,6 +59,7 @@ public:
 private:
     UHBConstraints constraints;
     std::vector<Node> nodes;
+    unsigned nedges = 0;
     
     unsigned num_specs() const { return po.num_specs; }
     
@@ -186,6 +187,7 @@ private:
     
     void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
         graph.insert(src, dst, e);
+        ++nedges;
     }
     
     void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e);

@@ -65,3 +65,27 @@ private:
         return std::chrono::steady_clock::now();
     }
 };
+
+
+class Count {
+public:
+    Count(std::ostream& os = std::cerr, std::size_t count = 0): os(&os), count(count) {}
+    
+    void update() const {
+        *os << "\r" << count;
+    }
+    
+    void done() const {
+        *os << "\n";
+    }
+    
+    Count& operator++() {
+        ++count;
+        update();
+        return *this;
+    }
+    
+private:
+    std::ostream *os;
+    std::size_t count;
+};

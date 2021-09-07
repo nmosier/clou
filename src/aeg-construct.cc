@@ -37,7 +37,7 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_aliases(AA);
     logv(2) << "Constructing com\n";
     construct_com();
-#if 1
+#if 0
     logv(2) << "Constructing comx\n";
     construct_comx();
 #endif
@@ -217,7 +217,7 @@ void AEG::construct_tfo() {
             cond = cond || (src_node.arch && dst_node.arch);
             
             // (arch, trans)
-            cond = cond || (src_node.arch && po.po.fwd.at(src).size() > 1);
+            cond = cond || (src_node.arch && dst_node.trans && po.po.fwd.at(src).size() > 1);
             
             // (trans, trans)
             cond = cond || (src_node.trans && dst_node.trans);
@@ -456,26 +456,32 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
 
 void AEG::construct_co(const NodeRefVec& reads, const NodeRefVec& writes,
                        const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
+    Count count;
     for (const NodeRef write : writes) {
         const Node& write_node = lookup(write);
         for (const NodeRef pred_write : pred_writes.at(write)) {
             const Node& pred_write_node = lookup(pred_write);
             const z3::expr f = write_node.arch && pred_write_node.arch && write_node.same_addr(pred_write_node);
             add_unidir_edge(pred_write, write, Edge {Edge::CO, f});
+            ++count;
         }
     }
+    count.done();
 }
 
 void AEG::construct_fr(const NodeRefVec& reads, const NodeRefVec& writes,
                        const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
+    Count count;
     for (const NodeRef write : writes) {
         const Node& write_node = lookup(write);
         for (const NodeRef read : pred_reads.at(write)) {
             const Node& read_node = lookup(read);
             const z3::expr f = write_node.arch && read_node.arch && write_node.same_addr(read_node);
             add_unidir_edge(read, write, Edge(Edge::FR, f));
+            ++count;
         }
     }
+    count.done();
 }
 
 void AEG::construct_com() {
@@ -526,6 +532,7 @@ void AEG::construct_com() {
     construct_rf(reads, writes, pred_reads, pred_writes);
     logv(3) << "constructing fr...\n";
     construct_fr(reads, writes, pred_reads, pred_writes);
+    logv(3) << __FUNCTION__ << ": done\n";
 }
 
 

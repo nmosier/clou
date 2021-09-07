@@ -18,6 +18,8 @@ static std::vector<char *> args = {prog};
 
 std::string output_dir;
 unsigned verbose = 0;
+bool dump_constraints = false;
+bool include_expr_in_constraint_name = false;
 
 static void usage(FILE *f = stderr) {
    const char *s = R"=(
@@ -28,6 +30,8 @@ Options:
   --func, -f <name>[,<name>]...  
                        only examine given functions
   --verbose, -v        verbosity++
+  --constraints, -c    include constraints in AEG graph output
+  --expr, -e           include expression string in constraint name (for debugging)
 )=";
    fprintf(f, s);
 }
@@ -49,10 +53,12 @@ static int parse_args() {
       {"help", no_argument, nullptr, 'h'},
       {"verbose", no_argument, nullptr, 'v'},
       {"output", required_argument, nullptr, 'o'},
+       {"constraints", no_argument, nullptr, 'c'},
+       {"expr", no_argument, nullptr, 'e'},
       {nullptr, 0, nullptr, 0}
    };
    
-   while ((optc = getopt_long(argc, argv, "hvo:", opts, nullptr)) >= 0) {
+   while ((optc = getopt_long(argc, argv, "hvo:ce", opts, nullptr)) >= 0) {
       switch (optc) {
       case 'h':
          usage(stdout);
@@ -65,6 +71,14 @@ static int parse_args() {
       case 'v':
          ++verbose;
          break;
+              
+          case 'c':
+              dump_constraints = true;
+              break;
+              
+          case 'e':
+              include_expr_in_constraint_name = true;
+              break;
 
       default:
          usage();

@@ -1,4 +1,5 @@
 #include "uhb.h"
+#include "config.h"
 
 unsigned constraint_counter = 0;
 
@@ -48,11 +49,14 @@ UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context
 void UHBConstraints::add_to(z3::solver& solver) const {
    for (const auto& p : exprs) {
       std::stringstream ss;
-      ss << p.first << ":" << p.second << ":" << constraint_counter++;
+       if (include_expr_in_constraint_name) {
+           ss << p.first << ":";
+       }
+      ss << p.second << ":" << constraint_counter++;
       try {
          solver.add(p.first, ss.str().c_str());
       } catch (const z3::exception& e) {
-         logv(0) << e.what() << "\n";
+         logv(0) << e.msg() << "\n";
          std::abort();
       }
    }

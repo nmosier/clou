@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <functional>
 #include <vector>
+#include <cassert>
 
 template <typename Node, typename Hash = std::hash<Node>, typename Equal = std::equal_to<Node>>
 class tarjan {
