@@ -27,7 +27,8 @@ public:
     using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
     
     NodeRef entry;
-    NodeRef exit;
+    NodeRefSet exits;
+    // NodeRef exit;
     
     graph_type graph;
     

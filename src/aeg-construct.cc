@@ -14,10 +14,13 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     
     // add entry, exit
     entry = 0;
-    const auto exit_it = std::find_if(nodes.begin(), nodes.end(), [] (const Node& node) -> bool {
-        return node.inst.kind == Inst::EXIT;
-    });
-    exit = exit_it - nodes.begin();
+    
+    // TODO: This can be moved to CFG-Expanded, perhaps.
+    for (NodeRef ref : node_range()) {
+        if (lookup(ref).inst.kind == Inst::EXIT) {
+            exits.insert(ref);
+        }
+    }
     
     for (NodeRef ref : node_range()) {
         graph.add_node(ref);
@@ -129,11 +132,21 @@ void AEG::construct_arch() {
     // Entry node is architecturally executed
     Node& entry_node = lookup(entry);
     entry_node.constraints(entry_node.arch);
+    
+    constraints(std::transform_reduce(exits.begin(), exits.end(), context.FALSE, util::logical_or<z3::expr>(), [&] (NodeRef ref) -> z3::expr {
+        return lookup(ref).arch;
+    }));
     // TODO: replace with "true", then substitute changes
 }
 
 void AEG::construct_trans() {
     // NOTE: depends on results of construct_tfo()
+    
+    // limit transient depth to speculation depth
+    for (Node& node : nodes) {
+        const auto f = z3::implies(node.trans, node.trans_depth <= context.context.int_val(num_specs()));
+        node.constraints(f, "depth-limit-trans");
+    }
     
     // arch resets transient depth
     for (Node& node : nodes) {
@@ -288,7 +301,7 @@ void AEG::construct_tfo() {
     // exactly one successor
     logv(3) << __FUNCTION__ << ": adding constraint 'exactly one successor'\n";
     for (const NodeRef ref : node_range()) {
-        if (ref != exit) {
+        if (exits.find(ref) == exits.end()) {
             const auto tfos = get_edges(Direction::OUT, ref, Edge::TFO);
             const auto f = util::one_of(tfos.begin(), tfos.end(), [] (const auto &edge) {
                 return edge->exists;
@@ -673,8 +686,8 @@ void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
 #if 1
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
-    std::unordered_set<NodeRef> xswrites {entry};
-    std::unordered_set<NodeRef> xsreads {exit};
+    NodeRefSet xswrites {entry};
+    NodeRefSet xsreads = exits;
     for (NodeRef i = 0; i < size(); ++i) {
         Node& node = lookup(i);
         switch (node.inst.kind) {

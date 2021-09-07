@@ -23,11 +23,12 @@ void AEGPO_Expanded::construct(const AEGPO_Unrolled& in) {
    }
 
    /* set exit */
-   const auto exit_it = std::find_if(nodes.begin(), nodes.end(), [] (const Node& node) {
-      return std::holds_alternative<Exit>(node.v);
-   });
-   assert(exit_it != nodes.end());
-   this->exit = exit_it - nodes.begin();
+    for (NodeRef ref = 0; ref < size(); ++ref) {
+        if (std::holds_alternative<Exit>(lookup(ref).v)) {
+            exits.insert(ref);
+        }
+    }
+    assert(!exits.empty());
     
     // DEBUG: print added nodes
     for (const auto& pair : expansions) {

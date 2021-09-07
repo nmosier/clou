@@ -63,7 +63,11 @@ public:
    using Rel = binrel<NodeRef>;
    Rel po;
    NodeRef entry;
+#if 0
    NodeRef exit;
+#else
+    NodeRefSet exits;
+#endif
    const unsigned num_specs;
 
    std::vector<Node> nodes;

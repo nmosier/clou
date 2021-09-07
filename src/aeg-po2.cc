@@ -33,7 +33,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node) {
 void AEGPO::prune() {
    std::unordered_set<NodeRef> todo;
    for (NodeRef i = 0; i < nodes.size(); ++i) {
-      if (i != exit) {
+       if (exits.find(i) == exits.end()) {
          todo.insert(i);
       }
    }

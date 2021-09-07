@@ -174,15 +174,16 @@ void AEG::test() {
     const auto frx = fol::edge_rel(*this, Edge::FRX);
     const auto comx = rfx + cox + frx;
     
-    const auto top = fol::node_rel(*this, Inst::ENTRY);
-    const auto bot = fol::node_rel(*this, Inst::EXIT);
+    const auto top = fol::node_rel(*this, Inst::ENTRY) & exec;
+    const auto bot = fol::node_rel(*this, Inst::EXIT) & exec;
     
     const auto fr_computed = fol::join(fol::inverse(rf), co);
     const auto exprs = std::make_tuple(std::make_pair(po, "po"),
-                                       std::make_pair(fol::element<0>(po, context.context), "po[0]"),
-                                       std::make_pair(fol::identity(fol::element<0>(po, context.context)), "po[0]"),
-                                       std::make_pair(fol::irreflexive_transitive_closure(po), "^po"),
-                                       std::make_pair(fol::irreflexive_transitive_closure(po) & fol::identity(fol::element<0>(po, context.context)), "^po & iden"),
+                                       std::make_pair(rf, "rf"),
+                                       std::make_pair(co, "co"),
+                                       std::make_pair(fr, "fr"),
+                                       std::make_pair(fol::join(fol::inverse(rf), co), "fr'"),
+                                       std::make_pair(bot, "bot"),
                                        std::make_pair(rfx, "rfx"),
                                        std::make_pair(cox, "cox"),
                                        std::make_pair(frx, "frx")
@@ -228,13 +229,30 @@ void AEG::test() {
                 ++nexecs;
                 
                 // add constraints
+#if 0
                 z3::expr same_sol = context.TRUE;
                 for (unsigned i = 0; i < model.size(); ++i) {
                     const z3::func_decl decl = model[i];
                     if (decl.range().is_bool()) {
-                        same_sol &= decl() == model.get_const_interp(decl);
+                        same_sol = same_sol && decl() == model.get_const_interp(decl);
                     }
                 }
+#else
+                std::vector<z3::expr> exprs;
+                auto it = std::back_inserter(exprs);
+                for (const Node& node : nodes) {
+                    *it++ = node.arch;
+                    *it++ = node.trans;
+                }
+                
+                for_each_edge([&] (NodeRef, NodeRef, const Edge& edge) {
+                    *it++ = edge.exists;
+                });
+                
+                const z3::expr same_sol = std::transform_reduce(exprs.begin(), exprs.end(), context.TRUE, util::logical_and<z3::expr>(), [&] (const z3::expr& e) -> z3::expr {
+                    return e == model.eval(e);
+                });
+#endif
                 solver.add(!same_sol);
                 break;
             }

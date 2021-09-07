@@ -6,7 +6,8 @@
 
 void AEGPO_Unrolled::construct() {
     entry = add_node(Node::make_entry());
-    exit = add_node(Node::make_exit());
+    NodeRef exit = add_node(Node::make_exit());
+    exits = {exit};
     Port port;
     IDs ids;
     construct_function(&F, port, ids);
