@@ -3,25 +3,25 @@
 #include <cassert>
 #include <iostream>
 #include <iomanip>
+#include <string>
+#include <chrono>
 
 class Progress {
 public:
     Progress(): os(nullptr) {}
     
-    Progress(std::ostream& os, std::size_t total, unsigned precision = 2):
-    os(&os), cur(0), total(total), precision(precision), scale(std::pow(10, precision)) {
+    Progress(std::size_t total, std::ostream& os = std::cerr, unsigned precision = 2): os(&os), cur(0), total(total), precision(precision), scale(std::pow(10, precision)), start(now()) {
         update();
     }
     
-    Progress(std::size_t total, unsigned precision = 2): os(&std::cerr), cur(0), total(total), precision(precision), scale(std::pow(10, precision)) {}
-    
     Progress& operator++() {
-        // assert(cur < total);
-        const auto old = raw();
-        ++cur;
-        const auto new_ = raw();
-        if (old != new_) {
-            update();
+        if (cur < total) {
+            const auto old = raw();
+            ++cur;
+            const auto new_ = raw();
+            if (old != new_) {
+                update();
+            }
         }
         return *this;
     }
@@ -30,20 +30,38 @@ public:
         char *buf = new char [precision + 8];
         sprintf(buf, "%*.*f%%", precision + 1, std::min<int>(precision - 2, 0), 100.0 * raw() / scale);
         *os << "\r" << buf;
-        if (cur == total) {
-            *os << "\n";
-        }
         delete[] buf;
     }
     
+    void done() const {
+        TimePoint stop = now();
+        std::chrono::duration<float> elapsed_sec = stop - start;
+        float secs = elapsed_sec.count();
+        const char *unit = "s";
+        if (secs < 1) {
+            secs *= 1000;
+            unit = "ms";
+        }
+        char buf[128];
+        sprintf(buf, "%.1f", secs);
+        *os << "\r" << buf << unit << "\n";
+    }
+    
 private:
+    using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
+    
     std::ostream *os;
     std::size_t cur;
     std::size_t total;
     unsigned precision;
     unsigned scale;
+    TimePoint start;
     
     unsigned raw() const {
         return scale * cur / total;
+    }
+    
+    static TimePoint now() {
+        return std::chrono::steady_clock::now();
     }
 };

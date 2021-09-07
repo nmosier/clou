@@ -221,6 +221,10 @@ private:
     
     template <typename Pred>
     z3::expr acyclic(Pred pred) const { return !cyclic(pred); }
+    
+    // acyclicity check using integers
+    template <typename Pred>
+    z3::expr acyclic_int(Pred pred);
 };
 
 
@@ -292,6 +296,28 @@ z3::expr AEG::cyclic(Pred pred) const {
     };
     
     return op_cycles(cycles);
+}
+
+template <typename Pred>
+z3::expr AEG::acyclic_int(Pred pred) {
+    z3::expr acc = context.TRUE;
+    std::unordered_map<NodeRef, z3::expr> ints;
+    const auto lookup_int = [&] (NodeRef ref) -> z3::expr {
+        auto it = ints.find(ref);
+        if (it == ints.end()) {
+            it = ints.emplace(ref, context.make_int("acyclic")).first;
+        }
+        return it->second;
+        
+    };
+    for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
+        if (pred(edge)) {
+            const z3::expr src_int = lookup_int(src), dst_int = lookup_int(dst);
+            const z3::expr f = z3::implies(edge.exists, src_int < dst_int);
+            acc = acc && f;
+        }
+    });
+    return acc;
 }
 
 

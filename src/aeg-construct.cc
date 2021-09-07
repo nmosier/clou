@@ -1,5 +1,6 @@
 #include "aeg.h"
 #include "progress.h"
+#include "timer.h"
 
 void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     // initialize nodes
@@ -265,7 +266,7 @@ void AEG::construct_tfo() {
     
     // exactly one predecessor
     logv(3) << __FUNCTION__ << ": adding constraint 'exactly one predecessor'\n";
-    progress = Progress(std::cerr, size());
+    progress = Progress(size());
     for (const NodeRef dst : node_range()) {
         if (dst != entry) {
             const auto tfos = get_edges(Direction::IN, dst, Edge::TFO);
@@ -282,6 +283,7 @@ void AEG::construct_tfo() {
         }
         ++progress;
     }
+    progress.done();
     
     // exactly one successor
     logv(3) << __FUNCTION__ << ": adding constraint 'exactly one successor'\n";
@@ -297,11 +299,14 @@ void AEG::construct_tfo() {
     }
     
     // acyclic
+    {
+        Timer timer;
     logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
     const auto f = acyclic([] (const auto& edge) {
         return edge.exists && edge.kind == Edge::TFO;
     });
     constraints(f);
+    }
 }
 
 #if 1
@@ -420,15 +425,24 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
     
     // most recent write
     logv(3) << __FUNCTION__ << ": adding constraint 'most recent write'\n";
-    progress = Progress(std::cerr, nedges);
-    for_each_edge(Edge::RF, [&] (const NodeRef write, const NodeRef read, Edge& edge) {
-        const auto& sourced_writes = pred_writes.at(read);
-        const auto f = util::all_of(sourced_writes.begin(), sourced_writes.end(), [&] (const NodeRef other_write) -> z3::expr {
-            return !edge_exists(write, other_write, Edge::CO);
-        }, context.TRUE);
-        edge.constraints(z3::implies(edge.exists, f), "rf-recent-write");
-        ++progress;
-    });
+    progress = Progress(nedges);
+    {
+        std::unordered_map<NodeRef, z3::expr> cache;
+        for_each_edge(Edge::RF, [&] (const NodeRef write, const NodeRef read, Edge& edge) {
+            auto it = cache.find(read);
+            if (it == cache.end()) {
+                const auto& sourced_writes = pred_writes.at(read);
+                const auto f = util::all_of(sourced_writes.begin(), sourced_writes.end(), [&] (const NodeRef other_write) -> z3::expr {
+                    return !edge_exists(write, other_write, Edge::CO);
+                }, context.TRUE);
+                it = cache.emplace(read, f).first;
+            }
+            const auto& f = it->second;
+            edge.constraints(z3::implies(edge.exists, f), "rf-recent-write");
+            ++progress;
+        });
+    }
+    progress.done();
     
     // required
     logv(3) << __FUNCTION__ << ": adding constraint 'required'\n";
@@ -531,6 +545,7 @@ void AEG::construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
             ++progress;
         }
     }
+    progress.done();
     logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
 
     // same xstate
@@ -540,6 +555,7 @@ void AEG::construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
         edge.constraints(z3::implies(edge.exists, lookup(xw).same_xstate(lookup(xr))), "rfx-same-xstate");
         ++progress;
     });
+    progress.done();
     
     // execution condition
     logv(3) << __FUNCTION__ << ": adding constraint 'execution condition'\n";
@@ -548,6 +564,7 @@ void AEG::construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
         edge.constraints(z3::implies(edge.exists, lookup(xw).get_exec() && lookup(xr).get_exec()), "rfx-exec-cond");
         ++progress;
     });
+    progress.done();
     
     // required
     logv(3) << __FUNCTION__ << ": adding constraint 'required'\n";
@@ -561,6 +578,7 @@ void AEG::construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
         xread_node.constraints(z3::implies(xread_node.get_exec(), f), "rfx-required");
         ++progress;
     }
+    progress.done();
 }
 
 void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
@@ -577,6 +595,7 @@ void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
             ++nedges;
         }
     }
+    progress.done();
     logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
 
     
@@ -587,24 +606,31 @@ void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
         edge.constraints(z3::implies(edge.exists, lookup(src).same_xstate(lookup(dst))));
         ++progress;
     });
+    progress.done();
     
     // execution condition
     logv(3) << __FUNCTION__ << ": adding constraint 'execution condition'\n";
     progress = Progress(nedges);
     for_each_edge(Edge::COX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
         edge.constraints(z3::implies(edge.exists, lookup(src).get_exec() && lookup(dst).get_exec()));
+        ++progress;
     });
+    progress.done();
     
     // total order -- already taken care of by specifying bidirectional edge
     
     // acyclic
-    logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
-    this->constraints(acyclic([] (const Edge& edge) -> bool {
-        return edge.kind == Edge::COX;
-    }));
+    {
+        Timer timer;
+        logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
+        this->constraints(acyclic_int([] (const Edge& edge) -> bool {
+            return edge.kind == Edge::COX;
+        }));
+    }
 }
 
 void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
+#if 0
     Progress progress;
     
     // add edges + definition
@@ -632,7 +658,9 @@ void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
             ++progress;
         }
     }
+    progress.done();
     logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
+#endif
 }
 
 #if 1

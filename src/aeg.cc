@@ -104,6 +104,8 @@ void AEG::simplify() {
 
 
 void AEG::test() {
+    logv(3) << "testing...\n";
+    
     z3::solver solver {context.context};
     
     simplify();
@@ -139,6 +141,8 @@ void AEG::test() {
     
     // add main constraints
     constraints.add_to(solver);
+    
+    std::cerr << solver.statistics() << "\n";
     
     // list of FOL expressions to evaulate
     const auto po = fol::edge_rel(*this, Edge::PO);
