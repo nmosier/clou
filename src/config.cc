@@ -20,6 +20,7 @@ std::string output_dir;
 unsigned verbose = 0;
 bool dump_constraints = false;
 bool include_expr_in_constraint_name = false;
+std::unordered_set<std::string> function_names;
 
 static void usage(FILE *f = stderr) {
    const char *s = R"=(
@@ -55,10 +56,11 @@ static int parse_args() {
       {"output", required_argument, nullptr, 'o'},
        {"constraints", no_argument, nullptr, 'c'},
        {"expr", no_argument, nullptr, 'e'},
+       {"function", required_argument, nullptr, 'f'},
       {nullptr, 0, nullptr, 0}
    };
    
-   while ((optc = getopt_long(argc, argv, "hvo:ce", opts, nullptr)) >= 0) {
+   while ((optc = getopt_long(argc, argv, "hvo:cef:", opts, nullptr)) >= 0) {
       switch (optc) {
       case 'h':
          usage(stdout);
@@ -78,6 +80,10 @@ static int parse_args() {
               
           case 'e':
               include_expr_in_constraint_name = true;
+              break;
+              
+          case 'f':
+              function_names.insert(optarg);
               break;
 
       default:

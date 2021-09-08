@@ -149,3 +149,33 @@ std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id) {
     os << "}";
     return os;
 }
+
+bool AEGPO::is_block_boundary(NodeRef ref, const Rel::Map& fwd, const Rel::Map& rev) const {
+    const auto& preds = rev.at(ref);
+    if (preds.size() != 1) {
+        return true;
+    }
+    const NodeRef pred = *preds.begin();
+    const auto& pred_succs = fwd.at(pred);
+    if (pred_succs.size() == 1) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+bool AEGPO::is_block_entry(NodeRef ref) const {
+    return is_block_boundary(ref, po.fwd, po.rev);
+}
+
+bool AEGPO::is_block_exit(NodeRef ref) const {
+    return is_block_boundary(ref, po.rev, po.fwd);
+}
+
+std::optional<NodeRef> AEGPO::get_block_successor(NodeRef ref) const {
+    if (is_block_exit(ref)) {
+        return std::nullopt;
+    } else {
+        return *po.fwd.at(ref).begin();
+    }
+}

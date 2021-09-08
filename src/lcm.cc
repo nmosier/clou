@@ -39,6 +39,12 @@ struct LCMPass : public llvm::FunctionPass {
    }
       
    virtual bool runOnFunction(llvm::Function& F) override {
+       if (!function_names.empty()) {
+           if (function_names.find(static_cast<std::string>(F.getName())) == function_names.end()) {
+               return false;
+           }
+       }
+       
       llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
 
       const unsigned num_specs = 2;

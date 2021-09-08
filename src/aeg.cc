@@ -9,6 +9,7 @@
 #include "config.h"
 #include "fol.h"
 #include "progress.h"
+#include "timer.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -111,6 +112,31 @@ void AEG::simplify() {
     progress.done();
 }
 
+#if 0
+template <typename UnaryOp>
+void AEG::transform_constants(UnaryOp op_) {
+    const auto op = [&] (z3::expr& e) {
+        e = op_(e);
+    };
+    for (Node& node : nodes) {
+op(node.arch);
+        op(node.trans);
+        op(node.addr_def);
+        for (auto& addr_ref : node.addr_refs) {
+            addr_ref.second.transform_constants(op);
+        }
+        node.
+    }
+}
+
+template <typename UnaryOp>
+void transform_constraints(UnaryOp op);
+
+void AEG::replace(const z3::expr& from, const z3::expr& to) {
+  
+}
+#endif
+
 
 void AEG::test() {
     logv(3) << "testing...\n";
@@ -138,14 +164,26 @@ void AEG::test() {
     
     
     // add edge constraints
+    {
+    std::cerr << __FUNCTION__ << ": adding edge constraints...\n";
+    Progress progress {nedges};
     std::unordered_map<std::string, unsigned> names;
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
         edge.constraints.add_to(solver);
+        ++progress;
     });
+        progress.done();
+    }
     
     // add node constraints
+    {
+        std::cerr << __FUNCTION__ << ": adding node constraints...\n";
+        Progress progress {size()};
     for (NodeRef ref : node_range()) {
         lookup(ref).constraints.add_to(solver);
+        ++progress;
+    }
+        progress.done();
     }
     
     // add main constraints
@@ -153,6 +191,8 @@ void AEG::test() {
     
     std::cerr << solver.statistics() << "\n";
     
+#define CHECKING 0
+#if CHECKING
     // list of FOL expressions to evaulate
     const auto po = fol::edge_rel(*this, Edge::PO);
     const auto tfo = fol::edge_rel(*this, Edge::TFO);
@@ -188,11 +228,13 @@ void AEG::test() {
                                        std::make_pair(cox, "cox"),
                                        std::make_pair(frx, "frx")
                                        );
+#endif
     
     solver.push();
     
     unsigned nexecs = 0;
     
+#if CHECKING
     const auto dump_expressions = [&] (const z3::model& model) {
         std::ofstream ofs {std::string("out/exec") + std::to_string(nexecs) + ".txt"};
         util::for_each_in_tuple(exprs, [&] (const auto& pair) {
@@ -208,12 +250,18 @@ void AEG::test() {
             ofs << "\n";
         });
     };
+#endif
     
     constexpr unsigned max_nexecs = 16;
     while (nexecs < max_nexecs) {
-        switch (solver.check()) {
+        Stopwatch timer;
+        timer.start();
+        const auto res = solver.check();
+        timer.stop();
+        std::cerr << res << " " << timer << "\n";
+        
+            switch (res) {
             case z3::unsat: {
-                llvm::errs() << "unsat\n";
                 const auto& core = solver.unsat_core();
                 for (const auto& expr : core) {
                     llvm::errs() << util::to_string(expr) << "\n";
@@ -221,23 +269,18 @@ void AEG::test() {
                 goto done;
             }
             case z3::sat: {
-                llvm::errs() << "sat";
                 const z3::model model = solver.get_model();
                 output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", model);
+#if CHECKING
                 dump_expressions(model);
+#endif
                 
                 ++nexecs;
                 
                 // add constraints
-#if 0
-                z3::expr same_sol = context.TRUE;
-                for (unsigned i = 0; i < model.size(); ++i) {
-                    const z3::func_decl decl = model[i];
-                    if (decl.range().is_bool()) {
-                        same_sol = same_sol && decl() == model.get_const_interp(decl);
-                    }
-                }
-#else
+                std::cerr << "adding different solution constraints...\n";
+                Stopwatch timer;
+                timer.start();
                 std::vector<z3::expr> exprs;
                 auto it = std::back_inserter(exprs);
                 for (const Node& node : nodes) {
@@ -252,12 +295,15 @@ void AEG::test() {
                 const z3::expr same_sol = std::transform_reduce(exprs.begin(), exprs.end(), context.TRUE, util::logical_and<z3::expr>(), [&] (const z3::expr& e) -> z3::expr {
                     return e == model.eval(e);
                 });
-#endif
+                
                 solver.add(!same_sol);
+                
+                timer.stop();
+                std::cerr << timer << "\n";
+                
                 break;
             }
             case z3::unknown:
-                llvm::errs() << "unknown";
                 goto done;
         }
     }
@@ -267,6 +313,7 @@ done:
     
     solver.pop();
     
+#if CHECKING
     // check FOL assertions
     const auto po_closure = fol::irreflexive_transitive_closure(po);
     
@@ -291,6 +338,7 @@ done:
         {!fol::acyclic(cox, context.context), z3::unsat, "acyclic[cox]"},
         {!fol::acyclic(rfx + cox, context.context), z3::unsat, "acyclic[rfx+cox]"},
         {!fol::acyclic(comx, context.context), z3::unsat, "acyclic[comx]"},
+        {fol::some(trans, context.context), z3::sat, "some trans"},
     };
     
     unsigned passes = 0;
@@ -308,6 +356,11 @@ done:
                 output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", model);
                 dump_expressions(model);
                 ++nexecs;
+            } else if (res == z3::unsat) {
+                const auto& core = solver.unsat_core();
+                for (const auto& expr : core) {
+                    llvm::errs() << util::to_string(expr) << "\n";
+                }
             }
         } else {
             ++passes;
@@ -317,6 +370,7 @@ done:
     
     std::cerr << "Passes: " << passes << "\n"
               << "Fails:  " << fails  << "\n";
+#endif
 
 }
 
@@ -391,7 +445,7 @@ z3::expr AEG::check_no_intervening_writes(NodeRef read, NodeRef write) const {
         if (out) {
             const Node& ref_node = lookup(ref);
             if (ref_node.inst.kind == Inst::WRITE) {
-                *out &= lookup(ref).addr_refs.at(0).second.arch != read_node.addr_refs.at(0).second.arch;
+                *out = *out && lookup(ref).get_memory_address_pair().second.arch != read_node.get_memory_address_pair().second.arch;
             }
         } else {
             if (ref == read) {
@@ -429,8 +483,7 @@ void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const 
         if (out) {
             const Node& ref_node = lookup(ref);
             if (ref_node.inst.kind == kind) {
-                const z3::expr same_addr =
-                ref_node.addr_refs.at(0).second.arch == org_node.addr_refs.at(0).second.arch;
+                const z3::expr same_addr = ref_node.get_memory_address_pair().second.arch == org_node.get_memory_address_pair().second.arch;
                 yes = *out && ref_node.arch && same_addr;
                 no = *out && z3::implies(ref_node.arch, !same_addr);
             } else if (ref == entry) {
@@ -461,7 +514,7 @@ void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const 
 template <typename OutputIt>
 void AEG::find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const {
     const Node& write_node = lookup(write);
-    const z3::expr& write_addr = write_node.addr_refs.at(0).second.arch;
+    const z3::expr& write_addr = write_node.get_memory_address_pair().second.arch;
     
     std::deque<NodeRef> todo;
     std::unordered_set<NodeRef> seen;
@@ -478,7 +531,7 @@ void AEG::find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) co
         
         const Node& node = lookup(ref);
         if (node.inst.kind == kind) {
-            const z3::expr same_addr = write_addr == node.addr_refs.at(0).second.arch;
+            const z3::expr same_addr = (write_addr == node.get_memory_address_pair().second.arch);
             const z3::expr path_taken = node.arch;
             *out++ = CondNode {ref, same_addr && path_taken};
         }
@@ -591,8 +644,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             switch (node.inst.kind) {
                 case Inst::WRITE:
                 case Inst::READ:
-                    ss << "{" << model.eval(node.get_addr_ref(0)) << "}"
-                    << "\n";
+                    ss << "{" << model.eval(node.get_memory_address()) << "}\n";
                     break;
                 default: break;
             }
@@ -656,6 +708,21 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             os << ";\n";
         }
     });
+    
+    // output pseudoedge co
+    NodeRefVec writes;
+    get_writes(std::back_inserter(writes));
+    for (NodeRef src : writes) {
+        for (NodeRef dst : writes) {
+            const z3::expr f = co_pred(src, dst);
+            if (model.eval(f).is_true()) {
+                os << names.at(src) << " -> " << names.at(dst) << " ";
+                dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(Edge::CO)}, {"color", "black"}});
+                    os << ";\n";
+            }
+        }
+    }
+    
     
     os << "}\n";
 }
@@ -911,6 +978,7 @@ std::optional<z3::expr> AEG::find_sourced_xsaccesses_tfo(XSAccess kind, NodeRef 
 
 template <typename OutputIt>
 OutputIt AEG::get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) {
+    assert(!is_pseudoedge(kind));
     const auto& map = graph(dir);
     for (const auto& p : map.at(ref)) {
         for (auto& edge : p.second) {
@@ -936,6 +1004,7 @@ NodeRefVec AEG::get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const {
 
 
 const AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const {
+    assert(!is_pseudoedge(kind));
     const auto src_it = util::contains(graph.fwd, src);
     if (!src_it) { return nullptr; }
     const auto dst_it = util::contains((**src_it).second, dst);
@@ -948,6 +1017,7 @@ const AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const
 }
 
 AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) {
+    assert(!is_pseudoedge(kind));
     auto& edges = graph.fwd[src][dst];
     const auto it = std::find_if(edges.begin(), edges.end(), [kind] (const auto& edgeptr) {
         return edgeptr->kind == kind;
@@ -956,10 +1026,16 @@ AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) {
 }
 
 z3::expr AEG::edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const {
-    if (const Edge *edge = find_edge(src, dst, kind)) {
-        return edge->exists;
-    } else {
-        return context.FALSE;
+    switch (kind) {
+        case Edge::CO:
+            return co_pred(src, dst);
+            
+        default:
+            if (const Edge *edge = find_edge(src, dst, kind)) {
+                return edge->exists;
+            } else {
+                return context.FALSE;
+            }
     }
 }
 

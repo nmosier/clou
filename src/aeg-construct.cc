@@ -26,6 +26,18 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
         graph.add_node(ref);
     }
     
+    // print out some information
+    const auto count_kind = [&] (Inst::Kind kind) {
+        return std::count_if(nodes.begin(), nodes.end(), [kind] (const Node& node) -> bool {
+            return node.inst.kind == kind;
+        });
+    };
+    logv(2) << "Number of reads: " << count_kind(Inst::READ) << "\n";
+    logv(2) << "Number of writes: " << count_kind(Inst::WRITE) << "\n";
+    
+    
+    logv(2) << "Constructing nodes\n";
+    construct_nodes();
     logv(2) << "Constructing po\n";
     construct_po();
     logv(2) << "Constructing tfo\n";
@@ -40,10 +52,89 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_aliases(AA);
     logv(2) << "Constructing com\n";
     construct_com();
-#if 0
+#if 1
     logv(2) << "Constructing comx\n";
     construct_comx();
 #endif
+}
+
+void AEG::construct_nodes() {
+    // initialize `arch`
+    // DEBUG: make sure that we hit all nodes
+    // TODO: extract this to common function
+    {
+        std::vector<bool> done(size(), false);
+        for (NodeRef ref : node_range()) {
+            if (po.is_block_entry(ref)) {
+                // beginning of basic block
+                const z3::expr arch = ref == entry ? context.TRUE : context.make_bool("arch");
+                NodeRef cur = ref;
+                while (true) {
+                    lookup(cur).arch = arch;
+                    assert(!done[cur]);
+                    done[cur] = true;
+                    if (const auto succ = po.get_block_successor(cur)) {
+                        cur = *succ;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        assert(std::all_of(done.begin(), done.end(), [] (bool b) { return b; }));
+    }
+    
+    // initalize `trans`
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    {
+        // TODO: rewrite as functoin?
+        for (NodeRef ref : order) {
+            const auto& preds = po.po.rev.at(ref);
+            Node& node = lookup(ref);
+            if (preds.size() != 1) {
+                node.trans = context.FALSE;
+            } else {
+                const NodeRef pred = *preds.begin();
+                const auto& pred_succs = po.po.fwd.at(pred);
+                if (pred_succs.size() == 1 && lookup(pred).trans.is_false()) {
+                    node.trans = context.FALSE;
+                } else {
+                    node.trans = context.make_bool("trans");
+                }
+            }
+        }
+    }
+    
+    // initialize `trans_depth`
+    {
+        for (NodeRef ref : node_range()) {
+            Node& node = lookup(ref);
+            if (node.trans.is_false()) {
+                node.trans_depth = context.context.int_val(0);
+            } else {
+                node.trans_depth = context.make_int("trans_depth");
+            }
+        }
+    }
+    
+    // initialize `xsread`, `xswrite`
+    {
+        for (NodeRef ref : node_range()) {
+            Node& node = lookup(ref);
+            node.xsread = node.xswrite = context.FALSE;
+        }
+    }
+    
+    // initialize `exec_order`
+    {
+        for (NodeRef ref : order) {
+            Node& node = lookup(ref);
+            const auto& preds = po.po.rev.at(ref);
+            const auto it = std::max_element(preds.begin(), preds.end(), std::less<unsigned>());
+            node.exec_order = it == preds.end() ? 0 : *it + 1;
+        }
+    }
 }
 
 void AEG::construct_addr_defs() {
@@ -111,7 +202,7 @@ void AEG::construct_addr_refs() {
                     }
                 }
             }
-            node.addr_refs.emplace_back(V, *e);
+            node.addr_refs.emplace(V, *e);
         }
     }
 }
@@ -131,7 +222,10 @@ void AEG::construct_exec() {
 void AEG::construct_arch() {
     // Entry node is architecturally executed
     Node& entry_node = lookup(entry);
+#if 1
     entry_node.constraints(entry_node.arch);
+#else
+#endif
     
     constraints(std::transform_reduce(exits.begin(), exits.end(), context.FALSE, util::logical_or<z3::expr>(), [&] (NodeRef ref) -> z3::expr {
         return lookup(ref).arch;
@@ -322,7 +416,6 @@ void AEG::construct_tfo() {
     }
 }
 
-#if 1
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     using ID = AEGPO::ID;
     struct Info {
@@ -340,17 +433,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             addrs.push_back({id, V, node.addr_def->arch});
             [[maybe_unused]] const auto res = seen.emplace(std::make_pair(id, V), i);
             
-            // TODO: ignore collisions for now, since they're introduced during the CFG
-            // expansion step.
-#if 0
-            // DEBUG
-            if (!res.second) {
-                llvm::errs() << "construct aliases already seen: " << *V << "\n";
-                std::cerr << id << "\n" << res.first->first.first << "\n";
-                std::cerr << i << " " << res.first->second << "\n";
-            }
-            assert(res.second);
-#endif
+            // TODO: ignore collisions for now, since they're introduced during the CFG expansion step.
         }
     }
     
@@ -373,56 +456,132 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
     }
     
+    std::cerr << addrs.size() << " addrs\n";
+    
     // add constraints
-    logv(3) << __FUNCTION__ << ": adding " << addrs.size() * (addrs.size() - 1) / 2
-    << " constraints\n";
+    unsigned nos, musts, mays;
+    nos = musts = mays = 0;
     for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
+        ValueLoc vl1 {it1->id, it1->V};
+        alias_rel.emplace(std::make_pair(vl1, vl1), llvm::MustAlias);
         for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
             if (po.alias_valid(it1->id, it2->id)) {
                 const auto alias_res = AA.alias(it1->V, it2->V);
+                ValueLoc vl2 {it2->id, it2->V};
                 switch (alias_res) {
                     case llvm::NoAlias:
                         constraints(it1->e != it2->e);
+                        ++nos;
                         break;
                     case llvm::MayAlias:
+                        ++mays;
                         break;
                     case llvm::MustAlias:
                         constraints(it1->e == it2->e);
+                        ++musts;
                         break;
                     default: std::abort();
                 }
+                add_alias_result(vl1, vl2, alias_res);
             }
         }
     }
+    std::cerr << "NoAlias: " << nos << "\n"
+    << "MustAlias: " << musts << "\n"
+    << "MayAlias: " << mays << "\n";
 }
-#else
-void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
-    // collect all address references
-    std::unordered_set<std::pair<const llvm::Value *, UHBAddress>> addr_refs;
-    for (const NodeRef ref : node_range()) {
-        const Node& node = lookup(ref);
-        std::copy(node.addr_refs.begin(), node.addr_refs.end(), std::inserter(addr_refs, addr_refs.end()));
-    }
-        // TODO
-    std::abort();
-}
-#endif
 
 void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
                        const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
+    constexpr bool construct_directly = true;
+    
     Progress progress;
     
     // add edges
     logv(3) << __FUNCTION__ << ": adding edges\n";
     unsigned nedges = 0;
-    for (const NodeRef read : reads) {
-        const auto& sourced_writes = pred_writes.at(read);
-        for (const NodeRef write : sourced_writes) {
-            add_optional_edge(write, read, Edge {Edge::RF, context.TRUE}, "rf");
-            ++nedges;
+    unsigned skipped = 0;
+    if constexpr (!construct_directly) {
+        for (const NodeRef read : reads) {
+            const auto& sourced_writes = pred_writes.at(read);
+            for (const NodeRef write : sourced_writes) {
+                switch (check_alias(read, write)) {
+                    case llvm::MustAlias:
+                        // TODO: This should be handled as separate case.
+                    case llvm::MayAlias:
+                        add_optional_edge(write, read, Edge {Edge::RF, context.TRUE}, "rf");
+                        break;
+                    case llvm::NoAlias:
+                        ++skipped;
+                        break;
+                    default:
+                        std::abort();
+                }
+                ++nedges;
+            }
         }
+    } else {
+        // do a dataflow analysis checking which writes could've been sourced.
+        struct Answer {
+            z3::expr yes, no;
+        };
+        const Answer default_answer {context.FALSE, context.TRUE};
+        using Value = std::unordered_map<NodeRef, Answer>;
+        using Analysis = Dataflow<Value>;
+        Analysis::Result res;
+        const auto transfer = [&] (NodeRef src, const Value& in) -> Value {
+            const Node& src_node = lookup(src);
+            if (src_node.is_write()) {
+                Value out;
+                for (const auto& in_pair : in) {
+                    const auto& in_ans = in_pair.second;
+                    const auto& in_no = in_ans.no;
+                    const NodeRef dst = in_pair.first;
+                    const z3::expr addr = Node::same_addr(lookup(src), lookup(dst));
+                    const z3::expr out_yes = in_no && src_node.arch && addr;
+                    const z3::expr out_no = in_no && z3::implies(src_node.arch, !addr);
+                    out.emplace(dst, Answer {out_yes, out_no});
+                }
+                return out;
+            } else if (src_node.is_read()) {
+                Value out = in;
+                assert(out.find(src) == out.end());
+                out.emplace(src, default_answer);
+                return out;
+            } else {
+                return in;
+            }
+        };
+        const auto meet = [&] (const Value& a, const Value& b) -> Value {
+            Value res = a;
+            for (const auto& pair : b) {
+                const auto it = res.emplace(pair.first, default_answer).first;
+                z3::expr& acc = it->second.no;
+                acc = acc && pair.second.no;
+            }
+            return res;
+        };
+        
+        Analysis(*this, {}, Analysis::REV, res, transfer, meet);
+        
+        progress = Progress(reads.size());
+        for (NodeRef read : reads) {
+            for (NodeRef write : pred_writes.at(read)) {
+                const auto& out_write = res.out.at(write);
+                const z3::expr exists_expr = lookup(read).arch && out_write.at(read).yes;
+                const z3::expr exists_var = context.make_bool("rf");
+                // const z3::expr& exists = res.out.at(write).at(read).yes;
+                Edge edge {Edge::RF, exists_var};
+                edge.constraints(exists_var == exists_expr);
+                add_unidir_edge(write, read, edge);
+                ++nedges;
+            }
+            ++progress;
+        }
+        progress.done();
     }
     logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
+    logv(3) << __FUNCTION__ << ": skipped " << skipped << " edges\n";
     
     // same address
     logv(3) << __FUNCTION__ << ": adding constraint 'same address'\n";
@@ -437,25 +596,30 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
     });
     
     // most recent write
+    /* This is piss-slow.
+     * The underlying issue is that it's O(n^3), I think, since we're looking at O(n) preceding writes for each of the O(n^2) rf edges.
+     */
     logv(3) << __FUNCTION__ << ": adding constraint 'most recent write'\n";
+    Stopwatch s;
     progress = Progress(nedges);
-    {
-        std::unordered_map<NodeRef, z3::expr> cache;
+    if constexpr (!construct_directly) {
         for_each_edge(Edge::RF, [&] (const NodeRef write, const NodeRef read, Edge& edge) {
-            auto it = cache.find(read);
-            if (it == cache.end()) {
                 const auto& sourced_writes = pred_writes.at(read);
-                const auto f = util::all_of(sourced_writes.begin(), sourced_writes.end(), [&] (const NodeRef other_write) -> z3::expr {
+                
+            s.start();
+            const auto f = util::all_of(sourced_writes.begin(), sourced_writes.end(), [&] (const NodeRef other_write) -> z3::expr {
                     return !edge_exists(write, other_write, Edge::CO);
                 }, context.TRUE);
-                it = cache.emplace(read, f).first;
-            }
-            const auto& f = it->second;
+            s.stop();
             edge.constraints(z3::implies(edge.exists, f), "rf-recent-write");
+            if (!edge.possible()) {
+                std::cerr << "IMPOSSIBLE EDGE\n";
+            }
             ++progress;
         });
     }
     progress.done();
+    std::cerr << s << "\n";
     
     // required
     logv(3) << __FUNCTION__ << ": adding constraint 'required'\n";
@@ -469,6 +633,7 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
 
 void AEG::construct_co(const NodeRefVec& reads, const NodeRefVec& writes,
                        const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
+#if 0
     Count count;
     for (const NodeRef write : writes) {
         const Node& write_node = lookup(write);
@@ -480,6 +645,7 @@ void AEG::construct_co(const NodeRefVec& reads, const NodeRefVec& writes,
         }
     }
     count.done();
+#endif
 }
 
 void AEG::construct_fr(const NodeRefVec& reads, const NodeRefVec& writes,
@@ -501,42 +667,58 @@ void AEG::construct_com() {
     assert(po.nodes.size() == nodes.size());
     
     // get reads and writes
-    std::vector<NodeRef> reads;
-    std::vector<NodeRef> writes;
-    for (NodeRef ref : node_range()) {
-        switch (lookup(ref).inst.kind) {
-            case Inst::READ:
-            case Inst::EXIT:
-                reads.push_back(ref);
-                break;
-            case Inst::WRITE:
-            case Inst::ENTRY:
-                writes.push_back(ref);
-                break;
-            default: break;
-        }
-    }
+    NodeRefVec reads, writes;
+    get_reads(std::back_inserter(reads));
+    get_writes(std::back_inserter(writes));
     
     // get predecessor writes
-    const ClosureMap pred_writes = find_predecessors([&] (const NodeRef ref) {
-        switch (lookup(ref).inst.kind) {
-            case Inst::WRITE:
-            case Inst::ENTRY:
-                return true;
-            default:
-                return false;
-        }
+#if 1
+    using MemDataflow = Dataflow<NodeRefSet>;
+    MemDataflow::Result pred_writes, pred_reads;
+    
+    const auto do_dataflow = [&] (MemDataflow::Result& res, const auto should_insert) {
+        MemDataflow(*this, {}, MemDataflow::FWD, res, [&] (NodeRef ref, const NodeRefSet& in_) -> NodeRefSet {
+            NodeRefSet in = in_;
+            if (should_insert(ref)) {
+                for (auto it = in.begin(); it != in.end(); ) {
+                    if (check_alias(*it, ref) == llvm::MustAlias) {
+                        it = in.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                in.insert(ref);
+            }
+            return in;
+        }, [&] (const NodeRefSet& a, const NodeRefSet& b) -> NodeRefSet {
+            NodeRefSet res = a;
+            res.insert(b.begin(), b.end());
+            return res;
+        });
+    };
+    
+    do_dataflow(pred_reads, [&] (NodeRef ref) -> bool {
+        return lookup(ref).is_read();
+    });
+    do_dataflow(pred_writes, [&] (NodeRef ref) -> bool {
+        return lookup(ref).is_write();
     });
     
-    // get predecessor reads
-    const ClosureMap pred_reads = find_predecessors([&] (const NodeRef ref) {
-        switch (lookup(ref).inst.kind) {
-            case Inst::READ:
-            case Inst::EXIT:
-                return true;
-            default:
-                return false;
-        }
+    assert(!pred_reads.in.empty());
+    
+    logv(3) << "constructing co...\n";
+    construct_co(reads, writes, pred_reads.in, pred_writes.in);
+    logv(3) << "constructing rf...\n";
+    construct_rf(reads, writes, pred_reads.in, pred_writes.in);
+    logv(3) << "constructing fr...\n";
+    construct_fr(reads, writes, pred_reads.in, pred_writes.in);
+    logv(3) << __FUNCTION__ << ": done\n";
+#else
+    const auto pred_reads = find_predecessors([&] (NodeRef ref) -> bool {
+        return lookup(ref).is_read();
+    });
+    const auto pred_writes = find_predecessors([&] (NodeRef ref) -> bool {
+        return lookup(ref).is_write();
     });
     
     logv(3) << "constructing co...\n";
@@ -546,6 +728,7 @@ void AEG::construct_com() {
     logv(3) << "constructing fr...\n";
     construct_fr(reads, writes, pred_reads, pred_writes);
     logv(3) << __FUNCTION__ << ": done\n";
+#endif
 }
 
 

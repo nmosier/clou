@@ -427,3 +427,45 @@ OutputIt set_intersection(const Container1& small, const Container2& large, Outp
 }
 
 }
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::unordered_set<T>& set) {
+    os << "{";
+    for (auto it = set.begin(); it != set.end(); ++it) {
+        if (it != set.begin()) {
+            os << ", ";
+        }
+        os << *it;
+    }
+    os << "}";
+    return os;
+}
+
+
+namespace util {
+template <typename T>
+struct unordered_pair {
+    T first;
+    T second;
+    
+    unordered_pair() {}
+    unordered_pair(const T& first, const T& second): first(first), second(second) {}
+    
+    bool operator==(const unordered_pair& other) const {
+        return (first == other.first && second == other.second) || (first == other.second && second == other.first);
+    }
+    
+    bool operator!=(const unordered_pair& other) const {
+        return !(*this == other);
+    }
+    
+    std::size_t hash() const {
+        if (!(second < first)) {
+            return llvm::hash_value(std::make_pair(first, second));
+        } else {
+            return llvm::hash_value(std::make_pair(second, first));
+        }
+    }
+};
+
+}

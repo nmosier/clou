@@ -68,6 +68,7 @@ private:
     template <typename Pred>
     ClosureMap find_predecessors(Pred f) const;
     
+    void construct_nodes();
     void construct_exec();
     void construct_arch();
     void construct_trans();
@@ -112,6 +113,20 @@ private:
                                                         OptionalNodeExprMap& nos_po,
                                                         OptionalNodeExprMap& yesses_tfo,
                                                         OptionalNodeExprMap& nos_tfo) const;
+    
+    template <typename UnaryOp>
+    void transform_constants(UnaryOp op);
+    
+    template <typename UnaryOp>
+    void transform_constraints(UnaryOp op);
+    
+    template <typename UnaryOp>
+    void transform(UnaryOp op) {
+        transform_constants(op);
+        transform_constraints(op);
+    }
+    
+    void replace(const z3::expr& from, const z3::expr& to);
     
     
     
@@ -187,8 +202,10 @@ private:
     void find_comx_window(NodeRef ref, unsigned distance, unsigned spec_depth, OutputIt out) const;
     
     void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
-        graph.insert(src, dst, e);
-        ++nedges;
+        if (e.possible()) {
+            graph.insert(src, dst, e);
+            ++nedges;
+        }
     }
     
     void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e);
@@ -218,6 +235,7 @@ private:
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;
     z3::expr edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const;
+    z3::expr total_order(NodeRef src, NodeRef dst, Edge::Kind kind) const;
     
     template <typename Pred>
     z3::expr cyclic(Pred pred) const;
@@ -228,6 +246,66 @@ private:
     // acyclicity check using integers
     template <typename Pred>
     z3::expr acyclic_int(Pred pred);
+    
+    bool is_pseudoedge(Edge::Kind kind) const {
+        switch (kind) {
+            case Edge::Kind::CO:
+                return true;
+            default:
+                return false;
+        }
+    }
+    
+public:
+    template <typename OutputIt, typename Pred>
+    OutputIt get_nodes_if(OutputIt out, Pred pred) const {
+        for (NodeRef ref : node_range()) {
+            if (pred(lookup(ref))) {
+                *out++ = ref;
+            }
+        }
+        return out;
+    }
+    
+    template <typename Container, typename OutputIt>
+    OutputIt get_nodes(OutputIt out, const Container& container) const {
+        return get_nodes_if(out, [&] (const Node& node) -> bool {
+            return container.find(node.inst.kind) != container.end();
+        });
+    }
+    
+    template <typename OutputIt>
+    OutputIt get_nodes(OutputIt out, Inst::Kind kind) {
+        return get_nodes(out, std::unordered_set<Inst::Kind> {kind});
+    }
+    
+    template <typename OutputIt>
+    OutputIt get_writes(OutputIt out) const {
+        return get_nodes(out, std::unordered_set<Inst::Kind> {Inst::ENTRY, Inst::WRITE});
+    }
+    
+    template <typename OutputIt>
+    OutputIt get_reads(OutputIt out) const {
+        return get_nodes(out, std::unordered_set<Inst::Kind> {Inst::EXIT, Inst::READ});
+    }
+    
+    z3::expr co_pred(NodeRef src, NodeRef dst) const {
+        const Node& srcn = lookup(src);
+        const Node& dstn = lookup(dst);
+        const z3::expr f = context.bool_val(srcn.exec_order < dstn.exec_order) && srcn.arch && dstn.arch && srcn.same_addr(dstn);
+        return f.simplify();
+    }
+
+    template <typename T>
+    class Dataflow;
+    
+private:
+    using ValueLoc = std::pair<AEGPO::ID, const llvm::Value *>;
+    using ValueLocRel = std::unordered_map<std::pair<ValueLoc, ValueLoc>, llvm::AliasResult>;
+    ValueLocRel alias_rel;
+    
+    llvm::AliasResult check_alias(NodeRef ref1, NodeRef ref2) const;
+    void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
 };
 
 
@@ -240,7 +318,7 @@ AEG::ClosureMap AEG::find_predecessors(Pred f) const {
     
     for (const NodeRef ref : order) {
         const auto& preds = po.po.rev.at(ref);
-        std::unordered_set<NodeRef> acc;
+        NodeRefSet acc;
         for (const NodeRef pred : preds) {
             const auto& pred_set = map.at(pred);
             acc.insert(pred_set.begin(), pred_set.end());
@@ -253,9 +331,13 @@ AEG::ClosureMap AEG::find_predecessors(Pred f) const {
         map.emplace(ref, acc);
     }
     
+    // erase same
     for (auto& pair : map) {
         pair.second.erase(pair.first);
     }
+    
+    // erase no aliases
+    
     
     return map;
 }
@@ -337,3 +419,54 @@ OutputIt AEG::get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kin
     }
     return out;
 }
+
+template <typename T>
+class AEG::Dataflow {
+public:
+    using Map = std::unordered_map<NodeRef, T>;
+    struct Result {
+        Map in;
+        Map out;
+    };
+    
+    enum Direction {
+        FWD, REV
+    };
+    
+    Dataflow() {}
+    
+    template <typename Transfer, typename Meet>
+    Dataflow(const AEG& aeg, const T& top, Direction dir, Result& res, Transfer transfer, Meet meet) {
+        res = (*this)(aeg, top, dir, transfer, meet);
+    }
+    
+    template <typename Transfer, typename Meet>
+    Result operator()(const AEG& aeg, const T& top, Direction dir, Transfer transfer, Meet meet) const {
+        Result res;
+        
+        std::vector<NodeRef> order;
+        const AEGPO::Rel::Map *rel;
+        switch (dir) {
+            case Direction::FWD:
+                aeg.po.reverse_postorder(std::back_inserter(order));
+                rel = &aeg.po.po.rev;
+                break;
+            case Direction::REV:
+                aeg.po.postorder(std::back_inserter(order));
+                rel = &aeg.po.po.fwd;
+                break;
+        }
+        
+        for (NodeRef ref : order) {
+            T& in = res.in.emplace(ref, top).first->second;
+            for (NodeRef pred : rel->at(ref)) {
+                in = meet(in, res.out.at(pred));
+            }
+            res.out.emplace(ref, transfer(ref, in));
+        }
+        
+        return res;
+    }
+    
+private:
+};

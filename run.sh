@@ -6,7 +6,9 @@ usage: $0 [-hg] arg...
 EOF
 }
 
-while getopts "hg" OPTCHAR; do
+ARGS=
+
+while getopts "hgx:" OPTCHAR; do
     case "$OPTCHAR" in
 	h)
 	    usage
@@ -14,6 +16,9 @@ while getopts "hg" OPTCHAR; do
 	    ;;
 	g)
 	    DEBUGGER="lldb --"
+	    ;;
+	x)
+	    ARGS+="$OPTARG"
 	    ;;
 	*)
 	    usage >&2
@@ -24,4 +29,4 @@ done
 
 shift $((OPTIND-1))
 
-LCM_ARGS="-oout -vvv" $DEBUGGER clang-12 -o /dev/null -Xclang -load -Xclang src/liblcm.so -c "$@"
+LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER clang-12 -o /dev/null -Xclang -load -Xclang src/liblcm.so -c "$@"

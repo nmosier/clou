@@ -98,6 +98,10 @@ public:
    void postorder(OutputIt out) const;
 
    AEGPO(unsigned num_specs): num_specs(num_specs) {}
+    
+    bool is_block_entry(NodeRef ref) const;
+    bool is_block_exit(NodeRef ref) const;
+    std::optional<NodeRef> get_block_successor(NodeRef ref) const;
    
 protected:
    bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
@@ -112,7 +116,9 @@ protected:
       po.erase(src, dst);
    }
 
-   void prune();   
+   void prune();
+    
+    bool is_block_boundary(NodeRef ref, const Rel::Map& fwd, const Rel::Map& rev) const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node);

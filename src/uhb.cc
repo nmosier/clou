@@ -38,11 +38,15 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
+#if 1
+UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c.context), trans(c.context), trans_depth(c.context), xsread(c.context), xswrite(c.context), constraints() {}
+#else
 UHBNode::UHBNode(const Inst& inst, UHBContext& c):
 inst(inst), arch(c.make_bool("arch")),
 trans(c.make_bool("trans")), trans_depth(c.make_int("depth")),
 xsread(c.FALSE), xswrite(c.FALSE),
 constraints() {}
+#endif
 
 UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
@@ -63,7 +67,8 @@ void UHBConstraints::add_to(z3::solver& solver) const {
 }
 
 void UHBConstraints::operator()(const z3::expr& clause, const std::string& name) {
-   if (clause.is_false()) {
+    if ((simplify_before_checking_for_false_constraints ? clause.simplify() : clause).is_false()) {
+       std::cerr << "adding false constraint: " << clause << "\n";
       throw std::logic_error("adding constraint 'false'");
    }
    exprs.emplace_back(clause, name);
@@ -91,25 +96,23 @@ z3::expr UHBNode::get_xsaccess(XSAccess kind) const {
     }
 }
 
+bool UHBNode::is_special() const {
+    switch (inst.kind) {
+        case Inst::ENTRY:
+        case Inst::EXIT:
+            return true;
+        case Inst::READ:
+        case Inst::WRITE:
+            return false;
+        default:
+            throw std::logic_error("same addr called on a non-memory-access");
+    }
+}
+
 z3::expr UHBNode::same_addr(const UHBNode& a, const UHBNode& b) {
-    using K = Inst::Kind;
-    
-    const auto is_special = [] (K kind) -> bool {
-        switch (kind) {
-            case K::ENTRY:
-            case K::EXIT:
-                return true;
-            case K::READ:
-            case K::WRITE:
-                return false;
-            default:
-                throw std::logic_error("same addr called on a non-memory-access");
-        }
-    };
-    
-    if (is_special(a.inst.kind) || is_special(b.inst.kind)) {
+    if (a.is_special() || b.is_special()) {
         return a.arch.ctx().bool_val(true);
     } else {
-        return a.get_addr_ref(0) == b.get_addr_ref(0);
+        return a.get_memory_address() == b.get_memory_address();
     }
 }

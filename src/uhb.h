@@ -9,6 +9,7 @@
 
 #include "util.h"
 #include "inst.h"
+#include "config.h"
 
 enum XSAccess {
     XSREAD, XSWRITE
@@ -57,6 +58,12 @@ struct UHBConstraints {
     void operator()(const z3::expr& clause, const std::string& name = "");
     
     void simplify();
+    
+    z3::expr get(z3::context& ctx) const {
+        return std::transform_reduce(exprs.begin(), exprs.end(), ctx.bool_val(true), util::logical_and<z3::expr>(), [] (const auto& pair) -> z3::expr {
+            return pair.first;
+        });
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const UHBConstraints& c);
@@ -74,13 +81,14 @@ inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {
 
 struct UHBNode {
     Inst inst;
-    z3::expr arch;  // program order variable
-    z3::expr trans; // transient fetch order variable
-    z3::expr trans_depth; // transient depth
+    z3::expr arch;  // bool: program order variable
+    z3::expr trans; // bool: transient fetch order variable
+    z3::expr trans_depth; // int: transient depth
     std::optional<UHBAddress> addr_def;
-    std::vector<std::pair<const llvm::Value *, UHBAddress>> addr_refs;
+    std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
     z3::expr xsread;
     z3::expr xswrite;
+    unsigned exec_order; // int
     UHBConstraints constraints;
     
     z3::expr get_addr_def() const {
@@ -88,10 +96,17 @@ struct UHBNode {
         return z3::ite(arch, addr_def->arch, addr_def->trans);
     }
     
+    std::pair<const llvm::Value *, UHBAddress> get_addr_ref_pair(std::size_t idx) const {
+        const llvm::Value *V = inst.I->getOperand(idx);
+        return *addr_refs.find(V);
+    }
+    
+#if 0
     z3::expr get_addr_ref(std::size_t idx) const {
-        const UHBAddress& addr = addr_refs.at(idx).second;
+        const UHBAddress& addr = get_addr_ref_pair(idx).second;
         return z3::ite(arch, addr.arch, addr.trans);
     }
+#endif
     
     z3::expr get_exec() const {
         return arch || trans;
@@ -112,6 +127,37 @@ struct UHBNode {
     z3::expr get_xsaccess(XSAccess kind) const;
     
     UHBNode(const Inst& inst, UHBContext& c);
+    
+    bool is_write() const {
+        return inst.kind == Inst::WRITE || inst.kind == inst.ENTRY;
+    }
+    
+    bool is_read() const {
+        return inst.kind == Inst::READ || inst.kind == inst.EXIT;
+    }
+    
+    bool is_memory_op() const {
+        return is_write() || is_read();
+    }
+    
+    std::pair<const llvm::Value *, UHBAddress> get_memory_address_pair() const {
+        assert(is_memory_op());
+        switch (inst.kind) {
+            case Inst::READ:
+                return get_addr_ref_pair(0);
+            case Inst::WRITE:
+                return get_addr_ref_pair(1);
+            default:
+                std::abort();
+        }
+    }
+    
+    z3::expr get_memory_address() const {
+        const UHBAddress& addr = get_memory_address_pair().second;
+        return z3::ite(arch, addr.arch, addr.trans);
+    }
+    
+    bool is_special() const;
 };
 
 struct UHBEdge {
@@ -150,6 +196,14 @@ X(FRX)
     
     bool operator==(const UHBEdge& other) const { return kind == other.kind; }
     void simplify() { constraints.simplify(); }
+    
+    bool possible() const {
+        auto e = exists && constraints.get(exists.ctx());
+        if constexpr (simplify_before_checking_for_impossible_edges) {
+            e = e.simplify();
+        }
+        return !e.is_false();
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const UHBEdge& e);
