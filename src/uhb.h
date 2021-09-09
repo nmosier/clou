@@ -55,7 +55,7 @@ struct UHBConstraints {
     
     void add_to(z3::solver& solver) const;
     
-    void operator()(const z3::expr& clause, const std::string& name = "");
+    void operator()(const z3::expr& clause, const std::string& name);
     
     void simplify();
     
@@ -88,7 +88,12 @@ struct UHBNode {
     std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
     z3::expr xsread;
     z3::expr xswrite;
-    unsigned exec_order; // int
+    unsigned arch_order; // int
+    z3::expr exec_order; // int
+    z3::expr trans_group_min; // int
+    z3::expr trans_group_max; // int
+    z3::expr xsread_order; // int
+    z3::expr xswrite_order; // int
     UHBConstraints constraints;
     
     z3::expr get_addr_def() const {
@@ -125,6 +130,12 @@ struct UHBNode {
     }
     
     z3::expr get_xsaccess(XSAccess kind) const;
+    const z3::expr& get_xsaccess_order(XSAccess kind) const {
+        switch (kind) {
+            case XSREAD: return xsread_order;
+            case XSWRITE: return xswrite_order;
+        }
+    }
     
     UHBNode(const Inst& inst, UHBContext& c);
     

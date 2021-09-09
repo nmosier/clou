@@ -48,10 +48,18 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_addr_defs();
     logv(2) << "Constructing addr refs\n";
     construct_addr_refs();
+#if 0
     logv(2) << "Constructing aliases\n";
     construct_aliases(AA);
+#endif
     logv(2) << "Constructing com\n";
     construct_com();
+#if 1
+    logv(2) << "Constructing exec order\n";
+    construct_exec_order();
+    logv(2) << "Constructing trans group\n";
+    construct_trans_group();
+#endif
 #if 1
     logv(2) << "Constructing comx\n";
     construct_comx();
@@ -132,7 +140,7 @@ void AEG::construct_nodes() {
             Node& node = lookup(ref);
             const auto& preds = po.po.rev.at(ref);
             const auto it = std::max_element(preds.begin(), preds.end(), std::less<unsigned>());
-            node.exec_order = it == preds.end() ? 0 : *it + 1;
+            node.arch_order = it == preds.end() ? 0 : *it + 1;
         }
     }
 }
@@ -194,11 +202,11 @@ void AEG::construct_addr_refs() {
                         node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                                 [&] (NodeRef def) {
                             return lookup_def(def).arch == e->arch;
-                        }, context.FALSE));
+                        }, context.FALSE), "addr-ref-arch");
                         node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                                 [&] (NodeRef def) {
                             return lookup_def(def).trans == e->trans;
-                        }, context.FALSE));
+                        }, context.FALSE), "addr-ref-trans");
                     }
                 }
             }
@@ -223,13 +231,13 @@ void AEG::construct_arch() {
     // Entry node is architecturally executed
     Node& entry_node = lookup(entry);
 #if 1
-    entry_node.constraints(entry_node.arch);
+    entry_node.constraints(entry_node.arch, "entry-arch");
 #else
 #endif
     
     constraints(std::transform_reduce(exits.begin(), exits.end(), context.FALSE, util::logical_or<z3::expr>(), [&] (NodeRef ref) -> z3::expr {
         return lookup(ref).arch;
-    }));
+    }), "exit-arch");
     // TODO: replace with "true", then substitute changes
 }
 
@@ -381,8 +389,8 @@ void AEG::construct_tfo() {
                 return edge->exists;
             }, context.TRUE, context.FALSE);
             Node& node = lookup(dst);
-            node.constraints(z3::implies(node.get_exec(), f));
-
+            node.constraints(z3::implies(node.get_exec(), f), "tfo-pred");
+            
             /* one of improvement
              * P => L ^ R
              * If true, then one half is true
@@ -401,18 +409,18 @@ void AEG::construct_tfo() {
                 return edge->exists;
             }, context.TRUE, context.FALSE);
             Node& node = lookup(ref);
-            node.constraints(z3::implies(node.get_exec(), f));
+            node.constraints(z3::implies(node.get_exec(), f), "tfo-succ");
         }
     }
     
     // acyclic
     {
         Timer timer;
-    logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
-    const auto f = acyclic([] (const auto& edge) {
-        return edge.exists && edge.kind == Edge::TFO;
-    });
-    constraints(f);
+        logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
+        const auto f = acyclic([] (const auto& edge) {
+            return edge.exists && edge.kind == Edge::TFO;
+        });
+        constraints(f, "tfo-acyclic");
     }
 }
 
@@ -470,14 +478,14 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 ValueLoc vl2 {it2->id, it2->V};
                 switch (alias_res) {
                     case llvm::NoAlias:
-                        constraints(it1->e != it2->e);
+                        constraints(it1->e != it2->e, "no-alias");
                         ++nos;
                         break;
                     case llvm::MayAlias:
                         ++mays;
                         break;
                     case llvm::MustAlias:
-                        constraints(it1->e == it2->e);
+                        constraints(it1->e == it2->e, "must-alias");
                         ++musts;
                         break;
                     default: std::abort();
@@ -572,7 +580,7 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
                 const z3::expr exists_var = context.make_bool("rf");
                 // const z3::expr& exists = res.out.at(write).at(read).yes;
                 Edge edge {Edge::RF, exists_var};
-                edge.constraints(exists_var == exists_expr);
+                edge.constraints(exists_var == exists_expr, "rf-exists");
                 add_unidir_edge(write, read, edge);
                 ++nedges;
             }
@@ -604,12 +612,12 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
     progress = Progress(nedges);
     if constexpr (!construct_directly) {
         for_each_edge(Edge::RF, [&] (const NodeRef write, const NodeRef read, Edge& edge) {
-                const auto& sourced_writes = pred_writes.at(read);
-                
+            const auto& sourced_writes = pred_writes.at(read);
+            
             s.start();
             const auto f = util::all_of(sourced_writes.begin(), sourced_writes.end(), [&] (const NodeRef other_write) -> z3::expr {
-                    return !edge_exists(write, other_write, Edge::CO);
-                }, context.TRUE);
+                return !edge_exists(write, other_write, Edge::CO);
+            }, context.TRUE);
             s.stop();
             edge.constraints(z3::implies(edge.exists, f), "rf-recent-write");
             if (!edge.possible()) {
@@ -750,7 +758,7 @@ void AEG::construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
     }
     progress.done();
     logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
-
+    
     // same xstate
     logv(3) << __FUNCTION__ << ": adding constraint 'same xstate'\n";
     progress = Progress(nedges);
@@ -800,13 +808,13 @@ void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
     }
     progress.done();
     logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
-
+    
     
     // same xstate
     logv(3) << __FUNCTION__ << ": adding constraint 'same xstate'\n";
     progress = Progress(nedges);
     for_each_edge(Edge::COX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
-        edge.constraints(z3::implies(edge.exists, lookup(src).same_xstate(lookup(dst))));
+        edge.constraints(z3::implies(edge.exists, lookup(src).same_xstate(lookup(dst))), "cox-same-xstate");
         ++progress;
     });
     progress.done();
@@ -815,7 +823,7 @@ void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
     logv(3) << __FUNCTION__ << ": adding constraint 'execution condition'\n";
     progress = Progress(nedges);
     for_each_edge(Edge::COX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
-        edge.constraints(z3::implies(edge.exists, lookup(src).get_exec() && lookup(dst).get_exec()));
+        edge.constraints(z3::implies(edge.exists, lookup(src).get_exec() && lookup(dst).get_exec()), "cox-exec-cond");
         ++progress;
     });
     progress.done();
@@ -828,7 +836,7 @@ void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
         logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
         this->constraints(acyclic_int([] (const Edge& edge) -> bool {
             return edge.kind == Edge::COX;
-        }));
+        }), "cox-acyclic");
     }
 }
 
@@ -869,8 +877,8 @@ void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
 #if 1
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
-    NodeRefSet xswrites {entry};
-    NodeRefSet xsreads = exits;
+    NodeRefSet xswrites;
+    NodeRefSet xsreads;
     for (NodeRef i = 0; i < size(); ++i) {
         Node& node = lookup(i);
         switch (node.inst.kind) {
@@ -887,23 +895,36 @@ void AEG::construct_comx() {
                 xsreads.insert(i);
                 xswrites.insert(i);
                 break;
+            case Inst::ENTRY:
+                node.xswrite = context.TRUE;
+                xswrites.insert(i);
+                break;
+            case Inst::EXIT:
+                node.xsread = context.TRUE;
+                xsreads.insert(i);
+                break;
             default:
                 break;
         }
     }
     
+#if 0
     logv(3) << "constructing rfx...\n";
     construct_rfx(xsreads, xswrites);
     logv(3) << "constructing cox...\n";
     construct_cox(xsreads, xswrites);
     logv(3) << "constructing frx...\n";
     construct_frx(xsreads, xswrites);
-    
+
     // prevent rfx, cox cycles
     for_each_edge(Edge::RFX, [&] (const NodeRef src, const NodeRef dst, Edge& edge) {
         const auto f = !(edge.exists && edge_exists(dst, src, Edge::COX));
         edge.constraints(f, "no-rfx-cox-cycle");
     });
+#endif
+    
+    logv(3) << "constructing xsaccess order...\n";
+    construct_xsaccess_order(xsreads, xswrites);
 }
 #else
 void AEG::construct_comx() {
@@ -1083,3 +1104,198 @@ void AEG::construct_comx() {
     }
 }
 #endif
+
+
+#if 0
+void AEG::construct_trans_group() {
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        const auto& preds = po.po.rev.at(ref);
+        if (preds.size() == 1) {
+            const NodeRef pred = *preds.begin();
+            node.trans_group = context.make_int("trans_group");
+            const Node& pred_node = lookup(pred);
+            
+            node.trans_group = z3::ite(node.trans,
+                                       z3::ite(pred_node.trans,
+                                               pred_node.trans_group,
+                                               context.context.int_val(node.exec_order)),
+                                       context.context.int_val(-1));
+        } else {
+            node.trans_group = context.context.int_val(-1);
+        }
+    }
+}
+#endif
+
+void AEG::construct_exec_order() {
+    // add variable
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        node.exec_order = context.make_int("exec_order");
+    }
+
+    // add constraints
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        const auto preds = get_nodes(Direction::IN, ref, Edge::TFO);
+        for (const auto& pred_pair : preds) {
+            const NodeRef pred = pred_pair.first;
+            const z3::expr& cond = pred_pair.second;
+            const Node& pred_node = lookup(pred);
+            
+            const z3::expr f = z3::implies(node.get_exec() && pred_node.get_exec() && cond, node.exec_order > pred_node.exec_order);
+            node.constraints(f, "exec-order");
+        }
+    }
+}
+
+void AEG::construct_trans_group() {
+    // TODO: need to fix
+    
+    // trans group min
+    {
+        NodeRefVec order;
+        po.reverse_postorder(std::back_inserter(order));
+        for (NodeRef ref : order) {
+            Node& node = lookup(ref);
+            NodeRef pred;
+            if (can_trans(ref, pred)) {
+                // can be speculated
+                const Node& pred_node = lookup(pred);
+                if (can_introduce_trans(pred)) {
+                    // can introduce speculation, so multiplex
+                    // NOTE: Again, since we're looking at only trans nodes, we don't consider those weird TFO rollback edges.
+                    node.trans_group_min = context.make_int("trans_group_min");
+                    const z3::expr f = z3::implies(node.trans, node.trans_group_min == z3::ite(pred_node.trans, pred_node.trans_group_min, node.exec_order));
+                    node.constraints(f, "trans-group-min");
+                } else {
+                    // cannot introduce speculation, so just reuse predecessor minimum
+                    // NOTE: The reason that this is true is nuanced -- non-CFG TFO edges can only be introduced when the src is trans and dst is arch, but here we're assuming the dst is trans, so we can ignore such non-CFG edges.
+                    node.trans_group_min = pred_node.trans_group_min;
+                }
+            } else {
+                // can't be speculated, so just set to some bogus value
+                node.trans_group_min = context.context.int_val(-1);
+            }
+        }
+    }
+    
+    // trans group max
+    {
+        NodeRefVec order;
+        po.postorder(std::back_inserter(order));
+        for (NodeRef ref : order) {
+            Node& node = lookup(ref);
+            if (can_trans(ref)) {
+                // can be speculated
+                node.trans_group_max = context.make_int("trans_group_max");
+                
+                z3::expr max = node.exec_order;
+                for (NodeRef succ : po.po.fwd.at(ref)) {
+                    const Node& succ_node = lookup(succ);
+                    max = z3::ite(succ_node.trans, succ_node.trans_group_max, max);
+                }
+                
+                const z3::expr f = z3::implies(node.trans, node.trans_group_max == max);
+                node.constraints(f, "trans-group-max");
+            } else {
+                // can't be speculated, so set to some bogus value
+                node.trans_group_max = context.context.int_val(-1);
+            }
+        }
+    }
+}
+
+void AEG::construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& xswrites) {
+    // add variables
+    
+    for (NodeRef ref : xsreads) {
+        Node& node = lookup(ref);
+        node.xsread_order = context.make_int("xsread_order");
+    }
+    
+    for (NodeRef ref : xswrites) {
+        lookup(ref).xswrite_order = context.make_int("xswrite_order");
+    }
+    
+    // same-node xsread occur before xswrite
+    for (NodeRef ref : xsreads) {
+        if (xswrites.find(ref) != xswrites.end()) {
+            Node& node = lookup(ref);
+            node.constraints(z3::implies(node.xsread && node.xswrite, node.xsread_order < node.xswrite_order), "xsaccess-order");
+        }
+    }
+    
+#if 0
+    // xswrites are total order
+    logv(3) << __FUNCTION__ << ": adding constraint 'xswrites are total order' (" << xswrites.size() * xswrites.size() << ")\n";
+
+    for (NodeRef ref1 : xswrites) {
+        Node& node1 = lookup(ref1);
+        for (NodeRef ref2 : xswrites) {
+            if (ref1 != ref2) {
+                const Node& node2 = lookup(ref2);
+                const auto f = z3::implies(node1.xswrite && node2.xswrite, node1.xswrite_order != node2.xswrite_order);
+                node1.constraints(f, "xswrite-total");
+            }
+        }
+    }
+#endif
+    
+    // bound by entry and exit
+    const auto bound_all = [&] (XSAccess kind, const auto& bounds, const auto& bag, auto cmp) {
+        for (NodeRef bound : bounds) {
+            const Node& bound_node = lookup(bound);
+            const z3::expr& order = bound_node.get_xsaccess_order(kind);
+            for (NodeRef ref : bag) {
+                if (bounds.find(ref) == bounds.end()) {
+                    Node& node = lookup(ref);
+                    if (!node.xsread.is_false()) {
+                        node.constraints(z3::implies(node.xsread, cmp(order, node.xsread_order)), "xsaccess-order-bound-r");
+                    }
+                    if (!node.xswrite.is_false()) {
+                        node.constraints(z3::implies(node.xswrite, cmp(order, node.xswrite_order)), "xsaccess-order-bound-w");
+                    }
+                }
+            }
+        }
+    };
+    
+    bound_all(XSWRITE, NodeRefSet {entry}, node_range(), util::less<z3::expr>());
+    bound_all(XSREAD, exits, node_range(), util::greater<z3::expr>());
+    
+    // require that all exits have same sequence number (not absolutely necessary)
+    for (auto it1 = exits.begin(), it2 = std::next(it1); it2 != exits.end(); ++it1, ++it2) {
+        constraints(lookup(*it1).xsread == lookup(*it2).xsread, "xswrite-exits-eq");
+    }
+}
+
+z3::expr AEG::cox_pred(NodeRef src, NodeRef dst) const {
+    const Node& src_node = lookup(src);
+    const Node& dst_node = lookup(dst);
+    
+    const z3::expr precond = src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
+    const z3::expr diff = src_node.xswrite_order - dst_node.xswrite_order;
+    const z3::expr cond = z3::ite(diff == 0, src_node.exec_order < dst_node.exec_order, diff < 0);
+    
+    return precond && cond;
+}
+
+z3::expr AEG::rfx_pred(NodeRef src, NodeRef dst) const {
+    const Node& src_node = lookup(src);
+    const Node& dst_node = lookup(dst);
+    
+    const z3::expr precond = src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node);
+    NodeRefVec xswrites;
+    get_nodes_if(std::back_inserter(xswrites), [&] (const Node& node) -> bool {
+        return !node.xswrite.is_false();
+    });
+    
+    const z3::expr f = util::all_of(xswrites.begin(), xswrites.end(), [&] (NodeRef write) -> z3::expr {
+        const Node& write_node = lookup(write);
+        const z3::expr f = cox_pred(src, write) && write_node.xswrite_order < dst_node.xsread_order;
+        return !f;
+    }, context.TRUE);
+    return z3::implies(precond, f);
+}

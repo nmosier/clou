@@ -232,6 +232,26 @@ void AEG::test() {
     
     solver.push();
     
+#if 0
+    // TEMP: add some rfx edge assertions
+    {
+        logv(3) << "adding rfx edge assertions...";
+        std::vector<z3::expr> rfxs;
+        for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
+            std::cerr << src << " " << dst << "\n";
+            rfxs.push_back(!z3::implies(edge.exists, rfx_pred(src, dst)));
+        });
+        logv(3) << "done\n";
+#if 0
+        solver.add(util::any_of(rfxs.begin(), rfxs.end(), util::identity<z3::expr>(), context.FALSE), "rfxs");
+#elif 1
+        // std::cerr << rfxs.front() << "\n";
+        solver.add(rfxs.front(), "rfxs");
+#endif
+        // std::cerr << "rfxs: " << rfxs.size() << "\n";
+    }
+#endif
+    
     unsigned nexecs = 0;
     
 #if CHECKING
@@ -602,7 +622,7 @@ void AEG::add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e_, const s
     UHBEdge e = e_;
     const z3::expr constr = e.exists;
     e.exists = context.make_bool(name);
-    e.constraints(z3::implies(e.exists, constr));
+    e.constraints(z3::implies(e.exists, constr), name);
     add_unidir_edge(src, dst, e);
 }
 
@@ -644,9 +664,20 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             switch (node.inst.kind) {
                 case Inst::WRITE:
                 case Inst::READ:
-                    ss << "{" << model.eval(node.get_memory_address()) << "}\n";
+                    ss << "{" << model.eval(node.get_memory_address()) << "} ";
                     break;
                 default: break;
+            }
+            
+            if (model.eval(node.xsread).is_true()) {
+                ss << "xsread " << model.eval(node.xsread_order) << " ";
+            }
+            if (model.eval(node.xswrite).is_true()) {
+                ss << "xswrite " << model.eval(node.xswrite_order) << " ";
+            }
+            
+            if (model.eval(node.trans).is_true()) {
+                ss << "[" << model.eval(node.trans_group_min) << " " << model.eval(node.trans_group_max) << "] ";
             }
             
             std::string color;
@@ -661,51 +692,25 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
         }
     }
     
-#if 0
-    // get cycles
-    using Tarjan = tarjan<NodeRef>;
-    Tarjan::DAG dag;
-    const auto is_cycle_edge = [] (const Edge& e) {
-        switch (e.kind) {
-            case Edge::RFX:
-            case Edge::COX:
-                return true;
-            default:
-                return false;
-        }
+    const auto output_edge = [&] (NodeRef src, NodeRef dst, Edge::Kind kind) {
+        os << names.at(src) << " -> " << names.at(dst) << " ";
+        static const std::unordered_map<Edge::Kind, std::string> colors = {
+            {Edge::TFO, "black"},
+            {Edge::RF, "gray"},
+            {Edge::CO, "blue"},
+            {Edge::FR, "purple"},
+            {Edge::RFX, "gray"},
+            {Edge::COX, "blue"},
+            {Edge::FRX, "purple"},
+        };
+        const std::string& color = colors.at(kind);
+        dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(kind)}, {"color", color}});
+        os << ";\n";
     };
-    for_each_edge([&] (const NodeRef src, const NodeRef dst, const Edge& edge) {
-        if (is_cycle_edge(edge) && model.eval(edge.exists).is_true()) {
-            dag[src].insert(dst);
-        }
-    });
-    std::vector<Tarjan::Cycle> cycles;
-    Tarjan(dag, std::back_inserter(cycles));
-    std::unordered_set<std::pair<NodeRef, NodeRef>> cycle_edges;
-    for (Tarjan::Cycle& cycle : cycles) {
-        NodeRef prev = cycle.back();
-        for (auto it = cycle.begin(); it != cycle.end(); ++it) {
-            cycle_edges.emplace(prev, *it);
-            prev = *it;
-        }
-    }
-#endif
     
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
         if (model.eval(edge.exists).is_true()) {
-            os << names.at(src) << " -> " << names.at(dst) << " ";
-            std::string color;
-#if 0
-            if (!is_cycle_edge(edge) || cycle_edges.find(std::make_pair(src, dst)) == cycle_edges.end()) {
-                color = "black";
-            } else {
-                color = "red";
-            }
-#else
-            color = "black";
-#endif
-            dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(edge.kind)}, {"color", color}});
-            os << ";\n";
+            output_edge(src, dst, edge.kind);
         }
     });
     
@@ -716,13 +721,20 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
         for (NodeRef dst : writes) {
             const z3::expr f = co_pred(src, dst);
             if (model.eval(f).is_true()) {
-                os << names.at(src) << " -> " << names.at(dst) << " ";
-                dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(Edge::CO)}, {"color", "black"}});
-                    os << ";\n";
+                output_edge(src, dst, Edge::CO);
             }
         }
     }
     
+#if 1
+    // output pseudo comx
+    std::vector<std::tuple<NodeRef, NodeRef, Edge::Kind>> comx;
+    get_concrete_comx(model, std::back_inserter(comx));
+    assert(!comx.empty());
+    for (const auto& edge : comx) {
+        std::apply(output_edge, edge);
+    }
+#endif
     
     os << "}\n";
 }
@@ -996,8 +1008,8 @@ AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, UHBEdge::Kind kind) {
    return es;
 }
 
-NodeRefVec AEG::get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const {
-    NodeRefVec res;
+std::vector<std::pair<NodeRef, z3::expr>> AEG::get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const {
+    std::vector<std::pair<NodeRef, z3::expr>> res;
     get_nodes(dir, ref, std::back_inserter(res), kind);
     return res;
 }

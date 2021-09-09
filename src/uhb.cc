@@ -39,7 +39,7 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
 #if 1
-UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c.context), trans(c.context), trans_depth(c.context), xsread(c.context), xswrite(c.context), constraints() {}
+UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c.context), trans(c.context), trans_depth(c.context), xsread(c.context), xswrite(c.context), exec_order(c.context), trans_group_min(c.context), trans_group_max(c.context), xsread_order(c.context), xswrite_order(c.context), constraints() {}
 #else
 UHBNode::UHBNode(const Inst& inst, UHBContext& c):
 inst(inst), arch(c.make_bool("arch")),

@@ -355,6 +355,31 @@ struct logical_and {
     auto operator()(const T& a, const T& b) const { return a && b; }
 };
 
+template <typename T>
+struct plus {
+    auto operator()(const T& a, const T& b) const { return a + b; }
+};
+
+template <typename T>
+struct less {
+    auto operator()(const T& a, const T& b) const { return a < b; }
+};
+
+template <typename T>
+struct greater {
+    auto operator()(const T& a, const T& b) const { return a > b; }
+};
+
+template <typename T>
+struct less_equal {
+    auto operator()(const T& a, const T& b) const { return a <= b; }
+};
+
+template <typename T>
+struct greater_equal {
+    auto operator()(const T& a, const T& b) const { return a >= b; }
+};
+
 
 template <typename T>
 T replace(T& oldval, const T& newval) {

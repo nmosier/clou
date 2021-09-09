@@ -78,6 +78,11 @@ private:
     void construct_addr_refs();
     void construct_aliases(llvm::AliasAnalysis& AA);
     void construct_com();
+    void construct_exec_order();
+    void construct_trans_group();
+    void construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& xswrites);
+    // void construct_xsread_order();
+    // void construct_xswrite_order();
     
     typedef void construct_com_f(const NodeRefVec& reads, const NodeRefVec& writes,
                                  const ClosureMap& pred_reads, const ClosureMap& pred_writes);
@@ -220,7 +225,7 @@ private:
     template <typename OutputIt>
     OutputIt get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) const;
     
-    NodeRefVec get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
+    std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
     void output_execution(std::ostream& os, const z3::model& model) const;
     void output_execution(const std::string& path, const z3::model& model) const;
@@ -292,9 +297,12 @@ public:
     z3::expr co_pred(NodeRef src, NodeRef dst) const {
         const Node& srcn = lookup(src);
         const Node& dstn = lookup(dst);
-        const z3::expr f = context.bool_val(srcn.exec_order < dstn.exec_order) && srcn.arch && dstn.arch && srcn.same_addr(dstn);
+        const z3::expr f = context.bool_val(srcn.arch_order < dstn.arch_order) && srcn.arch && dstn.arch && srcn.same_addr(dstn);
         return f.simplify();
     }
+    
+    z3::expr cox_pred(NodeRef src, NodeRef dst) const;
+    z3::expr rfx_pred(NodeRef src, NodeRef dst) const;
 
     template <typename T>
     class Dataflow;
@@ -306,6 +314,31 @@ private:
     
     llvm::AliasResult check_alias(NodeRef ref1, NodeRef ref2) const;
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
+    
+    // SPECULATION QUERIES
+    bool can_trans(NodeRef ref, NodeRef& pred) const {
+        const auto& preds = po.po.rev.at(ref);
+        if (preds.size() == 1) {
+            pred = *preds.begin();
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    bool can_trans(NodeRef ref) const {
+        NodeRef pred;
+        return can_trans(ref, pred);
+    }
+    
+    bool can_introduce_trans(NodeRef ref) const {
+        return po.po.fwd.at(ref).size() > 1;
+    }
+    
+    // for output execution purposes
+    template <typename OutputIt>
+    OutputIt get_concrete_comx(const z3::model& model, OutputIt out) const;
+    
 };
 
 
@@ -412,7 +445,7 @@ OutputIt AEG::get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kin
     for (const auto& p : map.at(ref)) {
         for (const auto& edge : p.second) {
             if (edge->kind == kind) {
-                *out++ = p.first;
+                *out++ = std::make_pair(p.first, edge->exists);
                 break;
             }
         }
@@ -470,3 +503,72 @@ public:
     
 private:
 };
+
+template <typename OutputIt>
+OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
+    // get xsreads, xswrites
+    std::multimap<int64_t, NodeRef> reads, writes;
+    for (NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (model.eval(node.get_exec() && node.xsread).is_true()) {
+            reads.emplace(model.eval(node.xsread_order).as_int64(), ref);
+        }
+        if (model.eval(node.get_exec() && node.xswrite).is_true()) {
+            writes.emplace(model.eval(node.xswrite_order).as_int64(), ref);
+        }
+    }
+    
+    assert(!reads.empty());
+    assert(!writes.empty());
+    
+    const auto same_xstate = [&] (NodeRef a, NodeRef b) -> bool {
+        return model.eval(lookup(a).same_xstate(lookup(b)));
+    };
+    
+    // rfx
+    for (const auto& read : reads) {
+        if (exits.find(read.second) == exits.end()) {
+            // not an exit
+            auto write_it = writes.lower_bound(read.first);
+            do {
+                assert(write_it != writes.begin());
+                --write_it;
+            } while (!same_xstate(read.second, write_it->second));
+            *out++ = std::make_tuple(write_it->second, read.second, Edge::RFX);
+        } else {
+            // is an exit
+            for (auto it1 = writes.begin(); it1 != writes.end(); ++it1) {
+                bool valid = true;
+                for (auto it2 = std::next(it1); it2 != writes.end(); ++it2) {
+                    if (same_xstate(it1->second, it2->second)) {
+                        valid = false;
+                    }
+                }
+                if (valid) {
+                    *out++ = std::make_tuple(it1->second, read.second, Edge::RFX);
+                }
+            }
+        }
+    }
+    
+    
+    // cox
+    for (auto it1 = writes.begin(); it1 != writes.end(); ++it1) {
+        for (auto it2 = std::next(it1); it2 != writes.end(); ++it2) {
+            if (same_xstate(it1->second, it2->second)) {
+                *out++ = std::make_tuple(it1->second, it2->second, Edge::COX);
+            }
+        }
+    }
+    
+    // frx
+    for (const auto& read : reads) {
+        for (auto write_it = writes.upper_bound(read.first); write_it != writes.end(); ++write_it) {
+            if (same_xstate(write_it->second, read.second)) {
+                *out++ = std::make_tuple(read.second, write_it->second, Edge::FRX);
+            }
+        }
+    }
+    
+    return out;
+}
