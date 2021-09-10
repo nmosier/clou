@@ -18,7 +18,7 @@ while getopts "hgx:" OPTCHAR; do
 	    DEBUGGER="lldb --"
 	    ;;
 	x)
-	    ARGS+="$OPTARG"
+	    ARGS+="$OPTARG "
 	    ;;
 	*)
 	    usage >&2

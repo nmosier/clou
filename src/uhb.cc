@@ -18,11 +18,13 @@ const char *UHBEdge::kind_tostr(Kind kind) {
 #undef UHBEDGE_KIND_CASE
 }
 
-UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s) {
+UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s_) {
 #define UHBEDGE_KIND_PAIR(name) {#name, name},
     static const std::unordered_map<std::string, Kind> map {
         UHBEDGE_KIND_X(UHBEDGE_KIND_PAIR)
     };
+    std::string s;
+    std::transform(s_.begin(), s_.end(), std::back_inserter(s), toupper);
     return map.at(s);
 #undef UHBEDGE_KIND_PAIR
 }

@@ -97,6 +97,9 @@ private:
     void construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
     void construct_addr();
     
+    void leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const;
+    unsigned leakage(z3::solver& solver) const;
+    
     struct CondNode {
         NodeRef ref;
         z3::expr cond;
@@ -301,8 +304,8 @@ public:
         return f.simplify();
     }
     
-    z3::expr cox_pred(NodeRef src, NodeRef dst) const;
-    z3::expr rfx_pred(NodeRef src, NodeRef dst) const;
+    z3::expr cox_exists(NodeRef src, NodeRef dst) const;
+    z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
 
     template <typename T>
     class Dataflow;
@@ -563,9 +566,9 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     
     // frx
     for (const auto& read : reads) {
-        for (auto write_it = writes.upper_bound(read.first); write_it != writes.end(); ++write_it) {
-            if (same_xstate(write_it->second, read.second)) {
-                *out++ = std::make_tuple(read.second, write_it->second, Edge::FRX);
+        for (const auto& write : writes) {
+            if (model.eval(rfx_exists(write.second, read.second)).is_true()) {
+                *out++ = std::make_tuple(read.second, write.second, Edge::FRX);
             }
         }
     }

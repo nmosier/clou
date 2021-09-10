@@ -14,7 +14,7 @@
 #include "binrel.h"
 #include "assert-util.h"
 
-extern const char *prog;
+extern char prog[];
 
 template <typename... Args>
 void log(const char *fmt, Args&&... args) {

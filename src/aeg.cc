@@ -229,26 +229,23 @@ void AEG::test() {
                                        std::make_pair(frx, "frx")
                                        );
 #endif
-    
+
     solver.push();
-    
-#if 1
-    // TEMP: add some rfx edge assertions
-    {
-        logv(3) << "adding rfx edge assertions...";
-        std::vector<std::tuple<NodeRef, NodeRef, z3::expr>> rfxs;
-        for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
-            rfxs.push_back(std::make_tuple(src, dst, !z3::implies(edge.exists, rfx_pred(src, dst))));
-        });
-        logv(3) << "done\n";
+
 #if 0
-        solver.add(util::any_of(rfxs.begin(), rfxs.end(), util::identity<z3::expr>(), context.FALSE), "rfxs");
-#elif 1
-        std::cerr << std::get<0>(rfxs.front()) << " " << std::get<1>(rfxs.front()) << "\n";
-        solver.add(std::get<2>(rfxs.front()), "rfxs");
-#endif
-        // std::cerr << "rfxs: " << rfxs.size() << "\n";
-    }
+    
+        std::vector<std::tuple<NodeRef, NodeRef, const Edge *>> rfs;
+        for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
+            rfs.emplace_back(src, dst, &edge);
+        });
+        const z3::expr lkg = std::apply([&] (NodeRef src, NodeRef dst, const Edge *edge) {
+            std::cerr << "Testing leakage in " << src << " -> " << dst << "\n";
+            return leakage(src, dst, *edge, solver);
+        }, rfs.front());
+        // solver.add(lkg, "leakage");
+#else
+    const auto nleaks = leakage(solver);
+    std::cerr << "Detected " << nleaks << " leaks.\n";
 #endif
     
     unsigned nexecs = 0;
@@ -680,9 +677,9 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             }
             
             std::string color;
-            if (model.eval(node.arch).bool_value() == Z3_L_TRUE) {
+            if (model.eval(node.arch).is_true()) {
                 color = "green";
-            } else if (model.eval(node.trans).bool_value() == Z3_L_TRUE) {
+            } else if (model.eval(node.trans).is_true()) {
                 color = "red";
             }
             
@@ -692,6 +689,10 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
     }
     
     const auto output_edge = [&] (NodeRef src, NodeRef dst, Edge::Kind kind) {
+        if (!include_edges.empty()) {
+            if (include_edges.find(kind) == include_edges.end()) { return; }
+        }
+        
         os << names.at(src) << " -> " << names.at(dst) << " ";
         static const std::unordered_map<Edge::Kind, std::string> colors = {
             {Edge::TFO, "black"},
@@ -1058,3 +1059,39 @@ NodeRef AEG::add_node(const Node& node) {
     return ref;
 }
 
+
+void AEG::leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const {
+    assert(edge.kind == Edge::RF);
+    
+    const z3::expr rf = edge.exists;
+    const z3::expr rfx = rfx_exists(src, dst);
+    
+    z3::expr addr = context.FALSE;
+    for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& edge) {
+        const Node& addr_dst_node = lookup(addr_dst);
+        if (addr_dst_node.xswrite.is_false()) { return; }
+        addr = addr || (edge.exists && rfx_exists(addr_dst, dst) && addr_dst_node.trans);
+    });
+    
+    std::cerr << "addr: " << addr << "\n";
+
+    solver.add(rf, "leakage-rf");
+    solver.add(!rfx, "leakage-rfx");
+    solver.add(addr, "leakage-addr");
+}
+
+unsigned AEG::leakage(z3::solver& solver) const {
+    unsigned nleaks = 0;
+    for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
+        solver.push();
+        leakage(src, dst, edge, solver);
+        if (solver.check() == z3::sat) {
+            std::stringstream ss;
+            ss << "out/leakage" << src << "_" << dst << ".dot";
+            output_execution(ss.str(), solver.get_model());
+            ++nleaks;
+        }
+        solver.pop();
+    });
+    return nleaks;
+}

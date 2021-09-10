@@ -228,7 +228,7 @@ void AEG::construct_exec() {
     construct_arch();
     construct_trans();
 }
-
+ 
 void AEG::construct_arch() {
     // Entry node is architecturally executed
     Node& entry_node = lookup(entry);
@@ -1273,33 +1273,34 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& 
     }
 }
 
-z3::expr AEG::cox_pred(NodeRef src, NodeRef dst) const {
+z3::expr AEG::cox_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    const z3::expr precond = src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
+    const z3::expr precond = src_node.get_exec() && dst_node.get_exec() && src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
     const z3::expr diff = src_node.xswrite_order - dst_node.xswrite_order;
     const z3::expr cond = z3::ite(diff == 0, src_node.exec_order < dst_node.exec_order, diff < 0);
     
     return precond && cond;
 }
 
-z3::expr AEG::rfx_pred(NodeRef src, NodeRef dst) const {
+z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    const z3::expr precond = src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node);
+    // TODO: does xsread, xswrite => exec?
+    const z3::expr precond = src_node.get_exec() && dst_node.get_exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && src_node.xswrite_order < dst_node.xsread_order;
     NodeRefVec xswrites;
     get_nodes_if(std::back_inserter(xswrites), [&] (const Node& node) -> bool {
         return !node.xswrite.is_false();
     });
     
-    const z3::expr f = util::all_of(xswrites.begin(), xswrites.end(), [&] (NodeRef write) -> z3::expr {
+    const z3::expr cond = util::all_of(xswrites.begin(), xswrites.end(), [&] (NodeRef write) -> z3::expr {
         const Node& write_node = lookup(write);
-        const z3::expr f = cox_pred(src, write) && write_node.xswrite_order < dst_node.xsread_order;
+        const z3::expr f = cox_exists(src, write) && write_node.xswrite_order < dst_node.xsread_order;
         return !f;
     }, context.TRUE);
-    return z3::implies(precond, f);
+    return precond && cond;
 }
 
 
