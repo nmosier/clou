@@ -37,6 +37,12 @@ struct Inst {
    
    template <typename Arg>
    explicit Inst(const Arg& arg) { set(arg); }
+    
+    template <typename Derived>
+    bool isa() const {
+        static_assert(std::is_base_of<llvm::Instruction, Derived>());
+        return llvm::dyn_cast<Derived>(I) != nullptr;
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const Inst& inst);

@@ -22,7 +22,6 @@ private:
     UHBContext context; // this is because all other members depend on this context
 public:
     using Node = UHBNode;
-    using NodeRef = std::size_t;
     using Edge = UHBEdge;
     using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
     
@@ -96,6 +95,7 @@ private:
     void construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
     void construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites);
     void construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
+    void construct_addr();
     
     struct CondNode {
         NodeRef ref;

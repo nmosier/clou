@@ -64,6 +64,8 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     logv(2) << "Constructing comx\n";
     construct_comx();
 #endif
+    logv(2) << "Constructing addr\n";
+    construct_addr();
 }
 
 void AEG::construct_nodes() {
@@ -1298,4 +1300,80 @@ z3::expr AEG::rfx_pred(NodeRef src, NodeRef dst) const {
         return !f;
     }, context.TRUE);
     return z3::implies(precond, f);
+}
+
+
+void AEG::construct_addr() {
+    /* addr dependencies can be between a read and a subsequent read/write
+     */
+    
+    for (NodeRef dst : node_range()) {
+        const Node& dst_node = lookup(dst);
+        const AEGPO::Node& dst_po_node = po.lookup(dst);
+        if (dst_node.inst.kind == Inst::READ || dst_node.inst.kind == Inst::WRITE) {
+            const llvm::Value *V = dst_node.get_memory_address_pair().first;
+            const auto refs_it = dst_po_node.refs.find(V);
+            if (refs_it != dst_po_node.refs.end()) {
+                const NodeRefSet& srcs = refs_it->second;
+                // find all load operands that any of these sources depend on
+                NodeRefSet loads;
+                
+                struct Info {
+                    NodeRef ref;
+                    enum State {
+                        UNSEEN,
+                        SEEN,
+                    } state;
+                };
+                
+                std::vector<Info> todo;
+                std::transform(srcs.begin(), srcs.end(), std::back_inserter(todo), [] (NodeRef src) -> Info {
+                    return {src, Info::UNSEEN};
+                });
+                
+                while (!todo.empty()) {
+                    const Info in = todo.back();
+                    todo.pop_back();
+                    const Node& node = lookup(in.ref);
+                    const AEGPO::Node& po_node = po.lookup(in.ref);
+                    
+                    if (node.inst.kind == Inst::READ) {
+                        if (in.state == Info::SEEN) {
+                                add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.get_exec() && dst_node.get_exec()});
+                                    break;
+                        }
+                    } else {
+                        switch (in.state) {
+                            case Info::UNSEEN:
+                                if (node.isa<llvm::GetElementPtrInst>()) {
+                                    const llvm::Value *V = node.inst.I->getOperand(1);
+                                    const auto refs_it = po_node.refs.find(V);
+                                    if (refs_it != po_node.refs.end()) {
+                                        std::transform(refs_it->second.begin(), refs_it->second.end(), std::back_inserter(todo), [&] (NodeRef ref) -> Info {
+                                            return Info {ref, Info::SEEN};
+                                        });
+                                    }
+                                } else {
+                                    for (const auto& ref_pair : po_node.refs) {
+                                        std::transform(ref_pair.second.begin(), ref_pair.second.end(), std::back_inserter(todo), [] (NodeRef ref) -> Info {
+                                            return {ref, Info::UNSEEN};
+                                        });
+                                    }
+                                }
+                                break;
+                                
+                            case Info::SEEN:
+                                for (const auto& ref_pair : po_node.refs) {
+                                    std::transform(ref_pair.second.begin(), ref_pair.second.end(), std::back_inserter(todo), [] (NodeRef ref) -> Info {
+                                        return {ref, Info::UNSEEN};
+                                    });
+                                }
+                                break;
+                        }
+                    }
+                }
+
+            }
+        }
+    }
 }

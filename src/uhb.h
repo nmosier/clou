@@ -106,6 +106,11 @@ struct UHBNode {
         return *addr_refs.find(V);
     }
     
+    template <typename Derived>
+    bool isa() const {
+        return inst.isa<Derived>();
+    }
+    
 #if 0
     z3::expr get_addr_ref(std::size_t idx) const {
         const UHBAddress& addr = get_addr_ref_pair(idx).second;
@@ -180,7 +185,8 @@ X(CO)                                        \
 X(FR)                                        \
 X(RFX)                                       \
 X(COX)                                       \
-X(FRX)
+X(FRX) \
+X(ADDR)
     
 #define UHBEDGE_KIND_E(name) name,
     enum Kind {

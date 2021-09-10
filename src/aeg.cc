@@ -232,21 +232,20 @@ void AEG::test() {
     
     solver.push();
     
-#if 0
+#if 1
     // TEMP: add some rfx edge assertions
     {
         logv(3) << "adding rfx edge assertions...";
-        std::vector<z3::expr> rfxs;
+        std::vector<std::tuple<NodeRef, NodeRef, z3::expr>> rfxs;
         for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
-            std::cerr << src << " " << dst << "\n";
-            rfxs.push_back(!z3::implies(edge.exists, rfx_pred(src, dst)));
+            rfxs.push_back(std::make_tuple(src, dst, !z3::implies(edge.exists, rfx_pred(src, dst))));
         });
         logv(3) << "done\n";
 #if 0
         solver.add(util::any_of(rfxs.begin(), rfxs.end(), util::identity<z3::expr>(), context.FALSE), "rfxs");
 #elif 1
-        // std::cerr << rfxs.front() << "\n";
-        solver.add(rfxs.front(), "rfxs");
+        std::cerr << std::get<0>(rfxs.front()) << " " << std::get<1>(rfxs.front()) << "\n";
+        solver.add(std::get<2>(rfxs.front()), "rfxs");
 #endif
         // std::cerr << "rfxs: " << rfxs.size() << "\n";
     }
@@ -702,6 +701,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             {Edge::RFX, "gray"},
             {Edge::COX, "blue"},
             {Edge::FRX, "purple"},
+            {Edge::ADDR, "red"},
         };
         const std::string& color = colors.at(kind);
         dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(kind)}, {"color", color}});
