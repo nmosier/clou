@@ -15,11 +15,48 @@ enum XSAccess {
     XSREAD, XSWRITE
 };
 
+struct TupleSort {
+    z3::context& ctx;
+    z3::func_decl cons;
+    z3::func_decl_vector projs;
+    z3::sort sort;
+
+    TupleSort(z3::context& ctx, const std::string& name, unsigned n, const char *names[], const z3::sort sorts[]): ctx(ctx), cons(ctx), projs(ctx), sort(ctx) {
+        cons = ctx.tuple_sort(name.c_str(), n, names, sorts, projs);
+        sort = cons.range();
+    }
+};
+
+/* MemSort
+ * (ref, xswrite, xswrite_order)
+ */
+
+#if 0
+struct MemSort: public TupleSort {
+    static inline constexpr unsigned n = 3;
+    static inline const char *names[n] = {"ref", "xswrite", "xswrite_order"};
+    
+    static std::array<z3::sort, n> sorts(z3::context& ctx) {
+        std::array<z3::sort, n> sorts = {ctx.int_sort(), ctx.bool_sort()};
+        return std::vector<z3::sort>
+    }
+    
+    MemSort(z3::context& ctx): TupleSort()
+};
+#endif
+
 class UHBContext {
 public:
     UHBContext();
     
     z3::context context;
+    const z3::expr TRUE;
+    const z3::expr FALSE;
+    
+#if 0
+    TupleSort mem_sort;
+#endif
+
     
     z3::expr make_bool(const std::string& s = "") {
         return context.bool_const(get_name(s).c_str());
@@ -28,10 +65,7 @@ public:
     z3::expr make_int(const std::string& s = "") {
         return context.int_const(get_name(s).c_str());
     }
-    
-    const z3::expr TRUE;
-    const z3::expr FALSE;
-    
+        
     z3::expr bool_val(bool b) const {
         return b ? TRUE : FALSE;
     }
@@ -94,6 +128,7 @@ struct UHBNode {
     z3::expr trans_group_max; // int
     z3::expr xsread_order; // int
     z3::expr xswrite_order; // int
+    z3::expr mem; // int -> int
     UHBConstraints constraints;
     
     z3::expr get_addr_def() const {
@@ -110,13 +145,6 @@ struct UHBNode {
     bool isa() const {
         return inst.isa<Derived>();
     }
-    
-#if 0
-    z3::expr get_addr_ref(std::size_t idx) const {
-        const UHBAddress& addr = get_addr_ref_pair(idx).second;
-        return z3::ite(arch, addr.arch, addr.trans);
-    }
-#endif
     
     z3::expr get_exec() const {
         return arch || trans;

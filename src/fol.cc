@@ -10,7 +10,7 @@ binary_node_relation edge_rel_co(const AEG& aeg) {
     binary_node_relation rel;
     for (auto it1 = writes.begin(); it1 != writes.end(); ++it1) {
         for (auto it2 = writes.begin(); it2 != writes.end(); ++it2) {
-            const auto f = aeg.co_pred(*it1, *it2);
+            const auto f = aeg.co_exists(*it1, *it2);
             if (!f.is_false()) {
                 const auto tuple = std::make_tuple(*it1, *it2);
                 const AEG::Node& src = aeg.lookup(*it1);

@@ -66,9 +66,6 @@ void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& id
             }
         }
         translations.map.emplace(key, value);
-        
-        // DEBUG
-        llvm::errs() << "CALL: " << *C << "\n";
     }
 }
 

@@ -22,7 +22,7 @@ bool dump_constraints = false;
 bool include_expr_in_constraint_name = false;
 std::unordered_set<std::string> function_names;
 std::unordered_set<unsigned> include_edges;
-unsigned spec_depth;
+unsigned spec_depth = 2;
 
 static void usage(FILE *f = stderr) {
     const char *s = R"=(

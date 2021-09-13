@@ -15,6 +15,7 @@
 #include "util.h"
 #include "uhb.h"
 #include "noderef.h"
+#include "progress.h"
 
 class AEG {
 private:
@@ -54,6 +55,9 @@ public:
     template <typename Function> void for_each_edge(Edge::Kind kind, Function f);
     template <typename Function> void for_each_edge(Edge::Kind kind, Function f) const;
     
+    template <typename Function> void for_each_node(Inst::Kind kind, Function f);
+    template <typename Function> void for_each_node(Inst::Kind kind, Function f) const;
+    
     const UHBContext& ctx() const { return context; }
    
 private:
@@ -80,8 +84,7 @@ private:
     void construct_exec_order();
     void construct_trans_group();
     void construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& xswrites);
-    // void construct_xsread_order();
-    // void construct_xswrite_order();
+    void construct_mem();
     
     typedef void construct_com_f(const NodeRefVec& reads, const NodeRefVec& writes,
                                  const ClosureMap& pred_reads, const ClosureMap& pred_writes);
@@ -98,6 +101,8 @@ private:
     void construct_addr();
     
     void leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const;
+    void leakage_rfx(NodeRef read, z3::solver& solver) const;
+    void leakage_cox(NodeRef write, z3::solver& solver) const;
     unsigned leakage(z3::solver& solver) const;
     
     struct CondNode {
@@ -297,12 +302,14 @@ public:
         return get_nodes(out, std::unordered_set<Inst::Kind> {Inst::EXIT, Inst::READ});
     }
     
-    z3::expr co_pred(NodeRef src, NodeRef dst) const {
+    z3::expr co_exists(NodeRef src, NodeRef dst) const {
         const Node& srcn = lookup(src);
         const Node& dstn = lookup(dst);
         const z3::expr f = context.bool_val(srcn.arch_order < dstn.arch_order) && srcn.arch && dstn.arch && srcn.same_addr(dstn);
         return f.simplify();
     }
+    
+    // NOTE: We don't include an rf_exists() predicate since this would be expensive to compute directly.
     
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
@@ -341,6 +348,9 @@ private:
     // for output execution purposes
     template <typename OutputIt>
     OutputIt get_concrete_comx(const z3::model& model, OutputIt out) const;
+    
+    template <typename OutputIt>
+    OutputIt get_concrete_com(const z3::model& model, OutputIt out) const;
     
 };
 
@@ -509,17 +519,53 @@ private:
 
 template <typename OutputIt>
 OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
+    Progress progress;
+    /* Have a set that is ordered based on the canonical xswrite order.
+     * xsread is ordered before same-value xswrite.
+     * xswrite with lower exec_order is ordered before same-value xswrite.
+     */
+    
+    struct Access {
+        z3::expr xsaccess_order;
+        std::optional<z3::expr> exec_order;
+    };
+    
+    const auto less = [&] (const Access& a, const Access& b) -> bool {
+        const z3::expr xsaccess_order_diff = a.xsaccess_order - b.xsaccess_order;
+        if (model.eval(xsaccess_order_diff < 0).is_true()) {
+            return true;
+        } else if (model.eval(xsaccess_order_diff > 0).is_true()) {
+            return false;
+        } else {
+            if (!a.exec_order && !b.exec_order) {
+                return false;
+            } else if (!a.exec_order && b.exec_order) {
+                return true;
+            } else if (a.exec_order && !b.exec_order) {
+                return false;
+            } else {
+                return model.eval(*a.exec_order < *b.exec_order);
+            }
+        }
+    };
+    
     // get xsreads, xswrites
-    std::multimap<int64_t, NodeRef> reads, writes;
+    // TODO: use canoncialized xswrite order. Right now it doesn't order it correctly.
+    progress = Progress(size(), "xsaccesses");
+    std::map<Access, NodeRef, decltype(less)> reads {less}, writes {less};
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
         if (model.eval(node.get_exec() && node.xsread).is_true()) {
-            reads.emplace(model.eval(node.xsread_order).as_int64(), ref);
+            [[maybe_unused]] const auto res = reads.emplace(Access {node.xsread_order, node.exec_order}, ref);
+            assert(res.second);
         }
         if (model.eval(node.get_exec() && node.xswrite).is_true()) {
-            writes.emplace(model.eval(node.xswrite_order).as_int64(), ref);
+            [[maybe_unused]] const auto res = writes.emplace(Access {node.xswrite_order, node.exec_order}, ref);
+            assert(res.second);
         }
+        ++progress;
     }
+    progress.done();
     
     assert(!reads.empty());
     assert(!writes.empty());
@@ -529,6 +575,7 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     };
     
     // rfx
+    progress = Progress(reads.size(), "rfx");
     for (const auto& read : reads) {
         if (exits.find(read.second) == exits.end()) {
             // not an exit
@@ -552,26 +599,110 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
                 }
             }
         }
+        ++progress;
     }
+    progress.done();
     
     
     // cox
+    progress = Progress(writes.size() * (writes.size() - 1), "cox");
     for (auto it1 = writes.begin(); it1 != writes.end(); ++it1) {
         for (auto it2 = std::next(it1); it2 != writes.end(); ++it2) {
-            if (same_xstate(it1->second, it2->second)) {
+            if (model.eval(cox_exists(it1->second, it2->second)).is_true()) {
                 *out++ = std::make_tuple(it1->second, it2->second, Edge::COX);
+            }
+            ++progress;
+        }
+    }
+    progress.done();
+    
+    // frx
+    progress = Progress(reads.size(), "frx");
+    for (auto read_it = reads.begin(); read_it != reads.end(); ++read_it) {
+        const Node& read = lookup(read_it->second);
+        const auto write_begin = writes.upper_bound({read.xsread_order, std::nullopt});
+        for (auto write_it = write_begin; write_it != writes.end(); ++write_it) {
+            if (same_xstate(read_it->second, write_it->second)) {
+                *out++ = std::make_tuple(read_it->second, write_it->second, Edge::FRX);
+            }
+        }
+        ++progress;
+    }
+    progress.done();
+    
+    return out;
+}
+
+
+template <typename OutputIt>
+OutputIt AEG::get_concrete_com(const z3::model& model, OutputIt out) const {
+    // get po execution stream
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    NodeRefVec exec_stream;
+    std::copy_if(order.begin(), order.end(), std::back_inserter(exec_stream), [&] (NodeRef ref) -> bool {
+        return model.eval(lookup(ref).arch).is_true();
+    });
+    
+    const auto same_addr = [&] (const Node& a, const Node& b) -> bool {
+        return model.eval(a.same_addr(b)).is_true();
+    };
+    
+    // rf
+    for (auto read_it = exec_stream.rbegin(); read_it != exec_stream.rend(); ++read_it) {
+        const Node& read = lookup(*read_it);
+        if (!read.is_read()) { continue; }
+        for (auto write_it = std::next(read_it); write_it != exec_stream.rend(); ++write_it) {
+            const Node& write = lookup(*write_it);
+            if (!write.is_write()) { continue; }
+            if (same_addr(read, write)) {
+                *out++ = std::make_tuple(*write_it, *read_it, Edge::RF);
+                break;
             }
         }
     }
     
-    // frx
-    for (const auto& read : reads) {
-        for (const auto& write : writes) {
-            if (model.eval(rfx_exists(write.second, read.second)).is_true()) {
-                *out++ = std::make_tuple(read.second, write.second, Edge::FRX);
-            }
+    // co
+    for (auto it1 = exec_stream.begin(); it1 != exec_stream.end(); ++it1) {
+        const Node& n1 = lookup(*it1);
+        if (!n1.is_write()) { continue; }
+        for (auto it2 = std::next(it1); it2 != exec_stream.end(); ++it2) {
+            const Node& n2 = lookup(*it2);
+            if (!n2.is_write()) { continue; }
+            if (model.eval(n1.same_addr(n2)).is_false()) { continue; }
+            *out++ = std::make_tuple(*it1, *it2, Edge::CO);
+        }
+    }
+    
+    // fr
+    for (auto read_it = exec_stream.begin(); read_it != exec_stream.end(); ++read_it) {
+        const Node& read = lookup(*read_it);
+        if (!read.is_read()) { continue; }
+        for (auto write_it = std::next(read_it); write_it != exec_stream.end(); ++write_it) {
+            const Node& write = lookup(*write_it);
+            if (!write.is_write()) { continue; }
+            if (model.eval(read.same_addr(write)).is_false()) { continue; }
+            *out++ = std::make_tuple(*read_it, *write_it, Edge::FR);
         }
     }
     
     return out;
+}
+
+template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f) {
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        if (node.inst.kind == kind) {
+            f(ref, node);
+        }
+    }
+}
+
+template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f) const {
+    for (NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (node.inst.kind == kind) {
+            f(ref, node);
+        }
+    }
 }

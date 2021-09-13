@@ -139,6 +139,16 @@ void AEG::replace(const z3::expr& from, const z3::expr& to) {
 
 
 void AEG::test() {
+    unsigned naddrs = 0;
+    for_each_edge(Edge::ADDR, [&] (NodeRef, NodeRef, const Edge&) {
+        ++naddrs;
+    });
+    std::cerr << "Address edges: " << naddrs << "\n";
+    if (naddrs > 0) {
+        std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
+        ofs << lookup(1).inst.I->getFunction()->getName().str() << "\n";
+    }
+    
     logv(3) << "testing...\n";
     
     z3::solver solver {context.context};
@@ -155,11 +165,14 @@ void AEG::test() {
             return node.constraints.exprs.size();
         });
         os << node_clauses << " node constraints\n";
-        unsigned edge_clauses = 0;
+        std::unordered_map<Edge::Kind, unsigned> edge_constraints;
         graph.for_each_edge([&] (NodeRef, NodeRef, const Edge& e) {
-            edge_clauses += e.constraints.exprs.size();
+            edge_constraints[e.kind] += e.constraints.exprs.size();
         });
-        os << edge_clauses << " edge constraints\n";
+        os << std::transform_reduce(edge_constraints.begin(), edge_constraints.end(), 0, std::plus<unsigned>(), [] (const auto& pair) -> unsigned { return pair.second; }) << " edge constraints (total\n";
+        for (const auto& pair : edge_constraints) {
+            os << Edge::kind_tostr(pair.first) << " " << pair.second << "\n";
+        }
     }
     
     
@@ -232,18 +245,7 @@ void AEG::test() {
 
     solver.push();
 
-#if 0
-    
-        std::vector<std::tuple<NodeRef, NodeRef, const Edge *>> rfs;
-        for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
-            rfs.emplace_back(src, dst, &edge);
-        });
-        const z3::expr lkg = std::apply([&] (NodeRef src, NodeRef dst, const Edge *edge) {
-            std::cerr << "Testing leakage in " << src << " -> " << dst << "\n";
-            return leakage(src, dst, *edge, solver);
-        }, rfs.front());
-        // solver.add(lkg, "leakage");
-#else
+#if 1
     const auto nleaks = leakage(solver);
     std::cerr << "Detected " << nleaks << " leaks.\n";
 #endif
@@ -715,27 +717,18 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
         }
     });
     
-    // output pseudoedge co
-    NodeRefVec writes;
-    get_writes(std::back_inserter(writes));
-    for (NodeRef src : writes) {
-        for (NodeRef dst : writes) {
-            const z3::expr f = co_pred(src, dst);
-            if (model.eval(f).is_true()) {
-                output_edge(src, dst, Edge::CO);
-            }
-        }
-    }
-    
-#if 1
-    // output pseudo comx
-    std::vector<std::tuple<NodeRef, NodeRef, Edge::Kind>> comx;
+    // output pseudo com and comx
+    using EdgeSig = std::tuple<NodeRef, NodeRef, Edge::Kind>;
+    using EdgeSigVec = std::vector<EdgeSig>;
+    EdgeSigVec com, comx;
+    get_concrete_com(model, std::back_inserter(com));
     get_concrete_comx(model, std::back_inserter(comx));
-    assert(!comx.empty());
+    for (const auto& edge : com) {
+        std::apply(output_edge, edge);
+    }
     for (const auto& edge : comx) {
         std::apply(output_edge, edge);
     }
-#endif
     
     os << "}\n";
 }
@@ -1041,7 +1034,7 @@ AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) {
 z3::expr AEG::edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const {
     switch (kind) {
         case Edge::CO:
-            return co_pred(src, dst);
+            return co_exists(src, dst);
             
         default:
             if (const Edge *edge = find_edge(src, dst, kind)) {
@@ -1059,9 +1052,46 @@ NodeRef AEG::add_node(const Node& node) {
     return ref;
 }
 
+void AEG::leakage_rfx(NodeRef read, z3::solver& solver) const {
+    const Node& read_node = lookup(read);
+    assert(read_node.is_read());
+
+#if 0
+    // get xswrite_order of corresponding write.
+    const z3::expr& xsread_order = read_node.xsread_order;
+    z3::expr xswrite_order = read_node.mem[read_node.get_memory_address()];
+#endif
+    
+    z3::expr addr = context.FALSE;
+    for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
+        const Node& addr_dst_node = lookup(addr_dst);
+        if (addr_dst_node.xswrite.is_false()) { std::abort(); }
+        const auto rfx = rfx_exists(addr_dst, read);
+        addr = addr || (addr_edge.exists && rfx && addr_dst_node.trans);
+    });
+    
+    solver.add(addr, "leakage-rfx");
+}
+
+void AEG::leakage_cox(NodeRef write, z3::solver& solver) const {
+    const Node& write_node = lookup(write);
+    assert(write_node.is_write());
+    
+    z3::expr addr = context.FALSE;
+    for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
+        const Node& addr_dst_node = lookup(addr_dst);
+        if (addr_dst_node.xswrite.is_false()) { std::abort(); }
+        const auto cox = cox_exists(addr_dst, write);
+        addr = addr || (addr_edge.exists && cox && addr_dst_node.trans);
+    });
+    
+    solver.add(addr);
+}
 
 void AEG::leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const {
     assert(edge.kind == Edge::RF);
+    
+    std::cerr << "HERE1\n";
     
     const z3::expr rf = edge.exists;
     const z3::expr rfx = rfx_exists(src, dst);
@@ -1069,29 +1099,55 @@ void AEG::leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver
     z3::expr addr = context.FALSE;
     for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& edge) {
         const Node& addr_dst_node = lookup(addr_dst);
-        if (addr_dst_node.xswrite.is_false()) { return; }
-        addr = addr || (edge.exists && rfx_exists(addr_dst, dst) && addr_dst_node.trans);
+        if (addr_dst_node.xswrite.is_false()) {
+            std::abort();
+            return;
+            
+        }
+        const auto rfx = rfx_exists(addr_dst, dst);
+        std::cerr << "ADDR: edge.exists = " << edge.exists << " | rfx_exists = " << rfx << ", addr_dst_node.trans = " << addr_dst_node.trans << "\n";
+        addr = addr || (edge.exists && rfx && addr_dst_node.trans);
     });
     
-    std::cerr << "addr: " << addr << "\n";
-
+    std::cerr << "HERE2\n";
+    
     solver.add(rf, "leakage-rf");
     solver.add(!rfx, "leakage-rfx");
     solver.add(addr, "leakage-addr");
 }
 
 unsigned AEG::leakage(z3::solver& solver) const {
+    z3::model model {solver.ctx()};
     unsigned nleaks = 0;
-    for_each_edge(Edge::RF, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
-        solver.push();
-        leakage(src, dst, edge, solver);
+    
+    const auto process = [&] (const std::string& type, NodeRef ref) {
         if (solver.check() == z3::sat) {
             std::stringstream ss;
-            ss << "out/leakage" << src << "_" << dst << ".dot";
+            ss << "out/leakage-" << type << "-" << ref << ".dot";
             output_execution(ss.str(), solver.get_model());
             ++nleaks;
         }
-        solver.pop();
-    });
+    };
+    
+    for (NodeRef read : node_range()) {
+        const Node& read_node = lookup(read);
+        if (read_node.is_read()) {
+            solver.push();
+            leakage_rfx(read, solver);
+            process("rfx", read);
+            solver.pop();
+        }
+    }
+    
+    for (NodeRef write : node_range()) {
+        const Node& write_node = lookup(write);
+        if (write_node.is_write()) {
+            solver.push();
+            leakage_cox(write, solver);
+            process("cox", write);
+            solver.pop();
+        }
+    }
+    
     return nleaks;
 }

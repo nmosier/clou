@@ -48,7 +48,7 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_addr_defs();
     logv(2) << "Constructing addr refs\n";
     construct_addr_refs();
-#if 0
+#if 1
     logv(2) << "Constructing aliases\n";
     construct_aliases(AA);
 #endif
@@ -60,6 +60,9 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     logv(2) << "Constructing trans group\n";
     construct_trans_group();
 #endif
+    
+    // construct_mem();
+    
 #if 1
     logv(2) << "Constructing comx\n";
     construct_comx();
@@ -157,6 +160,7 @@ void AEG::construct_addr_defs() {
 
 void AEG::construct_addr_refs() {
     std::unordered_map<const llvm::Argument *, UHBAddress> main_args;
+    std::unordered_map<const llvm::Constant *, UHBAddress> globals;
     
     for (NodeRef ref = 0; ref < size(); ++ref) {
         const AEGPO::Node& po_node = po.lookup(ref);
@@ -181,6 +185,12 @@ void AEG::construct_addr_refs() {
                         main_args_it = main_args.emplace(A, UHBAddress {context}).first;
                     }
                     e = main_args_it->second;
+                } else if (const llvm::Constant *G = llvm::dyn_cast<llvm::Constant>(V)) {
+                    auto globals_it = globals.find(G);
+                    if (globals_it == globals.end()) {
+                        globals_it = globals.emplace(G, UHBAddress {context}).first;
+                    }
+                    e = globals_it->second;
                 } else {
                     auto& os = llvm::errs();
                     os << "Expected argument but got " << *V << "\n";
@@ -682,7 +692,7 @@ void AEG::construct_com() {
     get_writes(std::back_inserter(writes));
     
     // get predecessor writes
-#if 1
+#if 0
     using MemDataflow = Dataflow<NodeRefSet>;
     MemDataflow::Result pred_writes, pred_reads;
     
@@ -723,7 +733,7 @@ void AEG::construct_com() {
     logv(3) << "constructing fr...\n";
     construct_fr(reads, writes, pred_reads.in, pred_writes.in);
     logv(3) << __FUNCTION__ << ": done\n";
-#else
+#elif 0
     const auto pred_reads = find_predecessors([&] (NodeRef ref) -> bool {
         return lookup(ref).is_read();
     });
@@ -876,7 +886,6 @@ void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
 #endif
 }
 
-#if 1
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
     NodeRefSet xswrites;
@@ -928,184 +937,6 @@ void AEG::construct_comx() {
     logv(3) << "constructing xsaccess order...\n";
     construct_xsaccess_order(xsreads, xswrites);
 }
-#else
-void AEG::construct_comx() {
-    /* Set xsread, xswrite */
-    std::unordered_set<NodeRef> xswrites;
-    std::unordered_set<NodeRef> xsreads;
-    for (NodeRef i = 0; i < size(); ++i) {
-        Node& node = lookup(i);
-        switch (node.inst.kind) {
-            case Inst::READ:
-                node.xsread = context.TRUE;
-                node.xswrite = context.make_bool();
-                xsreads.insert(i);
-                xswrites.insert(i);
-                // TODO: need to constrain when this happens
-                break;
-            case Inst::WRITE:
-                node.xsread = context.TRUE;
-                node.xswrite = context.TRUE;
-                xsreads.insert(i);
-                xswrites.insert(i);
-                break;
-            default:
-                break;
-        }
-    }
-    
-    
-    /* add rfx */
-    /* We could just blindly add all possible combinations and then later build on this to reduce
-     * the number of possible cycles.
-     */
-    
-    /* Or, alternatively, do it in a more intelligent way: create all possible edges, attach
-     * a boolean to them, and then enforce that there is exactly one incoming node with this
-     * edge.
-     *
-     * Basically, you construct the skeleton manually, and then use FOL/Alloy-like operators to
-     * put constraints on these.
-     *
-     * For example, rfx. We construct an overapproximation of the rfx relation -- add edges from
-     * a read to all writes of the same xstate.
-     * Then, apply the FOL invariant that XSReads have exactly one incoming rfx edge.
-     * fol::FORALL XSRead r | fol::ONE XSWrite w (w - rfx -> r)
-     */
-    
-#if 1
-    for (NodeRef xsread : xsreads) {
-        const Node& xsr = lookup(xsread);
-        for (NodeRef xswrite : xswrites) {
-            const Node& xsw = lookup(xswrite);
-            const z3::expr path = xsr.get_exec() && xsw.get_exec();
-            const z3::expr is_xstate = xsr.xsread && xsw.xswrite;
-            const z3::expr same_xstate = xsr.same_xstate(xsw);
-            const z3::expr exists = path && is_xstate && same_xstate;
-            add_optional_edge(xswrite, xsread, UHBEdge {UHBEdge::RFX, exists});
-        }
-        
-        // add special rfx edges with ENTRY
-        add_optional_edge(entry, xsread, UHBEdge {UHBEdge::RFX, xsr.get_exec() && xsr.xsread});
-    }
-    
-    /* rfx constraint:
-     * for any edge from po to tfo, require that the po node must be an ancestor of the tfo node.
-     */
-#if 1
-    graph.for_each_edge([&] (NodeRef write, NodeRef read, Edge& e) {
-        if (e.kind == Edge::RFX) {
-            const Node& nw = lookup(write);
-            const Node& nr = lookup(read);
-            const bool is_anc = is_ancestor(write, read);
-            e.constraints(z3::implies(e.exists,
-                                      z3::implies(nw.arch && nr.trans, context.bool_val(is_anc))));
-        }
-    });
-#endif
-    
-#else
-    
-    for (NodeRef read : xsreads) {
-        const Node& read_node = lookup(read);
-        std::vector<CondNode> writes;
-        find_sourced_xsaccesses(XSAccess::XSWRITE, read, std::back_inserter(writes));
-        
-        std::cerr << "rfx: " << read << " ->";
-        
-        for (const CondNode& write : writes) {
-            std::cerr << " " << write.ref;
-            
-            add_optional_edge(write.ref, read, UHBEdge {
-                UHBEdge::RFX, read_node.get_exec() && read_node.xsread && write.cond
-            });
-        }
-        std::cerr << "\n";
-        
-#if 0
-        // add special rfx edges with ENTRY
-        add_optional_edge(entry, read, UHBEdge {
-            UHBEdge::RFX,
-            read_node.get_exec() && read_node.xsread
-        });
-#endif
-    }
-#endif
-    
-    /* Constrain rfx edges */
-#if 1
-    for (NodeRef xsread : xsreads) {
-        const auto es = get_edges(Direction::IN, xsread, UHBEdge::RFX);
-        const z3::expr constr = util::one_of(es.begin(), es.end(), [] (const auto & e) {
-            return e->exists;
-        }, context.TRUE, context.FALSE);
-        lookup(xsread).constraints(constr);
-    }
-#endif
-    
-    /* Adding cox is easy -- just predicate edges on po/tfo of each node and whether they access
-     * the same xstate.
-     * How to select which nodes to consider?
-     * Considering all will cause an edge blowup.
-     */
-    
-    /* add cox */
-    for (auto it1 = xswrites.begin(); it1 != xswrites.end(); ++it1) {
-        const Node& n1 = lookup(*it1);
-        for (auto it2 = std::next(it1); it2 != xswrites.end(); ++it2) {
-            const Node& n2 = lookup(*it2);
-            const z3::expr path = n1.get_exec() && n2.get_exec();
-            const z3::expr is_xstate = n1.xswrite && n2.xswrite;
-            const z3::expr same_xstate = n1.same_xstate(n2);
-            const z3::expr exists = path && is_xstate && same_xstate;
-            add_bidir_edge(*it1, *it2, UHBEdge {UHBEdge::COX, exists});
-        }
-        add_unidir_edge(entry, *it1, UHBEdge {UHBEdge::COX, n1.get_exec() && n1.xswrite});
-    }
-    
-    /* READs only perform an XSWrite if there are no previous READ/WRITEs to that address.
-     * When do we need competing pairs, anyway?
-     * Only with upstream instructions.
-     * For now, just use a hard-coded limit.
-     *
-     * Also, for now don't constrain the XSWrite boolean for READs. We can deal with this later.
-     * We need to somehow enforce with comx that tfo executes before po.
-     *
-     * For each node:
-     * First consider po case:
-     */
-    
-    
-    std::vector<graph_type::Cycle> cycles;
-    graph.cycles(std::back_inserter(cycles), [] (const UHBEdge& e) -> bool {
-        switch (e.kind) {
-            case UHBEdge::PO:
-                // case UHBEdge::TFO:
-            case UHBEdge::COX:
-            case UHBEdge::RFX:
-            case UHBEdge::FRX:
-                return true;
-            default:
-                return false;
-        }
-    });
-    for (const auto& cycle : cycles) {
-        const auto f =
-        std::transform_reduce(cycle.edges.begin(), cycle.edges.end(), context.FALSE,
-                              util::logical_or<z3::expr>(),
-                              [&] (const std::vector<UHBEdge>& es) -> z3::expr {
-            return !std::transform_reduce(es.begin(), es.end(), context.FALSE,
-                                          util::logical_or<z3::expr>(),
-                                          [] (const UHBEdge& e) {
-                return e.exists;
-            });
-            
-        });
-        constraints(f);
-        logv(2) << util::to_string(f) << "\n";
-    }
-}
-#endif
 
 
 #if 0
@@ -1136,7 +967,7 @@ void AEG::construct_exec_order() {
         Node& node = lookup(ref);
         node.exec_order = context.make_int("exec_order");
     }
-
+    
     // add constraints
     for (NodeRef ref : node_range()) {
         Node& node = lookup(ref);
@@ -1374,6 +1205,45 @@ void AEG::construct_addr() {
                     }
                 }
 
+            }
+        }
+    }
+}
+
+
+
+void AEG::construct_mem() {
+    std::vector<NodeRef> order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    const z3::expr invalid = context.context.int_val(-1);
+    const z3::sort mem_sort = context.context.array_sort(context.context.int_sort(), context.context.int_sort());
+
+    for (NodeRef ref : order) {
+        Node& node = lookup(ref);
+        switch (node.inst.kind) {
+            case Inst::ENTRY: {
+                node.mem = z3::const_array(mem_sort, node.xswrite_order);
+                break;
+            }
+                
+            default: {
+                // demultiplex mem from predecessors
+                std::stringstream ss;
+                ss << "mem" << ref;
+                node.mem = context.context.constant(ss.str().c_str(), mem_sort);
+                
+                for (NodeRef pred : po.po.rev.at(ref)) {
+                    const Node& pred_node = lookup(pred);
+                    node.constraints(z3::implies(pred_node.arch, node.mem == pred_node.mem), "mem-pred");
+                }
+                
+                if (!node.xswrite.is_false()) {
+                    const z3::expr addr = z3::ite(node.xswrite, node.get_memory_address(), invalid);
+                    node.mem = z3::store(node.mem, addr, node.xswrite_order);
+                }
+                
+                break;
             }
         }
     }

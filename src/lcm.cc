@@ -10,8 +10,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 
-#include <gperftools/profiler.h>
-
 #include "util.h"
 #include "lcm.h"
 #include "addr.h"
@@ -19,6 +17,7 @@
 #include "aeg.h"
 #include "aeg-expanded.h"
 #include "aeg-unrolled.h"
+#include "profiler.h"
 
 using llvm::errs;
 
@@ -53,15 +52,23 @@ struct LCMPass : public llvm::FunctionPass {
       logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
       AEGPO_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
       aegpo_unrolled.construct();
+#if 0
       std::cerr << "outputting\n";
       output(aegpo_unrolled, "aegpo", F);
+#endif
 
+       
       logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
       AEGPO_Expanded aegpo_expanded {spec_depth};
-      aegpo_expanded.construct(aegpo_unrolled);
+       {
+           Profiler profiler {format_graph_path("out/%s.prof", F)};
+           aegpo_expanded.construct(aegpo_unrolled);
+       }
       logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
               << aegpo_expanded.size() << " (expanded)\n";
+#if 0
       output(aegpo_expanded, "aegpoexp", F);
+#endif
       
       logv(1) << "Constructing AEG for " << F.getName() << "\n";
       ProfilerStart(format_graph_path("out/%s.prof", F).c_str());

@@ -10,7 +10,7 @@ class Progress {
 public:
     Progress(): os(nullptr) {}
     
-    Progress(std::size_t total, std::ostream& os = std::cerr, unsigned precision = 2): os(&os), cur(0), total(total), precision(precision), scale(std::pow(10, precision)), start(now()) {
+    Progress(std::size_t total, const std::string& s = "", std::ostream& os = std::cerr, unsigned precision = 2): s(s), os(&os), cur(0), total(total), precision(precision), scale(std::pow(10, precision)), start(now()) {
         update();
     }
     
@@ -29,7 +29,7 @@ public:
     void update() const {
         char *buf = new char [precision + 8];
         sprintf(buf, "%*.*f%%", precision + 1, std::min<int>(precision - 2, 0), 100.0 * raw() / scale);
-        *os << "\r" << buf;
+        *os << "\r" << title() << buf;
         delete[] buf;
     }
     
@@ -44,12 +44,13 @@ public:
         }
         char buf[128];
         sprintf(buf, "%.1f", secs);
-        *os << "\r" << buf << unit << "\n";
+        *os << "\r" << title() << buf << unit << "\n";
     }
     
 private:
     using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
-    
+
+    std::string s;
     std::ostream *os;
     std::size_t cur;
     std::size_t total;
@@ -63,6 +64,14 @@ private:
     
     static TimePoint now() {
         return std::chrono::steady_clock::now();
+    }
+    
+    std::string title() const {
+        if (!s.empty()) {
+            return s + ": ";
+        } else {
+            return "";
+        }
     }
 };
 
