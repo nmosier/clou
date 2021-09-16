@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <numeric>
 #include <iterator>
+#include <exception>
 
 #include <llvm/IR/Function.h>
 #include <llvm/Support/Format.h>
@@ -491,6 +492,20 @@ struct unordered_pair {
             return llvm::hash_value(std::make_pair(second, first));
         }
     }
+};
+
+}
+
+namespace util {
+
+struct resume: std::exception {
+    virtual const char *what() const noexcept {
+        return msg.c_str();
+    }
+    
+    std::string msg;
+    
+    resume(const std::string& msg): msg(msg) {}
 };
 
 }

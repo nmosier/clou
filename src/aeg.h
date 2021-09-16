@@ -103,6 +103,7 @@ private:
     void leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const;
     void leakage_rfx(NodeRef read, z3::solver& solver) const;
     void leakage_cox(NodeRef write, z3::solver& solver) const;
+    void leakage_frx(NodeRef write, z3::solver& solver) const;
     unsigned leakage(z3::solver& solver) const;
     
     struct CondNode {
@@ -311,8 +312,10 @@ public:
     
     // NOTE: We don't include an rf_exists() predicate since this would be expensive to compute directly.
     
-    z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
+    z3::expr cox_exists(NodeRef src, NodeRef dst) const;
+    z3::expr frx_exists(NodeRef src, NodeRef dst) const;
+
 
     template <typename T>
     class Dataflow;

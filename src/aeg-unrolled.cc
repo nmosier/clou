@@ -1,8 +1,11 @@
 #include <deque>
+#include <fstream>
 
 #include <llvm/IR/Dominators.h>
+#include <llvm/IR/Operator.h>
 
 #include "aeg-unrolled.h"
+#include "util.h"
 
 void AEGPO_Unrolled::construct() {
     entry = add_node(Node::make_entry());
@@ -30,7 +33,18 @@ void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& por
 }
 
 void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
-    const llvm::Function *F = C->getCalledFunction();
+    llvm::Function *F = C->getCalledFunction();
+    if (F == nullptr || F->isDeclaration()) {
+        llvm::errs() << "error: cannot introspect into function: " << *C << "\n";
+        std::ofstream ofs {"extern.txt", std::ofstream::ios_base::app};
+        std::string s;
+        llvm::raw_string_ostream os {s};
+        os << *C << "\n";
+        ofs << s;
+        ofs.close();
+        throw util::resume("cannot introspect into function");
+    }
+    
     const FuncID caller_id = ids.id.func;
     ids.push();
     const FuncID callee_id = ids.id.func;
@@ -49,7 +63,7 @@ void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& id
         }
     }
     
-    construct_function(C->getCalledFunction(), port, ids);
+    construct_function(F, port, ids);
     ids.pop();
     
     /* add return value translations */

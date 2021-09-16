@@ -191,6 +191,7 @@ void AEG::construct_addr_refs() {
                         globals_it = globals.emplace(G, UHBAddress {context}).first;
                     }
                     e = globals_it->second;
+                    llvm::errs() << "GLOBAL: " << *G << "\n" << *node.inst.I << "\n";
                 } else {
                     auto& os = llvm::errs();
                     os << "Expected argument but got " << *V << "\n";
@@ -242,10 +243,7 @@ void AEG::construct_exec() {
 void AEG::construct_arch() {
     // Entry node is architecturally executed
     Node& entry_node = lookup(entry);
-#if 1
     entry_node.constraints(entry_node.arch, "entry-arch");
-#else
-#endif
     
     constraints(std::transform_reduce(exits.begin(), exits.end(), context.FALSE, util::logical_or<z3::expr>(), [&] (NodeRef ref) -> z3::expr {
         return lookup(ref).arch;
@@ -423,16 +421,6 @@ void AEG::construct_tfo() {
             Node& node = lookup(ref);
             node.constraints(z3::implies(node.get_exec(), f), "tfo-succ");
         }
-    }
-    
-    // acyclic
-    {
-        Timer timer;
-        logv(3) << __FUNCTION__ << ": adding constraint 'acyclic'\n";
-        const auto f = acyclic([] (const auto& edge) {
-            return edge.exists && edge.kind == Edge::TFO;
-        });
-        constraints(f, "tfo-acyclic");
     }
 }
 
@@ -651,22 +639,7 @@ void AEG::construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
     }
 }
 
-void AEG::construct_co(const NodeRefVec& reads, const NodeRefVec& writes,
-                       const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
-#if 0
-    Count count;
-    for (const NodeRef write : writes) {
-        const Node& write_node = lookup(write);
-        for (const NodeRef pred_write : pred_writes.at(write)) {
-            const Node& pred_write_node = lookup(pred_write);
-            const z3::expr f = write_node.arch && pred_write_node.arch && write_node.same_addr(pred_write_node);
-            add_unidir_edge(pred_write, write, Edge {Edge::CO, f});
-            ++count;
-        }
-    }
-    count.done();
-#endif
-}
+void AEG::construct_co(const NodeRefVec& reads, const NodeRefVec& writes,const ClosureMap& pred_reads, const ClosureMap& pred_writes) {}
 
 void AEG::construct_fr(const NodeRefVec& reads, const NodeRefVec& writes,
                        const ClosureMap& pred_reads, const ClosureMap& pred_writes) {
@@ -690,65 +663,6 @@ void AEG::construct_com() {
     NodeRefVec reads, writes;
     get_reads(std::back_inserter(reads));
     get_writes(std::back_inserter(writes));
-    
-    // get predecessor writes
-#if 0
-    using MemDataflow = Dataflow<NodeRefSet>;
-    MemDataflow::Result pred_writes, pred_reads;
-    
-    const auto do_dataflow = [&] (MemDataflow::Result& res, const auto should_insert) {
-        MemDataflow(*this, {}, MemDataflow::FWD, res, [&] (NodeRef ref, const NodeRefSet& in_) -> NodeRefSet {
-            NodeRefSet in = in_;
-            if (should_insert(ref)) {
-                for (auto it = in.begin(); it != in.end(); ) {
-                    if (check_alias(*it, ref) == llvm::MustAlias) {
-                        it = in.erase(it);
-                    } else {
-                        ++it;
-                    }
-                }
-                in.insert(ref);
-            }
-            return in;
-        }, [&] (const NodeRefSet& a, const NodeRefSet& b) -> NodeRefSet {
-            NodeRefSet res = a;
-            res.insert(b.begin(), b.end());
-            return res;
-        });
-    };
-    
-    do_dataflow(pred_reads, [&] (NodeRef ref) -> bool {
-        return lookup(ref).is_read();
-    });
-    do_dataflow(pred_writes, [&] (NodeRef ref) -> bool {
-        return lookup(ref).is_write();
-    });
-    
-    assert(!pred_reads.in.empty());
-    
-    logv(3) << "constructing co...\n";
-    construct_co(reads, writes, pred_reads.in, pred_writes.in);
-    logv(3) << "constructing rf...\n";
-    construct_rf(reads, writes, pred_reads.in, pred_writes.in);
-    logv(3) << "constructing fr...\n";
-    construct_fr(reads, writes, pred_reads.in, pred_writes.in);
-    logv(3) << __FUNCTION__ << ": done\n";
-#elif 0
-    const auto pred_reads = find_predecessors([&] (NodeRef ref) -> bool {
-        return lookup(ref).is_read();
-    });
-    const auto pred_writes = find_predecessors([&] (NodeRef ref) -> bool {
-        return lookup(ref).is_write();
-    });
-    
-    logv(3) << "constructing co...\n";
-    construct_co(reads, writes, pred_reads, pred_writes);
-    logv(3) << "constructing rf...\n";
-    construct_rf(reads, writes, pred_reads, pred_writes);
-    logv(3) << "constructing fr...\n";
-    construct_fr(reads, writes, pred_reads, pred_writes);
-    logv(3) << __FUNCTION__ << ": done\n";
-#endif
 }
 
 
@@ -852,39 +766,7 @@ void AEG::construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
     }
 }
 
-void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {
-#if 0
-    Progress progress;
-    
-    // add edges + definition
-    unsigned nedges = 0;
-    logv(3) << __FUNCTION__ << ": adding edges\n";
-    progress = Progress(xreads.size() * xwrites.size());
-    for (const NodeRef u : xreads) {
-        for (const NodeRef v : xwrites) {
-            if (u != v) {
-                NodeRefSet rfxs, coxs;
-                get_nodes(Direction::IN, u, std::inserter(rfxs, rfxs.end()), Edge::RFX);
-                get_nodes(Direction::IN, v, std::inserter(coxs, coxs.end()), Edge::COX);
-                std::vector<NodeRef> common;
-                util::set_intersection(rfxs, coxs, std::back_inserter(common));
-                z3::expr acc = context.FALSE;
-                for (const NodeRef w : common) {
-                    acc = acc || (edge_exists(w, u, Edge::RFX) && edge_exists(w, v, Edge::COX));
-                }
-                acc = acc.simplify();
-                if (!acc.is_false()) {
-                    add_unidir_edge(u, v, Edge {Edge::FRX, acc});
-                    ++nedges;
-                }
-            }
-            ++progress;
-        }
-    }
-    progress.done();
-    logv(3) << __FUNCTION__ << ": added " << nedges << " edges\n";
-#endif
-}
+void AEG::construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites) {}
 
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
@@ -1134,6 +1016,14 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     return precond && cond;
 }
 
+z3::expr AEG::frx_exists(NodeRef src, NodeRef dst) const {
+    const Node& src_node = lookup(src);
+    const Node& dst_node = lookup(dst);
+    
+    const z3::expr cond = src_node.get_exec() && dst_node.get_exec() && src_node.xsread && dst_node.xswrite && src_node.same_xstate(dst_node) && src_node.xsread_order < dst_node.xswrite_order;
+    return cond;
+}
+
 
 void AEG::construct_addr() {
     /* addr dependencies can be between a read and a subsequent read/write
@@ -1171,19 +1061,20 @@ void AEG::construct_addr() {
                     
                     if (node.inst.kind == Inst::READ) {
                         if (in.state == Info::SEEN) {
-                                add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.get_exec() && dst_node.get_exec()});
-                                    break;
+                            add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.get_exec() && dst_node.get_exec()});
+                            break;
                         }
                     } else {
                         switch (in.state) {
                             case Info::UNSEEN:
-                                if (node.isa<llvm::GetElementPtrInst>()) {
-                                    const llvm::Value *V = node.inst.I->getOperand(1);
-                                    const auto refs_it = po_node.refs.find(V);
-                                    if (refs_it != po_node.refs.end()) {
-                                        std::transform(refs_it->second.begin(), refs_it->second.end(), std::back_inserter(todo), [&] (NodeRef ref) -> Info {
-                                            return Info {ref, Info::SEEN};
-                                        });
+                                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(node.inst.I)) {
+                                    for (const llvm::Value *V : GEP->indices()) {
+                                        const auto refs_it = po_node.refs.find(V);
+                                        if (refs_it != po_node.refs.end()) {
+                                            std::transform(refs_it->second.begin(), refs_it->second.end(), std::back_inserter(todo), [&] (NodeRef ref) -> Info {
+                                                return Info {ref, Info::SEEN};
+                                            });
+                                        }
                                     }
                                 } else {
                                     for (const auto& ref_pair : po_node.refs) {
@@ -1197,15 +1088,16 @@ void AEG::construct_addr() {
                             case Info::SEEN:
                                 for (const auto& ref_pair : po_node.refs) {
                                     std::transform(ref_pair.second.begin(), ref_pair.second.end(), std::back_inserter(todo), [] (NodeRef ref) -> Info {
-                                        return {ref, Info::UNSEEN};
+                                        return {ref, Info::SEEN};
                                     });
                                 }
+                                llvm::errs() << "SEEN " << *node.inst.I << "\n";
                                 break;
                         }
                     }
                 }
-
             }
+            
         }
     }
 }

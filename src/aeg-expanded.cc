@@ -126,30 +126,44 @@ void AEGPO_Expanded::resolve_refs(const AEGPO_Unrolled& in) {
             const auto *I = *Ip;
             for (const llvm::Value *V : I->operand_values()) {
                 enum ValueKind {
-                    INST, ARG, OTHER
+                    INST, ARG, OTHER, UNKNOWN
                 } kind;
-                if (llvm::dyn_cast<llvm::Instruction>(V)) {
+                if (llvm::isa<llvm::Instruction>(V)) {
                     kind = INST;
-                } else if (llvm::dyn_cast<llvm::Argument>(V)) {
+                } else if (llvm::isa<llvm::Argument>(V)) {
                     kind = ARG;
-                } else {
+                } else if (llvm::isa<llvm::Constant>(V) || llvm::isa<llvm::BasicBlock>(V)) {
                     kind = OTHER;
+                } else {
+                    kind = UNKNOWN;
                 }
-
-                if (kind != OTHER) {
-                    std::vector<Key> sources;
-                    in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
-                    const Map& map = maps.at(ref);
-                    for (const Key& source : sources) {
-                        const auto it = map.find(source);
-                        if (kind == INST) {
-                            assert(it != map.end());
+                
+                switch (kind) {
+                    case INST:
+                    case ARG: {
+                        std::vector<Key> sources;
+                        in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
+                        const Map& map = maps.at(ref);
+                        for (const Key& source : sources) {
+                            const auto it = map.find(source);
+                            if (kind == INST) {
+                                assert(it != map.end());
+                            }
+                            if (it != map.end()) {
+                                const NodeRefSet& refs = it->second;
+                                node.refs[V].insert(refs.begin(), refs.end());
+                                llvm::errs() << "here: " << *I << "\n";
+                            }
                         }
-                        if (it != map.end()) {
-                            const NodeRefSet& refs = it->second;
-                            node.refs[V].insert(refs.begin(), refs.end());
-                        }
+                        break;
                     }
+                        
+                    case OTHER:
+                        break;
+                        
+                    case UNKNOWN:
+                        llvm::errs() << "value of unknown kind: " << *V << "\n";
+                        std::abort();
                 }
             }
         }

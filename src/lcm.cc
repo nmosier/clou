@@ -38,6 +38,7 @@ struct LCMPass : public llvm::FunctionPass {
    }
       
    virtual bool runOnFunction(llvm::Function& F) override {
+       try {
        if (!function_names.empty()) {
            if (function_names.find(static_cast<std::string>(F.getName())) == function_names.end()) {
                return false;
@@ -86,6 +87,10 @@ struct LCMPass : public llvm::FunctionPass {
       llvm::errs() << "Testing...\n";
       aeg.test();
       llvm::errs() << "done\n";
+           
+       } catch (const util::resume& resume) {
+           std::cerr << resume.what() << "\n";
+       }
 
       return false;
    }

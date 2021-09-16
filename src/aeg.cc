@@ -147,6 +147,8 @@ void AEG::test() {
     if (naddrs > 0) {
         std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
         ofs << lookup(1).inst.I->getFunction()->getName().str() << "\n";
+    } else {
+        return;
     }
     
     logv(3) << "testing...\n";
@@ -246,8 +248,24 @@ void AEG::test() {
     solver.push();
 
 #if 1
-    const auto nleaks = leakage(solver);
-    std::cerr << "Detected " << nleaks << " leaks.\n";
+    {
+        const auto addr_rel = fol::edge_rel(*this, Edge::ADDR);
+        solver.push();
+        solver.add(fol::some(addr_rel, context.context));
+        if (solver.check() == z3::sat) {
+            output_execution("addr.dot", solver.get_model());
+        } else {
+            throw util::resume("no addr edges");
+        }
+        solver.pop();
+        
+        Timer timer;
+        const auto nleaks = leakage(solver);
+        std::cerr << "Detected " << nleaks << " leaks.\n";
+        if (nleaks == 0) {
+            return;
+        }
+    }
 #endif
     
     unsigned nexecs = 0;
@@ -1088,6 +1106,21 @@ void AEG::leakage_cox(NodeRef write, z3::solver& solver) const {
     solver.add(addr);
 }
 
+void AEG::leakage_frx(NodeRef write, z3::solver& solver) const {
+    const Node& write_node = lookup(write);
+    assert(write_node.is_write());
+    
+    z3::expr addr = context.FALSE;
+    for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
+        const Node& addr_dst_node = lookup(addr_dst);
+        if (addr_dst_node.xswrite.is_false()) { std::abort(); }
+        const auto frx = frx_exists(addr_dst, write);
+        addr = addr || (addr_edge.exists && frx && addr_dst_node.trans);
+    });
+    
+    solver.add(addr);
+}
+
 void AEG::leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const {
     assert(edge.kind == Edge::RF);
     
@@ -1121,12 +1154,14 @@ unsigned AEG::leakage(z3::solver& solver) const {
     unsigned nleaks = 0;
     
     const auto process = [&] (const std::string& type, NodeRef ref) {
-        if (solver.check() == z3::sat) {
+        const auto res = solver.check();
+        if (res == z3::sat) {
             std::stringstream ss;
             ss << "out/leakage-" << type << "-" << ref << ".dot";
             output_execution(ss.str(), solver.get_model());
             ++nleaks;
         }
+        std::cerr << type << " " << res << "\n";
     };
     
     for (NodeRef read : node_range()) {
@@ -1145,6 +1180,15 @@ unsigned AEG::leakage(z3::solver& solver) const {
             solver.push();
             leakage_cox(write, solver);
             process("cox", write);
+            solver.pop();
+        }
+    }
+    
+    for (NodeRef write : node_range()) {
+        const Node& write_node = lookup(write);
+        if (write_node.is_write()) {
+            solver.push();
+            leakage_frx(write, solver);
             solver.pop();
         }
     }
