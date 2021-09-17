@@ -650,7 +650,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
     std::unordered_map<NodeRef, std::string> names;
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (model.eval(node.get_exec()).is_true()) {
+        if (model.eval(node.exec()).is_true()) {
             const std::string name = std::string("n") + std::to_string(next_id);
             names.emplace(ref, name);
             ++next_id;

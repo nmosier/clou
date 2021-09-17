@@ -27,24 +27,6 @@ struct TupleSort {
     }
 };
 
-/* MemSort
- * (ref, xswrite, xswrite_order)
- */
-
-#if 0
-struct MemSort: public TupleSort {
-    static inline constexpr unsigned n = 3;
-    static inline const char *names[n] = {"ref", "xswrite", "xswrite_order"};
-    
-    static std::array<z3::sort, n> sorts(z3::context& ctx) {
-        std::array<z3::sort, n> sorts = {ctx.int_sort(), ctx.bool_sort()};
-        return std::vector<z3::sort>
-    }
-    
-    MemSort(z3::context& ctx): TupleSort()
-};
-#endif
-
 class UHBContext {
 public:
     UHBContext();
@@ -52,11 +34,6 @@ public:
     z3::context context;
     const z3::expr TRUE;
     const z3::expr FALSE;
-    
-#if 0
-    TupleSort mem_sort;
-#endif
-
     
     z3::expr make_bool(const std::string& s = "") {
         return context.bool_const(get_name(s).c_str());
@@ -131,6 +108,8 @@ struct UHBNode {
     z3::expr mem; // int -> int
     UHBConstraints constraints;
     
+    z3::expr exec() const { return arch || trans; }
+    
     z3::expr get_addr_def() const {
         // TODO: Do we need to add an extra ite to qualify based on tfo bool too?
         return z3::ite(arch, addr_def->arch, addr_def->trans);
@@ -144,10 +123,6 @@ struct UHBNode {
     template <typename Derived>
     bool isa() const {
         return inst.isa<Derived>();
-    }
-    
-    z3::expr get_exec() const {
-        return arch || trans;
     }
     
     void simplify();

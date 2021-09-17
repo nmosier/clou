@@ -359,7 +359,7 @@ void AEG::construct_tfo() {
                 return edge->exists;
             }, context.TRUE, context.FALSE);
             Node& node = lookup(dst);
-            node.constraints(z3::implies(node.get_exec(), f), "tfo-pred");
+            node.constraints(z3::implies(node.exec(), f), "tfo-pred");
             
             /* one of improvement
              * P => L ^ R
@@ -379,7 +379,7 @@ void AEG::construct_tfo() {
                 return edge->exists;
             }, context.TRUE, context.FALSE);
             Node& node = lookup(ref);
-            node.constraints(z3::implies(node.get_exec(), f), "tfo-succ");
+            node.constraints(z3::implies(node.exec(), f), "tfo-succ");
         }
     }
 }
@@ -535,7 +535,7 @@ void AEG::construct_exec_order() {
             const z3::expr& cond = pred_pair.second;
             const Node& pred_node = lookup(pred);
             
-            const z3::expr f = z3::implies(node.get_exec() && pred_node.get_exec() && cond, node.exec_order > pred_node.exec_order);
+            const z3::expr f = z3::implies(node.exec() && pred_node.exec() && cond, node.exec_order > pred_node.exec_order);
             node.constraints(f, "exec-order");
         }
     }
@@ -650,7 +650,7 @@ z3::expr AEG::cox_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    const z3::expr precond = src_node.get_exec() && dst_node.get_exec() && src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
+    const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
     const z3::expr diff = src_node.xswrite_order - dst_node.xswrite_order;
 #if 0
     const z3::expr cond = z3::ite(diff == 0, src_node.exec_order < dst_node.exec_order, diff < 0);
@@ -666,7 +666,7 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     const Node& dst_node = lookup(dst);
     
     // TODO: does xsread, xswrite => exec?
-    const z3::expr precond = src_node.get_exec() && dst_node.get_exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && src_node.xswrite_order < dst_node.xsread_order;
+    const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && src_node.xswrite_order < dst_node.xsread_order;
     NodeRefVec xswrites;
     get_nodes_if(std::back_inserter(xswrites), [&] (const Node& node) -> bool {
         return !node.xswrite.is_false();
@@ -684,7 +684,7 @@ z3::expr AEG::frx_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    const z3::expr cond = src_node.get_exec() && dst_node.get_exec() && src_node.xsread && dst_node.xswrite && src_node.same_xstate(dst_node) && src_node.xsread_order < dst_node.xswrite_order;
+    const z3::expr cond = src_node.exec() && dst_node.exec() && src_node.xsread && dst_node.xswrite && src_node.same_xstate(dst_node) && src_node.xsread_order < dst_node.xswrite_order;
     return cond;
 }
 
@@ -725,7 +725,7 @@ void AEG::construct_addr() {
                     
                     if (node.inst.kind == Inst::READ) {
                         if (in.state == Info::SEEN) {
-                            add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.get_exec() && dst_node.get_exec()});
+                            add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.exec() && dst_node.exec()});
                             break;
                         }
                     } else {

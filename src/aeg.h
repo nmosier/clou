@@ -558,11 +558,11 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     std::map<Access, NodeRef, decltype(less)> reads {less}, writes {less};
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (model.eval(node.get_exec() && node.xsread).is_true()) {
+        if (model.eval(node.exec() && node.xsread).is_true()) {
             [[maybe_unused]] const auto res = reads.emplace(Access {node.xsread_order, node.exec_order}, ref);
             assert(res.second);
         }
-        if (model.eval(node.get_exec() && node.xswrite).is_true()) {
+        if (model.eval(node.exec() && node.xswrite).is_true()) {
             [[maybe_unused]] const auto res = writes.emplace(Access {node.xswrite_order, node.exec_order}, ref);
             assert(res.second);
         }
