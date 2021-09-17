@@ -50,10 +50,12 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_addr_refs();
     logv(2) << "Constructing aliases\n";
     construct_aliases(AA);
+#if 0
     logv(2) << "Constructing exec order\n";
     construct_exec_order();
     logv(2) << "Constructing trans group\n";
     construct_trans_group();
+#endif
     logv(2) << "Constructing comx\n";
     construct_comx();
     logv(2) << "Constructing addr\n";

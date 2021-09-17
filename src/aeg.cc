@@ -674,9 +674,11 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
                 ss << "xswrite " << model.eval(node.xswrite_order) << " ";
             }
             
+#if 0
             if (model.eval(node.trans).is_true()) {
                 ss << "[" << model.eval(node.trans_group_min) << " " << model.eval(node.trans_group_max) << "] ";
             }
+#endif
             
             std::string color;
             if (model.eval(node.arch).is_true()) {
