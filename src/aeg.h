@@ -530,7 +530,7 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     
     struct Access {
         z3::expr xsaccess_order;
-        std::optional<z3::expr> exec_order;
+        std::optional<NodeRef> tiebreaker;
     };
     
     const auto less = [&] (const Access& a, const Access& b) -> bool {
@@ -540,14 +540,14 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
         } else if (model.eval(xsaccess_order_diff > 0).is_true()) {
             return false;
         } else {
-            if (!a.exec_order && !b.exec_order) {
+            if (!a.tiebreaker && !b.tiebreaker) {
                 return false;
-            } else if (!a.exec_order && b.exec_order) {
+            } else if (!a.tiebreaker && b.tiebreaker) {
                 return true;
-            } else if (a.exec_order && !b.exec_order) {
+            } else if (a.tiebreaker && !b.tiebreaker) {
                 return false;
             } else {
-                return model.eval(*a.exec_order < *b.exec_order);
+                return *a.tiebreaker < *b.tiebreaker;
             }
         }
     };
@@ -559,11 +559,11 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
         if (model.eval(node.exec() && node.xsread).is_true()) {
-            [[maybe_unused]] const auto res = reads.emplace(Access {node.xsread_order, node.exec_order}, ref);
+            [[maybe_unused]] const auto res = reads.emplace(Access {node.xsread_order, ref}, ref);
             assert(res.second);
         }
         if (model.eval(node.exec() && node.xswrite).is_true()) {
-            [[maybe_unused]] const auto res = writes.emplace(Access {node.xswrite_order, node.exec_order}, ref);
+            [[maybe_unused]] const auto res = writes.emplace(Access {node.xswrite_order, ref}, ref);
             assert(res.second);
         }
         ++progress;

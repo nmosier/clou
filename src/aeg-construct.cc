@@ -465,32 +465,49 @@ void AEG::construct_comx() {
     /* Set xsread, xswrite */
     NodeRefSet xswrites;
     NodeRefSet xsreads;
+    
+    enum Option {
+        YES, NO, MAYBE
+    };
+    
+    const auto process = [&] (NodeRef i, Node& node, Option xsread, Option xswrite) {
+        const auto make_xsaccess = [&] (Option xsaccess, const std::string& name) {
+            switch (xsaccess) {
+                case YES: return context.TRUE;
+                case NO: return context.FALSE;
+                case MAYBE: return context.make_bool(name);
+            }
+        };
+        node.xsread = make_xsaccess(xsread, "xsread");
+        node.xswrite = make_xsaccess(xswrite, "xswrite");
+        if (xsread != NO) {
+            xsreads.insert(i);
+        }
+        if (xswrite != NO) {
+            xswrites.insert(i);
+        }
+        if (!node.is_special()) {
+            node.xstate = context.make_int("xstate");
+            node.constraints(node.xstate == node.get_memory_address(), "xstate-addr-eq");
+        }
+    };
+    
     for (NodeRef i = 0; i < size(); ++i) {
         Node& node = lookup(i);
-        switch (node.inst.kind) {
-            case Inst::READ:
-                node.xsread = context.TRUE;
-                node.xswrite = context.make_bool();
-                xsreads.insert(i);
-                xswrites.insert(i);
-                // TODO: need to constrain when READ is an xswrite.
-                break;
-            case Inst::WRITE:
-                node.xsread = context.TRUE;
-                node.xswrite = context.TRUE;
-                xsreads.insert(i);
-                xswrites.insert(i);
-                break;
-            case Inst::ENTRY:
-                node.xswrite = context.TRUE;
-                xswrites.insert(i);
-                break;
-            case Inst::EXIT:
-                node.xsread = context.TRUE;
-                xsreads.insert(i);
-                break;
-            default:
-                break;
+        struct Info {
+            Option xsread;
+            Option xswrite;
+        };
+        static const std::unordered_map<Inst::Kind, Info> map = {
+            {Inst::READ, {YES, MAYBE}},
+            {Inst::WRITE, {YES, YES}},
+            {Inst::ENTRY, {NO, YES}},
+            {Inst::EXIT, {YES, NO}},
+        };
+        const auto it = map.find(node.inst.kind);
+        if (it != map.end()) {
+            const Info& info = it->second;
+            process(i, node, info.xsread, info.xswrite);
         }
     }
     

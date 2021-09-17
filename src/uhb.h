@@ -96,6 +96,7 @@ struct UHBNode {
     z3::expr trans; // bool: transient fetch order variable
     z3::expr trans_depth; // int: transient depth
     std::optional<UHBAddress> addr_def;
+    z3::expr xstate;
     std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
     z3::expr xsread;
     z3::expr xswrite;
@@ -132,9 +133,11 @@ struct UHBNode {
     z3::expr same_addr(const UHBNode& other) const {
         return same_addr(*this, other);
     }
+
+    static z3::expr same_xstate(const UHBNode& a, const UHBNode& b);
     
     z3::expr same_xstate(const UHBNode& other) const {
-        return same_addr(other);
+        return same_xstate(*this, other);
     }
     
     z3::expr get_xsaccess(XSAccess kind) const;
