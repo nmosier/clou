@@ -6,9 +6,10 @@ usage: $0 [-hg] arg...
 EOF
 }
 
+JOBS=`nproc`
 ARGS=
 
-while getopts "hgx:" OPTCHAR; do
+while getopts "hgx:j:" OPTCHAR; do
     case "$OPTCHAR" in
 	h)
 	    usage
@@ -20,6 +21,9 @@ while getopts "hgx:" OPTCHAR; do
 	x)
 	    ARGS+="$OPTARG "
 	    ;;
+	j)
+	    JOBS="$OPTARG"
+	    ;;
 	*)
 	    usage >&2
 	    exit 1
@@ -28,5 +32,7 @@ while getopts "hgx:" OPTCHAR; do
 done
 
 shift $((OPTIND-1))
+
+ARGS+=" -j$JOBS "
 
 LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER clang-12 -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"

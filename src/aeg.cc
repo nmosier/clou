@@ -10,6 +10,7 @@
 #include "fol.h"
 #include "progress.h"
 #include "timer.h"
+#include "fork_work_queue.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -177,7 +178,6 @@ void AEG::test() {
         }
     }
     
-    
     // add edge constraints
     {
     std::cerr << __FUNCTION__ << ": adding edge constraints...\n";
@@ -250,8 +250,12 @@ void AEG::test() {
 #if 1
     {
         const auto addr_rel = fol::edge_rel(*this, Edge::ADDR);
+        const auto trans_rel = fol::node_rel(*this, [&] (NodeRef, const Node& node) -> z3::expr {
+            return node.trans;
+        });
+        const auto addr_expr = fol::some(fol::join(addr_rel, trans_rel), context.context);
         solver.push();
-        solver.add(fol::some(addr_rel, context.context));
+        solver.add(addr_expr);
         if (solver.check() == z3::sat) {
             output_execution("addr.dot", solver.get_model());
         } else {
@@ -1088,7 +1092,7 @@ void AEG::leakage_rfx(NodeRef read, z3::solver& solver) const {
         addr = addr || (addr_edge.exists && rfx && addr_dst_node.trans);
     });
     
-    solver.add(addr, "leakage-rfx");
+    solver.add(read_node.arch && addr, "leakage-rfx");
 }
 
 void AEG::leakage_cox(NodeRef write, z3::solver& solver) const {
@@ -1103,7 +1107,7 @@ void AEG::leakage_cox(NodeRef write, z3::solver& solver) const {
         addr = addr || (addr_edge.exists && cox && addr_dst_node.trans);
     });
     
-    solver.add(addr);
+    solver.add(write_node.arch && addr, "leakage-cox");
 }
 
 void AEG::leakage_frx(NodeRef write, z3::solver& solver) const {
@@ -1118,13 +1122,11 @@ void AEG::leakage_frx(NodeRef write, z3::solver& solver) const {
         addr = addr || (addr_edge.exists && frx && addr_dst_node.trans);
     });
     
-    solver.add(addr);
+    solver.add(write_node.arch && addr, "leakage-frx");
 }
 
 void AEG::leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const {
     assert(edge.kind == Edge::RF);
-    
-    std::cerr << "HERE1\n";
     
     const z3::expr rf = edge.exists;
     const z3::expr rfx = rfx_exists(src, dst);
@@ -1142,8 +1144,6 @@ void AEG::leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver
         addr = addr || (edge.exists && rfx && addr_dst_node.trans);
     });
     
-    std::cerr << "HERE2\n";
-    
     solver.add(rf, "leakage-rf");
     solver.add(!rfx, "leakage-rfx");
     solver.add(addr, "leakage-addr");
@@ -1153,7 +1153,7 @@ unsigned AEG::leakage(z3::solver& solver) const {
     z3::model model {solver.ctx()};
     unsigned nleaks = 0;
     
-    const auto process = [&] (const std::string& type, NodeRef ref) {
+    const auto process = [&] (const std::string& type, NodeRef ref, z3::solver& solver) {
         const auto res = solver.check();
         if (res == z3::sat) {
             std::stringstream ss;
@@ -1164,34 +1164,41 @@ unsigned AEG::leakage(z3::solver& solver) const {
         std::cerr << type << " " << res << "\n";
     };
     
+    fork_work_queue queue {num_jobs};
+    
     for (NodeRef read : node_range()) {
         const Node& read_node = lookup(read);
         if (read_node.is_read()) {
-            solver.push();
-            leakage_rfx(read, solver);
-            process("rfx", read);
-            solver.pop();
+            queue.push([&, read] {
+                leakage_rfx(read, solver);
+                process("rfx", read, solver);
+            });
         }
     }
     
     for (NodeRef write : node_range()) {
         const Node& write_node = lookup(write);
         if (write_node.is_write()) {
-            solver.push();
-            leakage_cox(write, solver);
-            process("cox", write);
-            solver.pop();
+            queue.push([&, write] {
+                leakage_cox(write, solver);
+                process("cox", write, solver);
+            });
         }
     }
     
     for (NodeRef write : node_range()) {
         const Node& write_node = lookup(write);
         if (write_node.is_write()) {
-            solver.push();
-            leakage_frx(write, solver);
-            solver.pop();
+            queue.push([&, write] {
+                leakage_frx(write, solver);
+                process("frx", write, solver);
+            });
         }
     }
+    
+    std::vector<int> results;
+    queue.run(std::back_inserter(results));
+    // TODO: use results somehow
     
     return nleaks;
 }

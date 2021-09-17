@@ -7,6 +7,7 @@ extern std::string output_dir;
 extern std::unordered_set<std::string> function_names;
 extern unsigned verbose;
 extern unsigned spec_depth;
+extern unsigned num_jobs;
 
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;

@@ -23,6 +23,7 @@ bool include_expr_in_constraint_name = false;
 std::unordered_set<std::string> function_names;
 std::unordered_set<unsigned> include_edges;
 unsigned spec_depth = 2;
+unsigned num_jobs = 1;
 
 static void usage(FILE *f = stderr) {
     const char *s = R"=(
@@ -63,10 +64,11 @@ static int parse_args() {
         {"function", required_argument, nullptr, 'f'},
         {"edges", required_argument, nullptr, 'E'},
         {"depth", required_argument, nullptr, 'd'},
+        {"jobs", required_argument, nullptr, 'j'},
         {nullptr, 0, nullptr, 0}
     };
     
-    while ((optc = getopt_long(argc, argv, "hvo:cef:E:d:", opts, nullptr)) >= 0) {
+    while ((optc = getopt_long(argc, argv, "hvo:cef:E:d:j:", opts, nullptr)) >= 0) {
         switch (optc) {
             case 'h':
                 usage(stdout);
@@ -102,6 +104,10 @@ static int parse_args() {
                 
             case 'd':
                 spec_depth = std::stoul(optarg);
+                break;
+                
+            case 'j':
+                num_jobs = std::stoul(optarg);
                 break;
                 
             default:

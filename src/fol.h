@@ -83,10 +83,10 @@ relation<NodeRef> node_rel(const AEG& aeg, Inst::Kind kind);
 template <typename Pred>
 relation<NodeRef> node_rel(const AEG& aeg, Pred pred) {
     relation<NodeRef> rel;
-    for (const auto p : aeg.node_range2()) {
-        const z3::expr cond = pred(p);
+    for (const NodeRef ref : aeg.node_range()) {
+        const z3::expr cond = pred(ref, aeg.lookup(ref));
         if (!cond.is_false()) {
-            rel.emplace(std::make_tuple(p.ref), cond);
+            rel.emplace(std::make_tuple(ref), cond);
         }
     }
     return rel;

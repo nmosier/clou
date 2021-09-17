@@ -45,8 +45,8 @@ binary_node_relation edge_rel(const AEG& aeg, UHBEdge::Kind kind) {
 }
 
 relation<NodeRef> node_rel(const AEG& aeg, Inst::Kind kind) {
-    return node_rel(aeg, [&] (const auto& p) -> z3::expr {
-        return aeg.ctx().bool_val(p.node.inst.kind == kind);
+    return node_rel(aeg, [&] (NodeRef, const AEG::Node& node) -> z3::expr {
+        return aeg.ctx().bool_val(node.inst.kind == kind);
     });
 }
 
