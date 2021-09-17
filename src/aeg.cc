@@ -245,9 +245,11 @@ void AEG::test() {
                                        );
 #endif
 
+    {
+    Timer timer;
     solver.push();
+    }
 
-#if 1
     {
         const auto addr_rel = fol::edge_rel(*this, Edge::ADDR);
         const auto trans_rel = fol::node_rel(*this, [&] (NodeRef, const Node& node) -> z3::expr {
@@ -270,7 +272,6 @@ void AEG::test() {
             return;
         }
     }
-#endif
     
     unsigned nexecs = 0;
     
@@ -442,27 +443,6 @@ void AEG::find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
     }
 }
 
-#if 0
-std::optional<z3::expr> AEG::check_no_intervening_writes(NodeRef src, NodeRef dst) const {
-    /* TODO:
-     * Visit the nodes in postorder, so that we know the full constraints of each node before
-     * visiting successors, in order to avoid path explosion.
-     *
-     */
-    
-    z3::expr acc = context.TRUE;
-    const Node& node = lookup(src);
-    if (node.inst.kind == Inst::WRITE) {
-        acc = z3::implies(node.po, node.addr_refs.at(0).po != lookup(src).addr_refs.at(0).po)
-    }
-    for (NodeRef pred : po.po.rev.at(src)) {
-        if (pred != dst) {
-            acc &= check_no_intervening_writes(pred, dst);
-        }
-    }
-    return acc;
-}
-#else
 z3::expr AEG::check_no_intervening_writes(NodeRef read, NodeRef write) const {
     /* Approach:
      * Use the postorder to be able to efficiently generate subpredicates.
@@ -500,8 +480,6 @@ z3::expr AEG::check_no_intervening_writes(NodeRef read, NodeRef write) const {
         return x ? *x : context.TRUE;
     }, context.TRUE);
 }
-#endif
-
 
 template <typename OutputIt>
 void AEG::find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const {
@@ -1154,7 +1132,11 @@ unsigned AEG::leakage(z3::solver& solver) const {
     unsigned nleaks = 0;
     
     const auto process = [&] (const std::string& type, NodeRef ref, z3::solver& solver) {
-        const auto res = solver.check();
+        z3::check_result res;
+        {
+            Timer timer;
+            res = solver.check();
+        }
         if (res == z3::sat) {
             std::stringstream ss;
             ss << "out/leakage-" << type << "-" << ref << ".dot";
