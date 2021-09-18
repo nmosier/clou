@@ -14,6 +14,7 @@ add_library(lcm MODULE
   aeg-util.cc
   aeg-construct.cc
   fol.cc
+  leakage.cc
   )
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
 target_link_libraries(lcm PRIVATE ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})

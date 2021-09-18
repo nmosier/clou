@@ -24,6 +24,9 @@ std::unordered_set<std::string> function_names;
 std::unordered_set<unsigned> include_edges;
 unsigned spec_depth = 2;
 unsigned num_jobs = 1;
+unsigned rob_size = 10;
+
+// TODO: add automated way for describing default values
 
 static void usage(FILE *f = stderr) {
     const char *s = R"=(
@@ -38,6 +41,7 @@ static void usage(FILE *f = stderr) {
     --expr, -e           include expression string in constraint name (for debugging)
     --edges, -E          include edges in execution graph output
     --depth, -d <n>      speculation depth
+    --rob, -r <n>        reorder buffer (ROB) size
     )=";
     fprintf(f, s);
 }

@@ -1,8 +1,9 @@
 #include "aeg.h"
 #include "progress.h"
 #include "timer.h"
+#include "z3-util.h"
 
-void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
+void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
     std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
                    [&] (const auto& node) {
@@ -50,9 +51,13 @@ void AEG::construct(unsigned spec_depth, llvm::AliasAnalysis& AA) {
     construct_addr_refs();
     logv(2) << "Constructing aliases\n";
     construct_aliases(AA);
+    logv(2) << "Constructing arch order\n";
+    construct_arch_order();
 #if 0
     logv(2) << "Constructing exec order\n";
     construct_exec_order();
+#endif
+#if 0
     logv(2) << "Constructing trans group\n";
     construct_trans_group();
 #endif
@@ -127,16 +132,6 @@ void AEG::construct_nodes() {
         for (NodeRef ref : node_range()) {
             Node& node = lookup(ref);
             node.xsread = node.xswrite = context.FALSE;
-        }
-    }
-    
-    // initialize `exec_order`
-    {
-        for (NodeRef ref : order) {
-            Node& node = lookup(ref);
-            const auto& preds = po.po.rev.at(ref);
-            const auto it = std::max_element(preds.begin(), preds.end(), std::less<unsigned>());
-            node.arch_order = it == preds.end() ? 0 : *it + 1;
         }
     }
 }
@@ -260,22 +255,24 @@ void AEG::construct_trans() {
     
     // tfo increments transient depth
     // TODO: Perform substitution when possible
-    for (const auto v : node_range2()) {
-        const auto& preds = po.po.rev.at(v.ref);
+    for (const auto ref : node_range()) {
+        const auto& preds = po.po.rev.at(ref);
         if (preds.size() == 1) {
+            Node& node = lookup(ref);
             const NodeRef pred = *preds.begin();
-            const auto f = z3::implies(v.node.trans, v.node.trans_depth == lookup(pred).trans_depth + context.context.int_val(1));
-            v.node.constraints(f, "depth-add");
+            const auto f = z3::implies(node.trans, node.trans_depth == lookup(pred).trans_depth + context.context.int_val(1));
+            node.constraints(f, "depth-add");
         }
     }
     
     // transient execution of node requires incoming tfo edge
-    for (const auto v : node_range2()) {
-        const auto tfos = get_edges(Direction::IN, v.ref, Edge::TFO);
+    for (const auto ref : node_range()) {
+        Node& node = lookup(ref);
+        const auto tfos = get_edges(Direction::IN, ref, Edge::TFO);
         const z3::expr f = util::any_of(tfos.begin(), tfos.end(), [] (const auto& edge) -> z3::expr {
             return edge->exists;
         }, context.FALSE);
-        v.node.constraints(z3::implies(v.node.trans, f), "trans-tfo");
+        node.constraints(z3::implies(node.trans, f), "trans-tfo");
     }
 }
 
@@ -357,16 +354,12 @@ void AEG::construct_tfo() {
     for (const NodeRef dst : node_range()) {
         if (dst != entry) {
             const auto tfos = get_edges(Direction::IN, dst, Edge::TFO);
-            const auto f = util::one_of(tfos.begin(), tfos.end(), [] (const auto& edge) {
-                return edge->exists;
-            }, context.TRUE, context.FALSE);
+            z3::expr_vector vec {context};
+            for (const auto& tfo : tfos) {
+                vec.push_back(tfo->exists);
+            }
             Node& node = lookup(dst);
-            node.constraints(z3::implies(node.exec(), f), "tfo-pred");
-            
-            /* one of improvement
-             * P => L ^ R
-             * If true, then one half is true
-             */
+            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-pred");
         }
         ++progress;
     }
@@ -377,11 +370,12 @@ void AEG::construct_tfo() {
     for (const NodeRef ref : node_range()) {
         if (exits.find(ref) == exits.end()) {
             const auto tfos = get_edges(Direction::OUT, ref, Edge::TFO);
-            const auto f = util::one_of(tfos.begin(), tfos.end(), [] (const auto &edge) {
-                return edge->exists;
-            }, context.TRUE, context.FALSE);
+            z3::expr_vector vec {context};
+            for (const auto& tfo : tfos) {
+                vec.push_back(tfo->exists);
+            }
             Node& node = lookup(ref);
-            node.constraints(z3::implies(node.exec(), f), "tfo-succ");
+            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-succ");
         }
     }
 }
@@ -538,11 +532,46 @@ void AEG::construct_trans_group() {
 }
 #endif
 
+// TODO: need to come up with definitive po edges. Then we can reference these directly.
+
+void AEG::construct_arch_order() {
+    // add variables
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        if (ref == entry) {
+            node.arch_order = context.context.int_val(0);
+        } else {
+            node.arch_order = context.make_int("arch_order");
+        }
+    }
+    
+    // add constraints
+    for (NodeRef ref : node_range()) {
+        if (ref == entry) { continue; }
+        const auto& preds = po.po.rev.at(ref);
+        Node& node = lookup(ref);
+        
+        z3::expr lower = context.TRUE;
+        z3::expr exact = context.FALSE;
+        for (NodeRef pred : preds) {
+            Node& pred_node = lookup(pred);
+            lower = lower && z3::implies(pred_node.arch, node.arch_order > pred_node.arch_order);
+            exact = exact || (pred_node.arch && node.arch_order == pred_node.arch_order + 1);
+        }
+        node.constraints(z3::implies(node.arch, lower), "arch-order-lower");
+        node.constraints(z3::implies(node.arch, exact), "arch-order-exact");
+    }
+}
+
 void AEG::construct_exec_order() {
     // add variable
     for (NodeRef ref : node_range()) {
         Node& node = lookup(ref);
-        node.exec_order = context.make_int("exec_order");
+        if (ref == entry) {
+            node.exec_order = context.context.int_val(0);
+        } else {
+            node.exec_order = context.make_int("exec_order");
+        }
     }
     
     // add constraints

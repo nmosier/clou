@@ -213,76 +213,15 @@ std::vector<T> count_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val
     return {prev_zero.front(), prev_one.front()};
 }
 
-#if 0
-template <typename T, typename InputIt, typename UnaryPredicate>
-T lone_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
-    // pairwise NAND
-    T acc = true_val;
-    for (auto it1 = begin; it1 != end; ++it1) {
-        for (auto it2 = std::next(it1); it2 != end; ++it2) {
-            acc = acc && !(p(*it1) && p(*it2));
-        }
-    }
-    return acc;
-}
-#else
 template <typename T, typename InputIt, typename UnaryPredicate>
 T lone_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
     const auto res = zero_one_of(begin, end, p, true_val, false_val);
     return res.at(0) || res.at(1);
 }
-#endif
 
-#if 0
-template <typename T, typename InputIt, typename UnaryPredicate>
-T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_value, T false_value) {
-    const T cond1 = any_of(begin, end, p, false_value);
-    const T cond2 = lone_of(begin, end, p, true_value, false_value);
-    return cond1 && cond2;
-}
-#elif 0
-template <typename T, typename InputIt, typename UnaryPredicate>
-T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_value, T false_value) {
-    std::vector<T> prev_zero;
-    std::vector<T> prev_one;
-    for (auto it = begin; it != end; ++it) {
-        const T t = p(*it);
-        prev_zero.push_back(!t);
-        prev_one.push_back(t);
-    }
-    
-    // pad to the nearest power of 2
-    while ((prev_zero.size() & (prev_zero.size() - 1)) != 0) {
-        prev_zero.push_back(true_value);
-        prev_one.push_back(false_value);
-    }
-    
-    while (prev_zero.size() > 1) {
-        std::vector<T> cur_zero, cur_one;
-        for (std::size_t n = 0; n < prev_zero.size() / 2; ++n) {
-            const auto l = n * 2;
-            const auto r = l + 1;
-            cur_zero.push_back(prev_zero.at(l) && prev_zero.at(r));
-            cur_one.push_back((prev_one.at(l) && prev_zero.at(r)) ||
-                              (prev_zero.at(l) && prev_one.at(r)));
-        }
-        prev_zero = std::move(cur_zero);
-        prev_one = std::move(cur_one);
-    }
-
-    assert(prev_one.size() == 1);
-    return prev_one.front();
-}
-#else
 template <typename T, typename InputIt, typename UnaryPredicate>
 T one_of(InputIt begin, InputIt end, UnaryPredicate p, T true_val, T false_val) {
     return count_of(begin, end, p, true_val, false_val).at(1);
-}
-#endif
-
-template <typename T, typename Container, typename UnaryPredicate>
-T one_of(const Container& container, UnaryPredicate p, T true_value, T false_value) {
-    return one_of(container.begin(), container.end(), p, true_value, false_value);
 }
 
 template <typename T, typename InputIt, typename UnaryPredicate>
@@ -325,20 +264,6 @@ std::string to_string(InputIt begin, InputIt end, const std::string& sep = " ") 
     }
     return ss.str();
 }
-
-#if 0
-/* Generalized for-each */
-template <size_t N, typename Container, typename UnaryOp, typename... Args>
-void for_each(const Container& c, UnaryFunction f) {
-    if constexpr (N == 0) {
-        f(c);
-    } else {
-        std::for_each(c.begin(), c.end(), [f] (const auto& e) {
-            for_each<N-1>(e, f);
-        });
-    }
-}
-#endif
 
 template <typename T>
 struct creator {

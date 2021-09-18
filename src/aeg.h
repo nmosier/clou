@@ -19,20 +19,23 @@
 
 class AEG {
 private:
-    const AEGPO& po;
-    UHBContext context; // this is because all other members depend on this context
+    const AEGPO& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
+    UHBContext context; /*!<  The context for AEG construction. */
 public:
     using Node = UHBNode;
     using Edge = UHBEdge;
     using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
     
-    NodeRef entry;
-    NodeRefSet exits;
-    // NodeRef exit;
+    NodeRef entry; /*!< The unique entry node of the AEG (node has type Inst::Kind::ENTRY) */
+    NodeRefSet exits; /*!< The set of exit nodes of the AEG (nodes have type Inst::Kind::EXIT) */
     
     graph_type graph;
     
-    void construct(unsigned spec_depth, llvm::AliasAnalysis& AA);
+    /** Construct the AEG.
+     * \param AA alias analysis results to use
+     * \param rob_size reorder buffer size (used to limit comx)
+     */
+    void construct(llvm::AliasAnalysis& AA, unsigned rob_size);
     
     const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
     Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
@@ -46,9 +49,7 @@ public:
     
     void test();
     
-    std::size_t size() const { return nodes.size(); }
-    
-    using Path = std::vector<NodeRef>;
+    std::size_t size() const { return nodes.size(); } /*!< Get the number of nodes in the graph */
     
     template <typename Function> void for_each_edge(Function f) { graph.for_each_edge(f); }
     template <typename Function> void for_each_edge(Function f) const { graph.for_each_edge(f); }
@@ -61,15 +62,11 @@ public:
     const UHBContext& ctx() const { return context; }
    
 private:
-    UHBConstraints constraints;
+    UHBConstraints constraints; /*!< global constraints (i.e. can't be attributed to one particular node or edge) */
     std::vector<Node> nodes;
     unsigned nedges = 0;
     
     unsigned num_specs() const { return po.num_specs; }
-    
-    using ClosureMap = std::unordered_map<NodeRef, std::unordered_set<NodeRef>>;
-    template <typename Pred>
-    ClosureMap find_predecessors(Pred f) const;
     
     void construct_nodes();
     void construct_exec();
@@ -81,68 +78,23 @@ private:
     void construct_addr_refs();
     void construct_aliases(llvm::AliasAnalysis& AA);
     void construct_com();
+    void construct_arch_order();
     void construct_exec_order();
     void construct_trans_group();
     void construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& xswrites);
     void construct_mem();
-    
-    typedef void construct_com_f(const NodeRefVec& reads, const NodeRefVec& writes,
-                                 const ClosureMap& pred_reads, const ClosureMap& pred_writes);
-    void construct_co(const NodeRefVec& reads, const NodeRefVec& writes,
-                      const ClosureMap& pred_reads, const ClosureMap& pred_writes);
-    void construct_rf(const NodeRefVec& reads, const NodeRefVec& writes,
-                      const ClosureMap& pred_reads, const ClosureMap& pred_writes);
-    void construct_fr(const NodeRefVec& reads, const NodeRefVec& writes,
-                      const ClosureMap& pred_reads, const ClosureMap& pred_writes);
     void construct_comx();
-    void construct_rfx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
-    void construct_cox(const NodeRefSet& xreads, const NodeRefSet& xwrites);
-    void construct_frx(const NodeRefSet& xreads, const NodeRefSet& xwrites);
     void construct_addr();
     
-    void leakage(NodeRef src, NodeRef dst, const Edge& edge, z3::solver& solver) const;
     void leakage_rfx(NodeRef read, z3::solver& solver) const;
     void leakage_cox(NodeRef write, z3::solver& solver) const;
     void leakage_frx(NodeRef write, z3::solver& solver) const;
+    
+    /** Detect all 3 kinds of leakage in the AEG.
+     * \param solver Solver to use. This solver should already have all the constraints added.
+     * \return Garbage
+     */
     unsigned leakage(z3::solver& solver) const;
-    
-    struct CondNode {
-        NodeRef ref;
-        z3::expr cond;
-    };
-    template <typename OutputIt>
-    void find_sourced_memops(Inst::Kind kind, NodeRef org, OutputIt out) const;
-    template <typename OutputIt>
-    void find_preceding_memops(Inst::Kind kind, NodeRef write, OutputIt out) const;
-    
-    using OptionalNodeExprMap = std::unordered_map<NodeRef, std::optional<z3::expr>>;
-    
-    template <typename OutputIt>
-    void find_sourced_xsaccesses(XSAccess kind, NodeRef org, OutputIt out) const;
-    std::optional<z3::expr> find_sourced_xsaccesses_po(XSAccess kind, NodeRef org, NodeRef ref,
-                                                       OptionalNodeExprMap& yesses,
-                                                       OptionalNodeExprMap& nos) const;
-    std::optional<z3::expr> find_sourced_xsaccesses_tfo(XSAccess kind, NodeRef org, NodeRef ref,
-                                                        unsigned spec_depth,
-                                                        OptionalNodeExprMap& nos_po,
-                                                        OptionalNodeExprMap& yesses_tfo,
-                                                        OptionalNodeExprMap& nos_tfo) const;
-    
-    template <typename UnaryOp>
-    void transform_constants(UnaryOp op);
-    
-    template <typename UnaryOp>
-    void transform_constraints(UnaryOp op);
-    
-    template <typename UnaryOp>
-    void transform(UnaryOp op) {
-        transform_constants(op);
-        transform_constraints(op);
-    }
-    
-    void replace(const z3::expr& from, const z3::expr& to);
-    
-    
     
 public:
     using NodeRange = util::RangeContainer<NodeRef>;
@@ -150,79 +102,14 @@ public:
         return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
     }
     
-    template <typename AEG_, typename Node_>
-    class NodeIterator_Base {
-    public:
-        NodeIterator_Base() {}
-        NodeIterator_Base(AEG_ *aeg, NodeRef ref): aeg(aeg), ref(ref) {}
-        
-        struct value_type {
-            const NodeRef ref;
-            Node_& node;
-        };
-        
-        value_type operator*() const {
-            return value_type {ref, aeg->lookup(ref)};
-        }
-        
-        NodeIterator_Base& operator++() {
-            ++ref;
-            return *this;
-        }
-        
-        NodeIterator_Base& operator++(int) {
-            return ++*this;
-        }
-        
-        bool operator==(const NodeIterator_Base& other) const {
-            if (aeg != other.aeg) {
-                throw std::logic_error("comparing node iterators from two different AEGs");
-            }
-            return ref == other.ref;
-        }
-        
-        bool operator!=(const NodeIterator_Base& other) const {
-            return !(*this == other);
-        }
-        
-    private:
-        AEG_ * const aeg = nullptr;
-        NodeRef ref;
-    };
-    using NodeIterator = NodeIterator_Base<AEG, Node>;
-    using ConstNodeIterator = NodeIterator_Base<const AEG, const Node>;
-    
-    auto node_range2() {
-        return llvm::iterator_range<NodeIterator> {
-            NodeIterator{this, 0UL},
-            NodeIterator{this, size()}
-        };
-    }
-    
-    auto node_range2() const {
-        return llvm::iterator_range<ConstNodeIterator> {
-            ConstNodeIterator{this, 0UL},
-            ConstNodeIterator{this, size()}
-        };
-    }
-    
 private:
-    void find_upstream_def(NodeRef node, const llvm::Value *addr_ref,
-                           std::unordered_set<NodeRef>& out) const;
+    NodeRef add_node(const Node& node); /*!< Add node to the AEG and return its corresponding node ref. */
     
-    NodeRef add_node(const Node& node);
-    
-    template <typename OutputIt>
-    void find_comx_window(NodeRef ref, unsigned distance, unsigned spec_depth, OutputIt out) const;
-    
-    void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
-        if (e.possible()) {
-            graph.insert(src, dst, e);
-            ++nedges;
-        }
-    }
-    
-    void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e);
+    void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e); /*!< Add a directed edge from \p src to \p dst with edge \p e */
+    void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e); /*!< Add a directed edge in each direction between nodes \p a and \p b with edge \p e */
+    /** Add a directed edge from \p src to \p dst and make the edge \p e optional with an additional unconstrained boolean variable
+     * @param name The base name of the unconstrained boolean variable
+     */
     void add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e, const std::string& name = "");
     
     template <typename OutputIt>
@@ -239,17 +126,9 @@ private:
     void output_execution(std::ostream& os, const z3::model& model) const;
     void output_execution(const std::string& path, const z3::model& model) const;
     
-    z3::expr check_no_intervening_writes(NodeRef src, NodeRef dst) const;
-    // z3::expr check_no_intervening_writes_rec(NodeRef src, NodeRef
-    
-    bool is_ancestor(NodeRef parent, NodeRef child) const;
-    bool is_ancestor_a(NodeRef, NodeRef) const;
-    bool is_ancestor_b(NodeRef, NodeRef) const;
-    
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;
     z3::expr edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const;
-    z3::expr total_order(NodeRef src, NodeRef dst, Edge::Kind kind) const;
     
     template <typename Pred>
     z3::expr cyclic(Pred pred) const;
@@ -262,12 +141,10 @@ private:
     z3::expr acyclic_int(Pred pred);
     
     bool is_pseudoedge(Edge::Kind kind) const {
-        switch (kind) {
-            case Edge::Kind::CO:
-                return true;
-            default:
-                return false;
-        }
+        static const std::unordered_set<Edge::Kind> pseudo = {
+            Edge::RF, Edge::CO, Edge::FR, Edge::RFX, Edge::COX, Edge::FRX,
+        };
+        return pseudo.find(kind) != pseudo.end();
     }
     
 public:
@@ -356,40 +233,6 @@ private:
     OutputIt get_concrete_com(const z3::model& model, OutputIt out) const;
     
 };
-
-
-template <typename Pred>
-AEG::ClosureMap AEG::find_predecessors(Pred f) const {
-    ClosureMap map;
-    
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
-    for (const NodeRef ref : order) {
-        const auto& preds = po.po.rev.at(ref);
-        NodeRefSet acc;
-        for (const NodeRef pred : preds) {
-            const auto& pred_set = map.at(pred);
-            acc.insert(pred_set.begin(), pred_set.end());
-        }
-        
-        if (f(ref)) {
-            acc.insert(ref);
-        }
-        
-        map.emplace(ref, acc);
-    }
-    
-    // erase same
-    for (auto& pair : map) {
-        pair.second.erase(pair.first);
-    }
-    
-    // erase no aliases
-    
-    
-    return map;
-}
 
 template <typename Function>
 void AEG::for_each_edge(Edge::Kind kind, Function f) {

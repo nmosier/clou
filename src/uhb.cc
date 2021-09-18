@@ -40,7 +40,7 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s_) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c.context), trans(c.context), trans_depth(c.context), xstate(c.context), xsread(c.context), xswrite(c.context), exec_order(c.context), trans_group_min(c.context), trans_group_max(c.context), xsread_order(c.context), xswrite_order(c.context), mem(c.context), constraints() {}
+UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c.context), trans(c.context), trans_depth(c.context), xstate(c.context), xsread(c.context), xswrite(c.context), arch_order(c.context), exec_order(c.context), trans_group_min(c.context), trans_group_max(c.context), xsread_order(c.context), xswrite_order(c.context), mem(c.context), constraints() {}
 
 UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 

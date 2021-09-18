@@ -47,6 +47,10 @@ public:
         return b ? TRUE : FALSE;
     }
     
+    operator z3::context& () {
+        return context;
+    }
+    
 private:
     std::unordered_map<std::string, unsigned> next;
     
@@ -100,7 +104,7 @@ struct UHBNode {
     std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
     z3::expr xsread;
     z3::expr xswrite;
-    unsigned arch_order; // int
+    z3::expr arch_order; // int
     z3::expr exec_order; // int
     z3::expr trans_group_min; // int
     z3::expr trans_group_max; // int

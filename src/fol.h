@@ -322,9 +322,11 @@ z3::expr all(const relation<Ts...>& rel, z3::context& ctx) {
 
 template <typename... Ts>
 z3::expr one(const relation<Ts...>& rel, z3::context& ctx) {
-    return util::one_of(rel.begin(), rel.end(), [] (const auto& p) -> z3::expr {
-        return p.second;
-    }, ctx.bool_val(true), ctx.bool_val(false));
+    z3::expr_vector vec {ctx};
+    for (const auto& pair : rel) {
+        vec.push_back(pair.second);
+    }
+    return z3::exactly(vec, 1);
 }
 
 template <typename... Ts>
@@ -334,9 +336,11 @@ z3::expr no(const relation<Ts...>& rel, z3::context& ctx) {
 
 template <typename... Ts>
 z3::expr lone(const relation<Ts...>& rel, z3::context& ctx) {
-    return util::lone_of(rel.begin(), rel.end(), [] (const auto& p) -> z3::expr {
-        return p.second;
-    }, ctx.bool_val(true), ctx.bool_val(false));
+    z3::expr_vector vec {ctx};
+    for (const auto& pair : rel) {
+        vec.push_back(pair.second);
+    }
+    return z3::atmost(vec, 1);
 }
 
 template <typename... Ts>
