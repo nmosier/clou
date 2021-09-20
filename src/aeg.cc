@@ -457,10 +457,10 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             }
             
             if (model.eval(node.xsread).is_true()) {
-                ss << "xsread " << model.eval(node.xsread_order) << " ";
+                ss << "xsread(" << model.eval(node.xsread_order) << ")";
             }
             if (model.eval(node.xswrite).is_true()) {
-                ss << "xswrite " << model.eval(node.xswrite_order) << " ";
+                ss << "xswrite(" << model.eval(node.xswrite_order) << ")";
             }
             
 #if 0

@@ -86,9 +86,12 @@ private:
     void construct_comx();
     void construct_addr();
     
-    void leakage_rfx(NodeRef read, z3::solver& solver) const;
-    void leakage_cox(NodeRef write, z3::solver& solver) const;
-    void leakage_frx(NodeRef write, z3::solver& solver) const;
+    template <typename OutputIt>
+    void leakage_rfx(NodeRef read, z3::solver& solver, OutputIt out) const;
+    template <typename OutputIt>
+    void leakage_cox(NodeRef write, z3::solver& solver, OutputIt out) const;
+    template <typename OutputIt>
+    void leakage_frx(NodeRef write, z3::solver& solver, OutputIt out) const;
     
     /** Detect all 3 kinds of leakage in the AEG.
      * \param solver Solver to use. This solver should already have all the constraints added.
@@ -398,12 +401,12 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     // get xsreads, xswrites
     // TODO: use canoncialized xswrite order. Right now it doesn't order it correctly.
     progress = Progress(size(), "xsaccesses");
-    std::map<Access, NodeRef, decltype(less)> reads {less}, writes {less};
+    std::multimap<Access, NodeRef, decltype(less)> reads {less};
+    std::map<Access, NodeRef, decltype(less)> writes {less};
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
         if (model.eval(node.exec() && node.xsread).is_true()) {
-            [[maybe_unused]] const auto res = reads.emplace(Access {node.xsread_order, ref}, ref);
-            assert(res.second);
+            reads.emplace(Access {node.xsread_order, std::nullopt}, ref);
         }
         if (model.eval(node.exec() && node.xswrite).is_true()) {
             [[maybe_unused]] const auto res = writes.emplace(Access {node.xswrite_order, ref}, ref);
