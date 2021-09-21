@@ -42,6 +42,10 @@ public:
     z3::expr make_int(const std::string& s = "") {
         return context.int_const(get_name(s).c_str());
     }
+    
+    z3::expr make_const(const std::string& s, const z3::sort& sort) {
+        return context.constant(get_name(s).c_str(), sort);
+    }
         
     z3::expr bool_val(bool b) const {
         return b ? TRUE : FALSE;

@@ -2,7 +2,6 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -pedantic)
 
 add_library(lcm MODULE
   lcm.cc
-  util.cc
   addr.cc
   aeg-po2.cc
   config.cc
@@ -16,7 +15,9 @@ add_library(lcm MODULE
   fol.cc
   leakage.cc
   taint.cc
+  shm.cc
   )
+
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
 target_link_libraries(lcm PRIVATE ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
 if(APPLE)
@@ -44,3 +45,12 @@ endif()
 add_executable(tarjan-test
   tarjan-test.cc
   )
+
+add_executable(shm-test
+  shm-test.cc
+  shm.cc
+  )
+target_compile_options(shm-test PRIVATE -fno-rtti)
+if(APPLE)
+  target_link_options(shm-test PRIVATE -undefined dynamic_lookup)
+endif()

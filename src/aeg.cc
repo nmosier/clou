@@ -12,6 +12,7 @@
 #include "timer.h"
 #include "taint.h"
 #include "fork_work_queue.h"
+#include "shm.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -234,12 +235,62 @@ void AEG::test() {
         });
         std::cerr << accesses.size() << " accesses\n";
         
+#if 0
+        bool *mask;
+        shared_memory shm {accesses.size() * sizeof(*mask)};
+        mask = static_cast<bool *>(shm.data());
+        
+        const auto f = [&] (std::size_t thd_id) {
+            Taint tainter {*this};
+            for (std::size_t i = thd_id; i < accesses.size(); i += num_jobs) {
+                const NodeRef ref = accesses.at(i);
+                solver.push();
+                const auto taint = tainter.get_value(ref, lookup(ref).get_memory_address_pair().first);
+                solver.add(taint == tainter.top);
+                switch (solver.check()) {
+                    case z3::sat:
+                        *mask = true;
+                        break;
+                    case z3::unsat:
+                        *mask = false;
+                        break;
+                    default: std::abort();
+                }
+                solver.pop();
+            }
+        };
+
+#if 1
+        fork_work_queue queue {num_jobs};
+        for (unsigned i = 0; i < num_jobs; ++i) {
+            queue.push([&, i] {
+                f(i);
+                return 0;
+            });
+        }
+        queue.run(util::null_output_iterator());
+#else
+        for (unsigned i = 0; i < num_jobs; ++i) {
+            f(i);
+        }
+#endif
+        
+        std::vector<NodeRef> tainted_accesses;
+        for (std::size_t i = 0; i < accesses.size(); ++i) {
+            if (mask[i]) {
+                tainted_accesses.push_back(accesses[i]);
+            }
+        }
+        
+#else
+        
         Progress progress {accesses.size()};
         std::vector<NodeRef> tainted_accesses;
         for (NodeRef ref : accesses) {
             const auto f = [&] {
-                const auto taint = Taint::get_value(*this, ref, lookup(ref).get_memory_address_pair().first);
-                solver.add(taint);
+                Taint tainter {*this};
+                const auto taint = tainter.get_value(ref, lookup(ref).get_memory_address_pair().first);
+                solver.add(taint == tainter.top);
                 switch (solver.check()) {
                     case z3::sat:
                         return 1;
@@ -258,6 +309,8 @@ void AEG::test() {
             ++progress;
         }
         progress.done();
+        
+#endif
         
         std::cerr << tainted_accesses.size() << " tainted accesses\n";
         
@@ -470,7 +523,7 @@ std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
     return os;
 }
 
-void AEG::output_execution(std::ostream& os, const z3::model& model) const {
+void AEG::output_execution(std::ostream& os, const z3::model& model) {
     os << R"=(
     digraph G {
     overlap = scale;
@@ -515,9 +568,10 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             // DEBUG: taint
             ss << " taint(" << model.eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
-                const auto taint = Taint::get_value(*this, ref, node.get_memory_address_pair().first);
-                if (model.eval(taint).is_true()) {
-                    ss << " TAINTED_READ";
+                Taint tainter {*this};
+                const auto taint = tainter.get_value(ref, node.get_memory_address_pair().first);
+                if (model.eval(taint == tainter.top).is_true()) {
+                    ss << " TAINTED_ACCESS";
                 }
                 
             }
@@ -609,7 +663,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
     os << "}\n";
 }
 
-void AEG::output_execution(const std::string& path, const z3::model& model) const {
+void AEG::output_execution(const std::string& path, const z3::model& model) {
     std::ofstream ofs {path};
     output_execution(ofs, model);
 }

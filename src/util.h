@@ -433,4 +433,17 @@ struct resume: std::exception {
     resume(const std::string& msg): msg(msg) {}
 };
 
+inline std::system_error syserr(const std::string& what = "") {
+    return std::system_error(std::error_code(errno, std::generic_category()), what);
+}
+
+struct null_output_iterator {
+    const null_output_iterator& operator++() const { return *this; }
+    const null_output_iterator& operator++(int) const { return *this; }
+    const null_output_iterator& operator*() const { return *this; }
+    
+    template <typename T>
+    const T& operator=(const T& val) const { return val; }
+};
+
 }

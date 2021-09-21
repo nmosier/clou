@@ -100,7 +100,7 @@ private:
      * \param solver Solver to use. This solver should already have all the constraints added.
      * \return Garbage
      */
-    unsigned leakage(z3::solver& solver) const;
+    unsigned leakage(z3::solver& solver);
     
 public:
     using NodeRange = util::RangeContainer<NodeRef>;
@@ -129,8 +129,8 @@ private:
     
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
-    void output_execution(std::ostream& os, const z3::model& model) const;
-    void output_execution(const std::string& path, const z3::model& model) const;
+    void output_execution(std::ostream& os, const z3::model& model);
+    void output_execution(const std::string& path, const z3::model& model);
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;

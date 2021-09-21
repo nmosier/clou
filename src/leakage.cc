@@ -66,7 +66,7 @@ void AEG::leakage_frx(NodeRef write, z3::solver& solver, OutputIt out) const {
     solver.add(write_node.arch && addr, "leakage-frx");
 }
 
-unsigned AEG::leakage(z3::solver& solver) const {
+unsigned AEG::leakage(z3::solver& solver) {
     z3::model model {solver.ctx()};
     unsigned nleaks = 0;
     
