@@ -88,14 +88,20 @@ struct UHBConstraints {
 std::ostream& operator<<(std::ostream& os, const UHBConstraints& c);
 
 struct UHBAddress {
-    z3::expr arch;
-    z3::expr trans;
-    UHBAddress(UHBContext& ctx): arch(ctx.make_int("arch")), trans(ctx.make_int("trans")) {}
-    UHBAddress(const z3::expr& arch, const z3::expr& trans): arch(arch), trans(trans) {}
+    z3::expr addr;
+    
+    operator const z3::expr& () const { return addr; }
+    
+    UHBAddress(UHBContext& ctx): addr(ctx.make_int("addr")) {}
+    UHBAddress(const z3::expr& addr): addr(addr) {}
+    
+    z3::expr operator==(const UHBAddress& other) const {
+        return addr == other.addr;
+    }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {
-    return os << "(arch)" << x.arch << " (trans)" << x.trans;
+    return os << "addr(" << x.addr;
 }
 
 struct UHBNode {
@@ -121,11 +127,9 @@ struct UHBNode {
     UHBConstraints constraints;
     
     z3::expr exec() const { return arch || trans; }
-    
-    z3::expr get_addr_def() const {
-        // TODO: Do we need to add an extra ite to qualify based on tfo bool too?
-        return z3::ite(arch, addr_def->arch, addr_def->trans);
-    }
+
+    // TODO: remove this.
+    z3::expr get_addr_def() const { return *addr_def; }
     
     std::pair<const llvm::Value *, UHBAddress> get_addr_ref_pair(std::size_t idx) const {
         const llvm::Value *V = inst.I->getOperand(idx);
@@ -185,10 +189,7 @@ struct UHBNode {
         }
     }
     
-    z3::expr get_memory_address() const {
-        const UHBAddress& addr = get_memory_address_pair().second;
-        return z3::ite(arch, addr.arch, addr.trans);
-    }
+    z3::expr get_memory_address() const { return get_memory_address_pair().second; }
     
     bool is_special() const;
 };

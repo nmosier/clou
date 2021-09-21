@@ -166,8 +166,7 @@ void AEG::construct_addr_refs() {
                 if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
                     if (CD->isNullValue()) {
                         const auto zero = context.context.int_val(0);
-                        e = UHBAddress {zero, zero};
-                        // addr.arch = addr.trans = context.context.int_val(CD->getUniqueInteger().getLimitedValue());
+                        e = UHBAddress {context.context.int_val(0)};
                     } else {
                         llvm::errs() << "unhandled constant data: " << *CD << "\n";
                         std::abort();
@@ -207,12 +206,8 @@ void AEG::construct_addr_refs() {
                     if (defs.size() != 0) {
                         node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                                 [&] (NodeRef def) {
-                            return lookup_def(def).arch == e->arch;
-                        }, context.FALSE), "addr-ref-arch");
-                        node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
-                                                                [&] (NodeRef def) {
-                            return lookup_def(def).trans == e->trans;
-                        }, context.FALSE), "addr-ref-trans");
+                            return lookup_def(def) == *e;
+                        }, context.FALSE), "addr-ref");
                     }
                 }
             }
@@ -529,6 +524,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         ID id;
         const llvm::Value *V;
         z3::expr e;
+        std::optional<NodeRef> ref;
     };
     std::vector<Info> addrs;
     std::unordered_map<std::pair<ID, const llvm::Value *>, NodeRef> seen;
@@ -537,7 +533,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         if (node.addr_def) {
             const ID& id = *po.lookup(i).id;
             const llvm::Value *V = node.inst.I;
-            addrs.push_back({id, V, node.addr_def->arch});
+            addrs.push_back({.id = id, .V = V, .e = *node.addr_def, .ref = i});
             [[maybe_unused]] const auto res = seen.emplace(std::make_pair(id, V), i);
             
             // TODO: ignore collisions for now, since they're introduced during the CFG expansion step.
@@ -557,7 +553,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                         return p.first == V;
                     });
                     assert(it != node.addr_refs.end());
-                    addrs.push_back({id, V, it->second.arch});
+                    addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
                 }
             }
         }
@@ -575,16 +571,29 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             if (po.alias_valid(it1->id, it2->id)) {
                 const auto alias_res = AA.alias(it1->V, it2->V);
                 ValueLoc vl2 {it2->id, it2->V};
+                
+                const auto is_arch = [&] (const Info& x) -> z3::expr {
+                    if (x.ref) {
+                        return lookup(*x.ref).arch;
+                    } else {
+                        return context.TRUE;
+                    }
+                };
+                
+                const z3::expr arch1 = is_arch(*it1);
+                const z3::expr arch2 = is_arch(*it2);
+                const z3::expr precond = arch1 && arch2; // TODO: try simplifying?
+                                
                 switch (alias_res) {
                     case llvm::NoAlias:
-                        constraints(it1->e != it2->e, "no-alias");
+                        constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
                     case llvm::MayAlias:
                         ++mays;
                         break;
                     case llvm::MustAlias:
-                        constraints(it1->e == it2->e, "must-alias");
+                        constraints(z3::implies(precond, it1->e == it2->e), "must-alias");
                         ++musts;
                         break;
                     default: std::abort();

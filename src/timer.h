@@ -11,8 +11,12 @@ public:
     }
     
     ~Timer() {
-        stop_();
         show();
+    }
+    
+    float get() const {
+        std::chrono::duration<float> elapsed_sec = now() - start;
+        return elapsed_sec.count();
     }
 
 private:
@@ -27,13 +31,8 @@ private:
         start = now();
     }
     
-    void stop_() {
-        stop = now();
-    }
-    
     void show() const {
-        std::chrono::duration<float> elapsed_sec = stop - start;
-        float secs = elapsed_sec.count();
+        float secs = get();
         const char *unit = "s";
         if (secs < 1) {
             secs *= 1000;

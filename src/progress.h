@@ -75,7 +75,6 @@ private:
     }
 };
 
-
 class Count {
 public:
     Count(std::ostream& os = std::cerr, std::size_t count = 0): os(&os), count(count) {}

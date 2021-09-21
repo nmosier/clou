@@ -17,6 +17,10 @@ public:
     auto operator()() { return run(); }
     
     z3::expr get_value(NodeRef ref, const llvm::Value *V) const;
+    z3::expr flag(NodeRef ref) {
+        const Node& node = aeg.lookup(ref);
+        return get_value(ref, node.get_memory_address_pair().first).extract(1, 1) == aeg.context.context.bv_val(1, 1);
+    }
     
 private:
     using Node = AEG::Node;

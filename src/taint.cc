@@ -47,7 +47,11 @@ void Taint::handle_inst(NodeRef ref, Node& node) {
              * A load from a tainted address always gets taint level 2.
              */
             const z3::expr addr_taint = get_value(ref, node.get_memory_address_pair().first);
+#if 0
             const z3::expr addr_taint_nonzero = z3::bvredor(addr_taint) != ctx.bv_val(0, 1);
+#else
+            const z3::expr addr_taint_nonzero = addr_taint.extract(0, 0) != ctx.bv_val(0, 1);
+#endif
             taint = z3::ite(addr_taint_nonzero, top, node.taint_mem[node.get_memory_address()]);
             break;
         }

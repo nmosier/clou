@@ -235,84 +235,49 @@ void AEG::test() {
         });
         std::cerr << accesses.size() << " accesses\n";
         
-#if 0
-        bool *mask;
-        shared_memory shm {accesses.size() * sizeof(*mask)};
-        mask = static_cast<bool *>(shm.data());
-        
-        const auto f = [&] (std::size_t thd_id) {
-            Taint tainter {*this};
-            for (std::size_t i = thd_id; i < accesses.size(); i += num_jobs) {
-                const NodeRef ref = accesses.at(i);
-                solver.push();
-                const auto taint = tainter.get_value(ref, lookup(ref).get_memory_address_pair().first);
-                solver.add(taint == tainter.top);
-                switch (solver.check()) {
-                    case z3::sat:
-                        *mask = true;
-                        break;
-                    case z3::unsat:
-                        *mask = false;
-                        break;
-                    default: std::abort();
-                }
-                solver.pop();
-            }
-        };
-
-#if 1
-        fork_work_queue queue {num_jobs};
-        for (unsigned i = 0; i < num_jobs; ++i) {
-            queue.push([&, i] {
-                f(i);
-                return 0;
-            });
-        }
-        queue.run(util::null_output_iterator());
-#else
-        for (unsigned i = 0; i < num_jobs; ++i) {
-            f(i);
-        }
-#endif
-        
-        std::vector<NodeRef> tainted_accesses;
-        for (std::size_t i = 0; i < accesses.size(); ++i) {
-            if (mask[i]) {
-                tainted_accesses.push_back(accesses[i]);
-            }
-        }
-        
-#else
-        
-        Progress progress {accesses.size()};
-        std::vector<NodeRef> tainted_accesses;
+        // Progress progress {accesses.size()};
+        std::vector<NodeRef> tainted_accesses, maybe_tainted_accesses;
         for (NodeRef ref : accesses) {
-            const auto f = [&] {
-                Taint tainter {*this};
-                const auto taint = tainter.get_value(ref, lookup(ref).get_memory_address_pair().first);
-                solver.add(taint == tainter.top);
-                switch (solver.check()) {
-                    case z3::sat:
-                        return 1;
-                    case z3::unsat:
-                        return 0;
-                    default: std::abort();
-                }
-            };
             solver.push();
-            const auto res = f();
-            solver.pop();
-            if (res == 1) {
-                tainted_accesses.push_back(ref);
+            
+            Taint tainter {*this};
+            const Node& node = lookup(ref);
+            const z3::expr flag = tainter.flag(ref);
+            solver.add(node.trans && flag); // TODO: This should actually be trans.
+            
+            z3::check_result res;
+            {
+                Timer timer;
+                res = solver.check();
+                std::cerr << res << " ";
             }
             
-            ++progress;
+            switch (res) {
+                case z3::sat: {
+                    tainted_accesses.push_back(ref);
+                    std::stringstream path;
+                    path << output_dir << "/taint" << ref << ".dot";
+                    output_execution(path.str(), solver.get_model());
+                    break;
+                }
+                case z3::unsat:
+                    break;
+                    
+                case z3::unknown:
+                    maybe_tainted_accesses.push_back(ref);
+                    break;
+                    
+                default: std::abort();
+            }
+            
+            solver.pop();
+            
+            // ++progress;
         }
-        progress.done();
-        
-#endif
+        // progress.done();
         
         std::cerr << tainted_accesses.size() << " tainted accesses\n";
+        std::cerr << maybe_tainted_accesses.size() << " maybe tainted accesses\n";
         
         solver.pop();
     }
@@ -569,8 +534,8 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
             ss << " taint(" << model.eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
                 Taint tainter {*this};
-                const auto taint = tainter.get_value(ref, node.get_memory_address_pair().first);
-                if (model.eval(taint == tainter.top).is_true()) {
+                const z3::expr flag = tainter.flag(ref);
+                if (model.eval(flag).is_true()) {
                     ss << " TAINTED_ACCESS";
                 }
                 
@@ -654,7 +619,6 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
         const auto arch_dst = next(ref, Edge::PO);
         if (prev != ref && arch_dst) {
             const auto trans_src = prev;
-            std::cerr << "edge " << ref << " " << trans_src << " " << *arch_dst << "\n";
             output_edge(trans_src, *arch_dst, Edge::TFO);
         }
     }

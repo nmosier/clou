@@ -371,7 +371,6 @@ private:
 
 template <typename OutputIt>
 OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
-    Progress progress;
     /* Have a set that is ordered based on the canonical xswrite order.
      * xsread is ordered before same-value xswrite.
      * xswrite with lower exec_order is ordered before same-value xswrite.
@@ -403,7 +402,6 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     
     // get xsreads, xswrites
     // TODO: use canoncialized xswrite order. Right now it doesn't order it correctly.
-    progress = Progress(size(), "xsaccesses");
     std::multimap<Access, NodeRef, decltype(less)> reads {less};
     std::map<Access, NodeRef, decltype(less)> writes {less};
     for (NodeRef ref : node_range()) {
@@ -415,9 +413,7 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
             [[maybe_unused]] const auto res = writes.emplace(Access {node.xswrite_order, ref}, ref);
             assert(res.second);
         }
-        ++progress;
     }
-    progress.done();
     
     assert(!reads.empty());
     assert(!writes.empty());
@@ -427,7 +423,6 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     };
     
     // rfx
-    progress = Progress(reads.size(), "rfx");
     for (const auto& read : reads) {
         if (exits.find(read.second) == exits.end()) {
             // not an exit
@@ -451,25 +446,19 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
                 }
             }
         }
-        ++progress;
     }
-    progress.done();
     
     
     // cox
-    progress = Progress(writes.size() * (writes.size() - 1), "cox");
     for (auto it1 = writes.begin(); it1 != writes.end(); ++it1) {
         for (auto it2 = std::next(it1); it2 != writes.end(); ++it2) {
             if (model.eval(cox_exists(it1->second, it2->second)).is_true()) {
                 *out++ = std::make_tuple(it1->second, it2->second, Edge::COX);
             }
-            ++progress;
         }
     }
-    progress.done();
     
     // frx
-    progress = Progress(reads.size(), "frx");
     for (auto read_it = reads.begin(); read_it != reads.end(); ++read_it) {
         const Node& read = lookup(read_it->second);
         const auto write_begin = writes.upper_bound({read.xsread_order, std::nullopt});
@@ -478,9 +467,7 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
                 *out++ = std::make_tuple(read_it->second, write_it->second, Edge::FRX);
             }
         }
-        ++progress;
     }
-    progress.done();
     
     return out;
 }
