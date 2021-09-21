@@ -10,6 +10,8 @@
 #include "fol.h"
 #include "progress.h"
 #include "timer.h"
+#include "taint.h"
+#include "fork_work_queue.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -47,6 +49,7 @@ void AEG::dump_graph(llvm::raw_ostream& os) const {
         os << name << " ";
         
         std::stringstream ss;
+        ss << ref << " ";
         ss << node.inst.kind_tostr() << "\n";
         ss << node.inst << "\n";
         ss << "po: " << node.arch << "\n"
@@ -219,6 +222,46 @@ void AEG::test() {
     {
     Timer timer;
     solver.push();
+    }
+    
+    // DEBUG: Find which memory accesses use tainted pointer.
+    {
+        solver.push();
+        
+        std::vector<NodeRef> accesses;
+        get_nodes_if(std::back_inserter(accesses), [] (NodeRef, const Node& node) -> bool {
+            return node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE;
+        });
+        std::cerr << accesses.size() << " accesses\n";
+        
+        Progress progress {accesses.size()};
+        std::vector<NodeRef> tainted_accesses;
+        for (NodeRef ref : accesses) {
+            const auto f = [&] {
+                const auto taint = Taint::get_value(*this, ref, lookup(ref).get_memory_address_pair().first);
+                solver.add(taint);
+                switch (solver.check()) {
+                    case z3::sat:
+                        return 1;
+                    case z3::unsat:
+                        return 0;
+                    default: std::abort();
+                }
+            };
+            solver.push();
+            const auto res = f();
+            solver.pop();
+            if (res == 1) {
+                tainted_accesses.push_back(ref);
+            }
+            
+            ++progress;
+        }
+        progress.done();
+        
+        std::cerr << tainted_accesses.size() << " tainted accesses\n";
+        
+        solver.pop();
     }
 
     {
@@ -405,12 +448,13 @@ void AEG::add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e) {
     add_unidir_edge(b, a, e2);
 }
 
-void AEG::add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e_, const std::string& name) {
+z3::expr AEG::add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e_, const std::string& name) {
     UHBEdge e = e_;
     const z3::expr constr = e.exists;
     e.exists = context.make_bool(name);
     e.constraints(z3::implies(e.exists, constr), name);
     add_unidir_edge(src, dst, e);
+    return e.exists;
 }
 
 namespace {
@@ -468,6 +512,16 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
                 ss << "[" << model.eval(node.trans_group_min) << " " << model.eval(node.trans_group_max) << "] ";
             }
 #endif
+            // DEBUG: taint
+            ss << " taint(" << model.eval(node.taint) << ")";
+            if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
+                const auto taint = Taint::get_value(*this, ref, node.get_memory_address_pair().first);
+                if (model.eval(taint).is_true()) {
+                    ss << " TAINTED_READ";
+                }
+                
+            }
+            
             
             std::string color;
             if (model.eval(node.arch).is_true()) {
@@ -496,6 +550,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
             {Edge::COX, "blue"},
             {Edge::FRX, "purple"},
             {Edge::ADDR, "red"},
+            {Edge::PO, "black"},
         };
         const std::string& color = colors.at(kind);
         dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(kind)}, {"color", color}});
@@ -520,6 +575,36 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) const {
     for (const auto& edge : comx) {
         std::apply(output_edge, edge);
     }
+    
+#if 1
+    // add tfo rollback edges
+    for (const NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (model.eval(node.arch).is_false()) { continue; }
+        const auto next = [&] (NodeRef ref, Edge::Kind kind) -> std::optional<NodeRef> {
+            const auto tfos = get_nodes(Direction::OUT, ref, kind);
+            const auto tfo_it = std::find_if(tfos.begin(), tfos.end(), [&] (const auto& x) -> bool {
+                return model.eval(x.second).is_true();
+            });
+            if (tfo_it == tfos.end()) {
+                return std::nullopt;
+            } else {
+                return tfo_it->first;
+            }
+        };
+        std::optional<NodeRef> cur;
+        NodeRef prev = ref;
+        while ((cur = next(prev, Edge::TFO))) {
+            prev = *cur;
+        }
+        const auto arch_dst = next(ref, Edge::PO);
+        if (prev != ref && arch_dst) {
+            const auto trans_src = prev;
+            std::cerr << "edge " << ref << " " << trans_src << " " << *arch_dst << "\n";
+            output_edge(trans_src, *arch_dst, Edge::TFO);
+        }
+    }
+#endif
     
     os << "}\n";
 }

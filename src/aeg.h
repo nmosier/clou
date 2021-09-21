@@ -18,6 +18,8 @@
 #include "progress.h"
 
 class AEG {
+    friend class Taint;
+    
 private:
     const AEGPO& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
     UHBContext context; /*!<  The context for AEG construction. */
@@ -74,6 +76,7 @@ private:
     void construct_trans();
     void construct_po();
     void construct_tfo();
+    void construct_tfo2();
     void construct_addr_defs();
     void construct_addr_refs();
     void construct_aliases(llvm::AliasAnalysis& AA);
@@ -113,7 +116,7 @@ private:
     /** Add a directed edge from \p src to \p dst and make the edge \p e optional with an additional unconstrained boolean variable
      * @param name The base name of the unconstrained boolean variable
      */
-    void add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e, const std::string& name = "");
+    z3::expr add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e, const std::string& name);
     
     template <typename OutputIt>
     OutputIt get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind);
@@ -154,7 +157,7 @@ public:
     template <typename OutputIt, typename Pred>
     OutputIt get_nodes_if(OutputIt out, Pred pred) const {
         for (NodeRef ref : node_range()) {
-            if (pred(lookup(ref))) {
+            if (pred(ref, lookup(ref))) {
                 *out++ = ref;
             }
         }
@@ -163,7 +166,7 @@ public:
     
     template <typename Container, typename OutputIt>
     OutputIt get_nodes(OutputIt out, const Container& container) const {
-        return get_nodes_if(out, [&] (const Node& node) -> bool {
+        return get_nodes_if(out, [&] (NodeRef, const Node& node) -> bool {
             return container.find(node.inst.kind) != container.end();
         });
     }

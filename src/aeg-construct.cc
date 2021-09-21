@@ -2,6 +2,7 @@
 #include "progress.h"
 #include "timer.h"
 #include "z3-util.h"
+#include "taint.h"
 
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
@@ -42,7 +43,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     logv(2) << "Constructing po\n";
     construct_po();
     logv(2) << "Constructing tfo\n";
-    construct_tfo();
+    construct_tfo2();
     logv(2) << "Constructing exec\n";
     construct_exec();
     logv(2) << "Constructing addr defs\n";
@@ -65,6 +66,12 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_comx();
     logv(2) << "Constructing addr\n";
     construct_addr();
+#if 0
+    logv(2) << "Constructing mem\n";
+    construct_mem();
+#endif
+    
+    Taint(*this)();
 }
 
 void AEG::construct_nodes() {
@@ -219,8 +226,11 @@ void AEG::construct_exec() {
     // NOTE: depends on results of construct_tfo().
     
     // exclusive architectural/transient execution
-    for (Node& node : nodes) {
-        node.constraints(!(node.arch && node.trans), "excl-exec");
+    for (const NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        std::stringstream ss;
+        ss << "excl-exec-" << ref;
+        node.constraints(!(node.arch && node.trans), ss.str());
     }
     
     construct_arch();
@@ -269,15 +279,147 @@ void AEG::construct_trans() {
     for (const auto ref : node_range()) {
         Node& node = lookup(ref);
         const auto tfos = get_edges(Direction::IN, ref, Edge::TFO);
+        // TODO: experiment with using z3::{atleast,exactly}(vec, 1) instead.
         const z3::expr f = util::any_of(tfos.begin(), tfos.end(), [] (const auto& edge) -> z3::expr {
             return edge->exists;
         }, context.FALSE);
         node.constraints(z3::implies(node.trans, f), "trans-tfo");
     }
+} 
+
+void AEG::construct_po() {
+    logv(3) << __FUNCTION__ << ": adding edges\n";
+    
+    std::size_t nedges = 0;
+    for (const NodeRef src : node_range()) {
+        Node& src_node = lookup(src);
+        
+        // add successor po edges
+        for (const NodeRef dst : po.po.fwd.at(src)) {
+            std::stringstream ss;
+            ss << "po-" << src << "-" << dst;
+            const z3::expr exists = add_optional_edge(src, dst, Edge {Edge::PO, src_node.arch && lookup(dst).arch}, ss.str());
+            ++nedges;
+        }
+    }
+    
+    // add 'exactly one successor' constraint
+    for (const NodeRef src : node_range()) {
+        if (exits.find(src) != exits.end()) { continue; }
+        const auto edges = get_edges(Direction::OUT, src, Edge::PO);
+        z3::expr_vector vec {context};
+        for (const auto& e : edges) {
+            vec.push_back(e->exists);
+        }
+        Node& src_node = lookup(src);
+        src_node.constraints(z3::implies(src_node.arch, z3::exactly(vec, 1)), "po-succ");
+    }
+    
+    // add 'exactly one predecessor' constraint
+    for (const NodeRef dst : node_range()) {
+        if (dst == entry) { continue; }
+        const auto edges = get_edges(Direction::IN, dst, Edge::PO);
+        z3::expr_vector vec {context};
+        for (const auto& e : edges) {
+            vec.push_back(e->exists);
+        }
+        Node& dst_node = lookup(dst);
+        dst_node.constraints(z3::implies(dst_node.arch, z3::exactly(vec, 1)), "po-pred");
+    }
 }
 
-void AEG::construct_po() {}
+void AEG::construct_tfo2() {
+    std::size_t nedges = 0;
+    for (const NodeRef src : node_range()) {
+        Node& src_node = lookup(src);
+        z3::expr_vector tfos {context};
+        for (const NodeRef dst : po.po.fwd.at(src)) {
+            // add optional edge
+            const Node& dst_node = lookup(dst);
+            const z3::expr exists = add_optional_edge(src, dst, Edge {Edge::TFO,
+                (src_node.arch && dst_node.trans && can_introduce_trans(src)) ||
+                (src_node.trans && dst_node.trans)
+            }, "tfo");
+            ++nedges;
+            tfos.push_back(exists);
+        }
+        
+        // add 'at most one tfo successor' constraint
+        if (exits.find(src) == exits.end()) {
+            src_node.constraints(z3::implies(src_node.exec(), z3::atmost(tfos, 1)), "tfo-succ");
+        }
+    }
+    std::cerr << "added " << nedges << " tfo edges\n";
+}
 
+
+#if 0
+void AEG::construct_tfo2() {
+    /* This adds a reduced tfo, specifically not including back-edges, since these are the most complex.
+     */
+    Progress progress;
+    
+    logv(3) << __FUNCTION__ << ": adding edges\n";
+    std::size_t n_fwd_edges = 0;
+    for (const NodeRef dst : node_range()) {
+        const Node& dst_node = lookup(dst);
+        for (const NodeRef src : po.po.rev.at(dst)) {
+            const Node& src_node = lookup(src);
+            
+            z3::expr cond = context.FALSE;
+            
+            // TODO: this should make sure the condition doesn't simplify to false! Or at least add_optional_edge should.
+            const auto add_tfo = [&] (const z3::expr& e) -> z3::expr {
+                ++n_fwd_edges;
+                return add_optional_edge(src, dst, Edge {Edge::TFO, e});
+            };
+            
+            // (arch, arch)
+            const z3::expr arch_arch = add_tfo(src_node.arch && dst_node.arch);
+            
+            // (arch, trans)
+            const z3::expr arch_trans = add_tfo(can_introduce_trans(src) && src_node.arch && dst_node.trans);
+            
+            // (trans, trans)
+            const z3::expr trans_trans = add_tfo(src_node.trans && dst_node.trans);
+        }
+    }
+    logv(3) << __FUNCTION__ << ": added " << n_fwd_edges << " forward edges\n";
+    
+    // exactly one predecessor
+    logv(3) << __FUNCTION__ << ": adding constraint 'exactly one predecessor'\n";
+    progress = Progress(size());
+    for (const NodeRef dst : node_range()) {
+        if (dst != entry) {
+            const auto tfos = get_edges(Direction::IN, dst, Edge::TFO);
+            z3::expr_vector vec {context};
+            for (const auto& tfo : tfos) {
+                vec.push_back(tfo->exists);
+            }
+            Node& node = lookup(dst);
+            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-pred");
+        }
+        ++progress;
+    }
+    progress.done();
+    
+    // exactly one successor
+    logv(3) << __FUNCTION__ << ": adding constraint 'exactly one successor'\n";
+    for (const NodeRef ref : node_range()) {
+        if (exits.find(ref) == exits.end()) {
+            const auto tfos = get_edges(Direction::OUT, ref, Edge::TFO);
+            z3::expr_vector vec {context};
+            for (const auto& tfo : tfos) {
+                vec.push_back(tfo->exists);
+            }
+            Node& node = lookup(ref);
+            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-succ");
+        }
+    }
+}
+#endif
+
+#if 0
 void AEG::construct_tfo() {
     /* Consider multiple cases for tfo destination nodes.
      * If all predecessors have one successor, then that is the exact set.
@@ -306,7 +448,7 @@ void AEG::construct_tfo() {
             // (trans, trans)
             cond = cond || (src_node.trans && dst_node.trans);
             
-            add_optional_edge(src, dst, Edge {Edge::TFO, cond});
+            const z3::expr exists = add_optional_edge(src, dst, Edge {Edge::TFO, cond}, "tfo-fwd");
             ++n_fwd_edges;
             
             
@@ -336,7 +478,7 @@ void AEG::construct_tfo() {
                 const auto& ref_preds = po.po.rev.at(ref);
                 if (ref_preds.size() == 1) {
                     const Node& ref_node = lookup(ref);
-                    add_optional_edge(ref, dst, Edge {Edge::TFO, ref_node.trans && dst_node.arch});
+                    add_optional_edge(ref, dst, Edge {Edge::TFO, ref_node.trans && dst_node.arch}, "tfo-rev");
                     ++n_rev_edges;
                     const auto& ref_succs = po.po.fwd.at(ref);
                     std::transform(ref_succs.begin(), ref_succs.end(), std::back_inserter(todo), [&] (NodeRef ref) {
@@ -379,6 +521,7 @@ void AEG::construct_tfo() {
         }
     }
 }
+#endif
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     using ID = AEGPO::ID;
@@ -716,7 +859,7 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     // TODO: does xsread, xswrite => exec?
     const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && src_node.xswrite_order < dst_node.xsread_order;
     NodeRefVec xswrites;
-    get_nodes_if(std::back_inserter(xswrites), [&] (const Node& node) -> bool {
+    get_nodes_if(std::back_inserter(xswrites), [&] (NodeRef, const Node& node) -> bool {
         return !node.xswrite.is_false();
     });
     
@@ -803,7 +946,6 @@ void AEG::construct_addr() {
                                         return {ref, Info::SEEN};
                                     });
                                 }
-                                llvm::errs() << "SEEN " << *node.inst.I << "\n";
                                 break;
                         }
                     }
@@ -815,7 +957,8 @@ void AEG::construct_addr() {
 }
 
 
-
+/** Construct architectural memory state for each node. Dependencies: AEG::construct_xsaccess_order(), AEG::construct_addr_refs().
+ */
 void AEG::construct_mem() {
     std::vector<NodeRef> order;
     po.reverse_postorder(std::back_inserter(order));
@@ -825,29 +968,42 @@ void AEG::construct_mem() {
 
     for (NodeRef ref : order) {
         Node& node = lookup(ref);
-        switch (node.inst.kind) {
-            case Inst::ENTRY: {
-                node.mem = z3::const_array(mem_sort, node.xswrite_order);
-                break;
-            }
-                
-            default: {
-                // demultiplex mem from predecessors
+        z3::expr& mem = node.mem;
+        
+        if (node.inst.kind == Inst::ENTRY) {
+            mem = z3::const_array(context.context.int_sort(), node.xswrite_order);
+        } else {
+            const auto& preds = po.po.rev.at(ref);
+            if (preds.size() == 1) {
+                const NodeRef pred = *preds.begin();
+                mem = lookup(pred).mem;
+            } else {
+#if 0
                 std::stringstream ss;
                 ss << "mem" << ref;
-                node.mem = context.context.constant(ss.str().c_str(), mem_sort);
-                
-                for (NodeRef pred : po.po.rev.at(ref)) {
+                mem = context.context.constant(ss.str().c_str(), mem_sort);
+                for (NodeRef pred : preds) {
                     const Node& pred_node = lookup(pred);
-                    node.constraints(z3::implies(pred_node.arch, node.mem == pred_node.mem), "mem-pred");
+                    try {
+                        node.constraints(z3::implies(pred_node.arch, node.mem == pred_node.mem), "mem-pred");
+                    } catch (const z3::exception& e) {
+                        std::cerr << e.what() << "\n";
+                        std::abort();
+                    }
                 }
-                
-                if (!node.xswrite.is_false()) {
-                    const z3::expr addr = z3::ite(node.xswrite, node.get_memory_address(), invalid);
-                    node.mem = z3::store(node.mem, addr, node.xswrite_order);
+#elif 0
+                auto pred_it = preds.begin();
+                mem = lookup(*pred_it).mem;
+                for (++pred_it; pred_it != preds.end(); ++pred_it) {
+                    const auto& pred = lookup(*pred_it);
+                    mem = z3::ite(pred.arch, <#const expr &t#>, <#const expr &e#>)
                 }
-                
-                break;
+#endif
+            }
+            
+            if (!node.xswrite.is_false()) {
+                const z3::expr addr = z3::ite(node.xswrite, node.get_memory_address(), invalid);
+                mem = z3::store(mem, addr, node.xswrite_order);
             }
         }
     }

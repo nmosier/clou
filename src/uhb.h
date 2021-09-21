@@ -99,6 +99,7 @@ struct UHBNode {
     z3::expr arch;  // bool: program order variable
     z3::expr trans; // bool: transient fetch order variable
     z3::expr trans_depth; // int: transient depth
+    z3::expr introduces_trans; // bool: introduces transient execution
     std::optional<UHBAddress> addr_def;
     z3::expr xstate;
     std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
@@ -111,6 +112,8 @@ struct UHBNode {
     z3::expr xsread_order; // int
     z3::expr xswrite_order; // int
     z3::expr mem; // int -> int
+    z3::expr taint; // bool
+    z3::expr taint_mem; // int -> bool
     UHBConstraints constraints;
     
     z3::expr exec() const { return arch || trans; }

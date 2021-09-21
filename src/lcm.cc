@@ -79,7 +79,7 @@ struct LCMPass : public llvm::FunctionPass {
       });
       AEG aeg {aegpo_expanded};
       aeg.construct(AA, rob_size);
-#if 0
+#if 1
       output(aeg, "aeg", F);
 #endif
       ProfilerStop();

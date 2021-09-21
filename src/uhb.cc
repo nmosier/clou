@@ -40,7 +40,7 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s_) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c.context), trans(c.context), trans_depth(c.context), xstate(c.context), xsread(c.context), xswrite(c.context), arch_order(c.context), exec_order(c.context), trans_group_min(c.context), trans_group_max(c.context), xsread_order(c.context), xswrite_order(c.context), mem(c.context), constraints() {}
+UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c), trans(c), trans_depth(c), introduces_trans(c), xstate(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), xsread_order(c), xswrite_order(c), mem(c), taint(c), taint_mem(c), constraints() {}
 
 UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
@@ -52,7 +52,11 @@ void UHBConstraints::add_to(z3::solver& solver) const {
        }
       ss << p.second << ":" << constraint_counter++;
       try {
-         solver.add(p.first, ss.str().c_str());
+          if constexpr (should_name_constraints) {
+              solver.add(p.first, ss.str().c_str());
+          } else {
+              solver.add(p.first);
+          }
       } catch (const z3::exception& e) {
          logv(0) << e.msg() << "\n";
          std::abort();
@@ -61,6 +65,7 @@ void UHBConstraints::add_to(z3::solver& solver) const {
 }
 
 void UHBConstraints::operator()(const z3::expr& clause, const std::string& name) {
+    assert(!name.empty());
     if ((simplify_before_checking_for_false_constraints ? clause.simplify() : clause).is_false()) {
        std::cerr << "adding false constraint: " << clause << "\n";
       throw std::logic_error("adding constraint 'false'");

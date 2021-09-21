@@ -112,6 +112,7 @@ unsigned AEG::leakage(z3::solver& solver) const {
             queue.push([&, read] {
                 leakage_rfx(read, solver, out);
                 process("rfx", read, solver);
+                return 0;
             });
         }
     }
@@ -122,6 +123,7 @@ unsigned AEG::leakage(z3::solver& solver) const {
             queue.push([&, write] {
                 leakage_cox(write, solver, out);
                 process("cox", write, solver);
+                return 0;
             });
         }
     }
@@ -132,11 +134,12 @@ unsigned AEG::leakage(z3::solver& solver) const {
             queue.push([&, write] {
                 leakage_frx(write, solver, out);
                 process("frx", write, solver);
+                return 0;
             });
         }
     }
     
-    std::vector<int> results;
+    std::vector<std::pair<int, std::size_t>> results;
     queue.run(std::back_inserter(results));
     // TODO: use results somehow
     

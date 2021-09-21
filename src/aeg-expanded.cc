@@ -33,7 +33,7 @@ void AEGPO_Expanded::construct(const AEGPO_Unrolled& in) {
     // DEBUG: print added nodes
     for (const auto& pair : expansions) {
         if (pair.second.size() > 1) {
-            logv(3) << "expanded node " << pair.second.size() << " times: " << in.lookup(pair.first) << "\n";
+            logv(4) << "expanded node " << pair.second.size() << " times: " << in.lookup(pair.first) << "\n";
         }
     }
     
@@ -152,7 +152,6 @@ void AEGPO_Expanded::resolve_refs(const AEGPO_Unrolled& in) {
                             if (it != map.end()) {
                                 const NodeRefSet& refs = it->second;
                                 node.refs[V].insert(refs.begin(), refs.end());
-                                llvm::errs() << "here: " << *I << "\n";
                             }
                         }
                         break;
