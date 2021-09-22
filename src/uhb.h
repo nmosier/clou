@@ -122,7 +122,7 @@ struct UHBNode {
     z3::expr exec_order; // int
     z3::expr trans_group_min; // int
     z3::expr trans_group_max; // int
-    z3::expr xsaccess_order; // int (atomic xread and/or xswrite)
+    std::optional<z3::expr> xsaccess_order; // int (atomic xread and/or xswrite)
     z3::expr mem; // int -> int
     z3::expr taint; // bool
     z3::expr taint_mem; // int -> bool

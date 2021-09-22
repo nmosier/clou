@@ -628,12 +628,12 @@ void AEG::construct_comx() {
         };
         node.xsread = make_xsaccess(xsread, "xsread");
         node.xswrite = make_xsaccess(xswrite, "xswrite");
-        if (xsread != NO || xswrite != NO) {
-            xsaccesses.insert(i);
-        }
         if (!node.is_special()) {
             node.xstate = context.make_int("xstate");
             node.constraints(node.xstate == node.get_memory_address(), "xstate-addr-eq");
+            if (xsread != NO || xswrite != NO) {
+                xsaccesses.insert(i);
+            }
         }
     };
     
@@ -803,23 +803,6 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
         lookup(ref).xsaccess_order = context.make_int("xsaccess_order");
     }
     
-    // bound by entry and exit
-    const auto bound_all = [&] (const auto& bounds, const auto& bag, auto cmp) {
-        for (NodeRef bound : bounds) {
-            const Node& bound_node = lookup(bound);
-            const z3::expr& order = bound_node.xsaccess_order;
-            for (NodeRef ref : bag) {
-                if (bounds.find(ref) == bounds.end()) {
-                    Node& node = lookup(ref);
-                    node.constraints(z3::implies(node.xsaccess(), cmp(order, node.xsaccess_order)), "xsaccess-order-bound");
-                }
-            }
-        }
-    };
-    
-    bound_all(NodeRefSet {entry}, xsaccesses, util::less<z3::expr>());
-    bound_all(exits, xsaccesses, util::greater<z3::expr>());
-    
     // require that all exits have same sequence number (not absolutely necessary)
     for (auto it1 = exits.begin(), it2 = std::next(it1); it2 != exits.end(); ++it1, ++it2) {
         constraints(lookup(*it1).xsread == lookup(*it2).xsread, "xswrite-exits-eq");
@@ -939,6 +922,7 @@ void AEG::construct_addr() {
 }
 
 
+#if 0
 /** Construct architectural memory state for each node. Dependencies: AEG::construct_xsaccess_order(), AEG::construct_addr_refs().
  */
 void AEG::construct_mem() {
@@ -953,7 +937,7 @@ void AEG::construct_mem() {
         z3::expr& mem = node.mem;
         
         if (node.inst.kind == Inst::ENTRY) {
-            mem = z3::const_array(context.context.int_sort(), node.xsaccess_order);
+            mem = z3::const_array(context.context.int_sort(), *node.xsaccess_order);
         } else {
             const auto& preds = po.po.rev.at(ref);
             if (preds.size() == 1) {
@@ -990,3 +974,4 @@ void AEG::construct_mem() {
         }
     }
 }
+#endif

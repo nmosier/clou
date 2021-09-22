@@ -527,8 +527,8 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
             if (xswrite) {
                 ss << "W";
             }
-            if (xsread || xswrite) {
-                ss << "(" << model.eval(node.xsaccess_order) << ") ";
+            if ((xsread || xswrite) && node.xsaccess_order) {
+                ss << "(" << model.eval(*node.xsaccess_order) << ") ";
             }
             
 #if 0

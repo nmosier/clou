@@ -41,7 +41,7 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s_) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c), trans(c), trans_depth(c), introduces_trans(c), xstate(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), xsaccess_order(c), mem(c), taint(c), taint_mem(c), constraints() {}
+UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c), trans(c), trans_depth(c), introduces_trans(c), xstate(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), mem(c), taint(c), taint_mem(c), constraints() {}
 
 UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
@@ -120,6 +120,15 @@ z3::expr UHBNode::same_xstate(const UHBNode& a, const UHBNode& b) {
 z3::expr UHBNode::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
    const UHBNode& an = aeg.lookup(a);
    const UHBNode& bn = aeg.lookup(b);
-   const z3::expr diff = an.xsaccess_order - bn.xsaccess_order;
+    
+    const auto is_entry = [&] (NodeRef ref) -> bool { return ref == aeg.entry; };
+    const auto is_exit = [&] (NodeRef ref) -> bool { return aeg.exits.find(ref) != aeg.exits.end(); };
+    
+    if (is_entry(a)) { return aeg.context.TRUE; }
+    if (is_entry(b)) { return aeg.context.FALSE; }
+    if (is_exit(a)) { return aeg.context.FALSE; }
+    if (is_exit(b)) { return aeg.context.TRUE; }
+    
+   const z3::expr diff = an.xsaccess_order.value() - bn.xsaccess_order.value();
    return a < b ? diff <= 0 : diff < 0;
 }

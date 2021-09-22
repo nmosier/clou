@@ -31,24 +31,23 @@ inline z3::expr exactly(const z3::expr_vector& exprs, unsigned count) {
     return lower && upper;
 }
 
-#if 0
-template <typename Functor>
-struct evaluator {
+
+inline bool to_bool(const z3::expr& e) {
+    switch (e.bool_value()) {
+        case Z3_L_TRUE: return true;
+        case Z3_L_FALSE: return false;
+        default: throw z3::exception("cannot concretize boolean");
+    }
+}
+
+struct eval {
     const z3::model& model;
-    Functor func;
-    evaluator(const z3::model& model, Functor functor): model(model), func(func) {}
+    eval(const z3::model& model): model(model) {}
     
-    template <typename... Args>
-    bool operator()(Args&&... args) const {
-        const z3::expr res = func(std::forward<Args>(args)...);
-        switch (model.eval(res).bool_value()) {
-            case z3::Z3_L_FALSE: return false;
-            case z3::Z3_L_TRUE: return true;
-            default: std::abort();
-        }
+    bool get_bool(const z3::expr& e) const {
+        return z3::to_bool(model.eval(e));
     }
 };
-#endif
 
 }
 

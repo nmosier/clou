@@ -380,7 +380,13 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
         const z3::model& model;
         Less(const AEG& aeg, const z3::model& model): sym(aeg), model(model) {}
         bool operator()(NodeRef a, NodeRef b) const {
-            return model.eval(sym(a, b)).is_true();
+            switch (model.eval(sym(a, b)).bool_value()) {
+                case Z3_L_TRUE: return true;
+                case Z3_L_FALSE: return false;
+                case Z3_L_UNDEF:
+                    return a < b; // in case the solver didn't find it necessary to assign values
+                default: std::abort();
+            }
         }
     };
     
