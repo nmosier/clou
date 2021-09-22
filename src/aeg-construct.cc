@@ -612,8 +612,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
-    NodeRefSet xswrites;
-    NodeRefSet xsreads;
+    NodeRefSet xsaccesses;
     
     enum Option {
         YES, NO, MAYBE
@@ -629,11 +628,8 @@ void AEG::construct_comx() {
         };
         node.xsread = make_xsaccess(xsread, "xsread");
         node.xswrite = make_xsaccess(xswrite, "xswrite");
-        if (xsread != NO) {
-            xsreads.insert(i);
-        }
-        if (xswrite != NO) {
-            xswrites.insert(i);
+        if (xsread != NO || xswrite != NO) {
+            xsaccesses.insert(i);
         }
         if (!node.is_special()) {
             node.xstate = context.make_int("xstate");
@@ -661,7 +657,7 @@ void AEG::construct_comx() {
     }
     
     logv(3) << "constructing xsaccess order...\n";
-    construct_xsaccess_order(xsreads, xswrites);
+    construct_xsaccess_order(xsaccesses);
 }
 
 
@@ -801,47 +797,28 @@ void AEG::construct_trans_group() {
     }
 }
 
-void AEG::construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& xswrites) {
+void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
     // add variables
-    
-    for (NodeRef ref : xsreads) {
-        Node& node = lookup(ref);
-        node.xsread_order = context.make_int("xsread_order");
-    }
-    
-    for (NodeRef ref : xswrites) {
-        lookup(ref).xswrite_order = context.make_int("xswrite_order");
-    }
-    
-    // same-node xsread occur before xswrite
-    for (NodeRef ref : xsreads) {
-        if (xswrites.find(ref) != xswrites.end()) {
-            Node& node = lookup(ref);
-            node.constraints(z3::implies(node.xsread && node.xswrite, node.xsread_order < node.xswrite_order), "xsaccess-order");
-        }
+    for (NodeRef ref : xsaccesses) {
+        lookup(ref).xsaccess_order = context.make_int("xsaccess_order");
     }
     
     // bound by entry and exit
-    const auto bound_all = [&] (XSAccess kind, const auto& bounds, const auto& bag, auto cmp) {
+    const auto bound_all = [&] (const auto& bounds, const auto& bag, auto cmp) {
         for (NodeRef bound : bounds) {
             const Node& bound_node = lookup(bound);
-            const z3::expr& order = bound_node.get_xsaccess_order(kind);
+            const z3::expr& order = bound_node.xsaccess_order;
             for (NodeRef ref : bag) {
                 if (bounds.find(ref) == bounds.end()) {
                     Node& node = lookup(ref);
-                    if (!node.xsread.is_false()) {
-                        node.constraints(z3::implies(node.xsread, cmp(order, node.xsread_order)), "xsaccess-order-bound-r");
-                    }
-                    if (!node.xswrite.is_false()) {
-                        node.constraints(z3::implies(node.xswrite, cmp(order, node.xswrite_order)), "xsaccess-order-bound-w");
-                    }
+                    node.constraints(z3::implies(node.xsaccess(), cmp(order, node.xsaccess_order)), "xsaccess-order-bound");
                 }
             }
         }
     };
     
-    bound_all(XSWRITE, NodeRefSet {entry}, node_range(), util::less<z3::expr>());
-    bound_all(XSREAD, exits, node_range(), util::greater<z3::expr>());
+    bound_all(NodeRefSet {entry}, xsaccesses, util::less<z3::expr>());
+    bound_all(exits, xsaccesses, util::greater<z3::expr>());
     
     // require that all exits have same sequence number (not absolutely necessary)
     for (auto it1 = exits.begin(), it2 = std::next(it1); it2 != exits.end(); ++it1, ++it2) {
@@ -852,15 +829,8 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsreads, const NodeRefSet& 
 z3::expr AEG::cox_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
-    
     const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
-    const z3::expr diff = src_node.xswrite_order - dst_node.xswrite_order;
-#if 0
-    const z3::expr cond = z3::ite(diff == 0, src_node.exec_order < dst_node.exec_order, diff < 0);
-#else
-    const z3::expr cond = z3::ite(diff == 0, context.bool_val(src < dst), diff < 0);
-#endif
-    
+    const z3::expr cond = UHBNode::xsaccess_order_less(*this)(src, dst);
     return precond && cond;
 }
 
@@ -869,15 +839,15 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     const Node& dst_node = lookup(dst);
     
     // TODO: does xsread, xswrite => exec?
-    const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && src_node.xswrite_order < dst_node.xsread_order;
+    const UHBNode::xsaccess_order_less less {*this};
+    const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && less(src, dst);
     NodeRefVec xswrites;
     get_nodes_if(std::back_inserter(xswrites), [&] (NodeRef, const Node& node) -> bool {
         return !node.xswrite.is_false();
     });
     
     const z3::expr cond = util::all_of(xswrites.begin(), xswrites.end(), [&] (NodeRef write) -> z3::expr {
-        const Node& write_node = lookup(write);
-        const z3::expr f = cox_exists(src, write) && write_node.xswrite_order < dst_node.xsread_order;
+        const z3::expr f = cox_exists(src, write) && less(write, dst);
         return !f;
     }, context.TRUE);
     return precond && cond;
@@ -886,8 +856,8 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
 z3::expr AEG::frx_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
-    
-    const z3::expr cond = src_node.exec() && dst_node.exec() && src_node.xsread && dst_node.xswrite && src_node.same_xstate(dst_node) && src_node.xsread_order < dst_node.xswrite_order;
+    const UHBNode::xsaccess_order_less less {*this};
+    const z3::expr cond = src_node.exec() && dst_node.exec() && src_node.xsread && dst_node.xswrite && src_node.same_xstate(dst_node) && less(src, dst);
     return cond;
 }
 
@@ -983,7 +953,7 @@ void AEG::construct_mem() {
         z3::expr& mem = node.mem;
         
         if (node.inst.kind == Inst::ENTRY) {
-            mem = z3::const_array(context.context.int_sort(), node.xswrite_order);
+            mem = z3::const_array(context.context.int_sort(), node.xsaccess_order);
         } else {
             const auto& preds = po.po.rev.at(ref);
             if (preds.size() == 1) {
@@ -1015,7 +985,7 @@ void AEG::construct_mem() {
             
             if (!node.xswrite.is_false()) {
                 const z3::expr addr = z3::ite(node.xswrite, node.get_memory_address(), invalid);
-                mem = z3::store(mem, addr, node.xswrite_order);
+                mem = z3::store(mem, addr, node.xsaccess_order);
             }
         }
     }

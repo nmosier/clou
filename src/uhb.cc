@@ -1,5 +1,6 @@
 #include "uhb.h"
 #include "config.h"
+#include "aeg.h"
 
 unsigned constraint_counter = 0;
 
@@ -40,7 +41,7 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s_) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c), trans(c), trans_depth(c), introduces_trans(c), xstate(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), xsread_order(c), xswrite_order(c), mem(c), taint(c), taint_mem(c), constraints() {}
+UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c), trans(c), trans_depth(c), introduces_trans(c), xstate(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), xsaccess_order(c), mem(c), taint(c), taint_mem(c), constraints() {}
 
 UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
@@ -87,14 +88,6 @@ void UHBNode::simplify() {
     constraints.simplify();
 }
 
-z3::expr UHBNode::get_xsaccess(XSAccess kind) const {
-    switch (kind) {
-        case XSAccess::XSREAD: return xsread;
-        case XSAccess::XSWRITE: return xswrite;
-        default: std::abort();
-    }
-}
-
 bool UHBNode::is_special() const {
     switch (inst.kind) {
         case Inst::ENTRY:
@@ -122,4 +115,11 @@ z3::expr UHBNode::same_xstate(const UHBNode& a, const UHBNode& b) {
     } else {
         return a.xstate == b.xstate;
     }
+}
+
+z3::expr UHBNode::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
+   const UHBNode& an = aeg.lookup(a);
+   const UHBNode& bn = aeg.lookup(b);
+   const z3::expr diff = an.xsaccess_order - bn.xsaccess_order;
+   return a < b ? diff <= 0 : diff < 0;
 }

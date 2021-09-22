@@ -10,6 +10,9 @@
 #include "util.h"
 #include "inst.h"
 #include "config.h"
+#include "noderef.h"
+
+class AEG;
 
 enum XSAccess {
     XSREAD, XSWRITE
@@ -119,14 +122,14 @@ struct UHBNode {
     z3::expr exec_order; // int
     z3::expr trans_group_min; // int
     z3::expr trans_group_max; // int
-    z3::expr xsread_order; // int
-    z3::expr xswrite_order; // int
+    z3::expr xsaccess_order; // int (atomic xread and/or xswrite)
     z3::expr mem; // int -> int
     z3::expr taint; // bool
     z3::expr taint_mem; // int -> bool
     UHBConstraints constraints;
     
     z3::expr exec() const { return arch || trans; }
+    z3::expr xsaccess() const { return xsread || xswrite; }
 
     // TODO: remove this.
     z3::expr get_addr_def() const { return *addr_def; }
@@ -153,14 +156,6 @@ struct UHBNode {
     
     z3::expr same_xstate(const UHBNode& other) const {
         return same_xstate(*this, other);
-    }
-    
-    z3::expr get_xsaccess(XSAccess kind) const;
-    const z3::expr& get_xsaccess_order(XSAccess kind) const {
-        switch (kind) {
-            case XSREAD: return xsread_order;
-            case XSWRITE: return xswrite_order;
-        }
     }
     
     UHBNode(const Inst& inst, UHBContext& c);
@@ -192,6 +187,14 @@ struct UHBNode {
     z3::expr get_memory_address() const { return get_memory_address_pair().second; }
     
     bool is_special() const;
+    
+    struct xsaccess_order_less;
+};
+
+struct UHBNode::xsaccess_order_less {
+    const AEG& aeg;
+    xsaccess_order_less(const AEG& aeg): aeg(aeg) {}
+    z3::expr operator()(NodeRef a, NodeRef b) const;
 };
 
 struct UHBEdge {
