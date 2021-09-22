@@ -16,14 +16,13 @@
 #include "uhb.h"
 #include "noderef.h"
 #include "progress.h"
+#include "taint.h"
 
 class AEG {
-    friend class Taint;
-    
-private:
+public:
     const AEGPO& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
     UHBContext context; /*!<  The context for AEG construction. */
-public:
+
     using Node = UHBNode;
     using Edge = UHBEdge;
     using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
@@ -238,6 +237,9 @@ private:
     template <typename OutputIt>
     OutputIt get_concrete_com(const z3::model& model, OutputIt out) const;
     
+    friend class Taint;
+    friend class Taint_Array;
+    std::unique_ptr<Taint> tainter;
 };
 
 template <typename Function>

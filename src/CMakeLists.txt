@@ -14,7 +14,7 @@ add_library(lcm MODULE
   aeg-construct.cc
   fol.cc
   leakage.cc
-  taint.cc
+  taint_bv.cc
   shm.cc
   )
 

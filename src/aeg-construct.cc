@@ -3,6 +3,7 @@
 #include "timer.h"
 #include "z3-util.h"
 #include "taint.h"
+#include "taint_bv.h"
 
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
@@ -70,8 +71,10 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     logv(2) << "Constructing mem\n";
     construct_mem();
 #endif
-    
-    Taint(*this)();
+
+    logv(2) << "Constructing taint\n";
+    tainter = std::make_unique<Taint_Function>(*this);
+    tainter->run();
 }
 
 void AEG::construct_nodes() {

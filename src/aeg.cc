@@ -225,6 +225,7 @@ void AEG::test() {
     solver.push();
     }
     
+#if 0
     // DEBUG: Find which memory accesses use tainted pointer.
     {
         solver.push();
@@ -240,10 +241,9 @@ void AEG::test() {
         for (NodeRef ref : accesses) {
             solver.push();
             
-            Taint tainter {*this};
             const Node& node = lookup(ref);
-            const z3::expr flag = tainter.flag(ref);
-            solver.add(node.trans && flag); // TODO: This should actually be trans.
+            const z3::expr flag = tainter->flag(ref);
+            solver.add(node.trans && flag, "flag"); // TODO: This should actually be trans.
             
             z3::check_result res;
             {
@@ -281,6 +281,7 @@ void AEG::test() {
         
         solver.pop();
     }
+#endif
 
     {
         const auto addr_rel = fol::edge_rel(*this, Edge::ADDR);
@@ -533,8 +534,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
             // DEBUG: taint
             ss << " taint(" << model.eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
-                Taint tainter {*this};
-                const z3::expr flag = tainter.flag(ref);
+                const z3::expr flag = tainter->flag(ref);
                 if (model.eval(flag).is_true()) {
                     ss << " TAINTED_ACCESS";
                 }
