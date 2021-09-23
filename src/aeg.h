@@ -95,6 +95,11 @@ private:
     void leakage_cox(NodeRef write, z3::solver& solver, OutputIt out) const;
     template <typename OutputIt>
     void leakage_frx(NodeRef write, z3::solver& solver, OutputIt out) const;
+
+    z3::expr leakage_rfx2() const;
+    z3::expr leakage_cox2() const;
+    z3::expr leakage_frx2() const;
+    unsigned leakage2(z3::solver& solver, unsigned max) const;
     
     /** Detect all 3 kinds of leakage in the AEG.
      * \param solver Solver to use. This solver should already have all the constraints added.
@@ -380,13 +385,7 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
         const z3::model& model;
         Less(const AEG& aeg, const z3::model& model): sym(aeg), model(model) {}
         bool operator()(NodeRef a, NodeRef b) const {
-            switch (model.eval(sym(a, b)).bool_value()) {
-                case Z3_L_TRUE: return true;
-                case Z3_L_FALSE: return false;
-                case Z3_L_UNDEF:
-                    return a < b; // in case the solver didn't find it necessary to assign values
-                default: std::abort();
-            }
+            return z3::to_bool(model.eval(sym(a, b), true));
         }
     };
     
@@ -396,11 +395,11 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
     Set writes {less};
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (model.eval(node.exec() && node.xsread).is_true()) {
+        if (z3::to_bool(model.eval(node.exec() && node.xsread, true))) {
             [[maybe_unused]] const auto res = reads.insert(ref);
             assert(res.second);
         }
-        if (model.eval(node.exec() && node.xswrite).is_true()) {
+        if (z3::to_bool(model.eval(node.exec() && node.xswrite, true))) {
             [[maybe_unused]] const auto res = writes.insert(ref);
             assert(res.second);
         }

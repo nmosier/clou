@@ -447,3 +447,15 @@ struct null_output_iterator {
 };
 
 }
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::optional<T>& x) {
+    if (x) {
+        os << *x;
+    } else {
+        os << "(nullopt)";
+    }
+    return os;
+}
+
+

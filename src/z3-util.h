@@ -36,7 +36,11 @@ inline bool to_bool(const z3::expr& e) {
     switch (e.bool_value()) {
         case Z3_L_TRUE: return true;
         case Z3_L_FALSE: return false;
-        default: throw z3::exception("cannot concretize boolean");
+        default: {
+            std::stringstream ss;
+            ss << "cannot concretize boolean " << e;
+            throw z3::exception(ss.str().c_str());
+        }
     }
 }
 

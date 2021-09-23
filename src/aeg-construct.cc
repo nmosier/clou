@@ -628,6 +628,7 @@ void AEG::construct_comx() {
         };
         node.xsread = make_xsaccess(xsread, "xsread");
         node.xswrite = make_xsaccess(xswrite, "xswrite");
+
         if (!node.is_special()) {
             node.xstate = context.make_int("xstate");
             node.constraints(node.xstate == node.get_memory_address(), "xstate-addr-eq");
@@ -800,13 +801,21 @@ void AEG::construct_trans_group() {
 void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
     // add variables
     for (NodeRef ref : xsaccesses) {
-        lookup(ref).xsaccess_order = context.make_int("xsaccess_order");
+        Node& node = lookup(ref);
+        node.xsaccess_order = context.make_int("xsaccess_order");
+
+#if 0
+        // dummy constraint
+        node.constraints(*node.xsaccess_order >= 0, "xsaccess-dummy");
+#endif
     }
     
     // require that all exits have same sequence number (not absolutely necessary)
     for (auto it1 = exits.begin(), it2 = std::next(it1); it2 != exits.end(); ++it1, ++it2) {
         constraints(lookup(*it1).xsread == lookup(*it2).xsread, "xswrite-exits-eq");
     }
+    
+
 }
 
 z3::expr AEG::cox_exists(NodeRef src, NodeRef dst) const {

@@ -301,7 +301,11 @@ void AEG::test() {
         solver.pop();
         
         Timer timer;
+#if 0
         const auto nleaks = leakage(solver);
+#else
+        const auto nleaks = leakage2(solver, 16);
+#endif
         std::cerr << "Detected " << nleaks << " leaks.\n";
         if (nleaks == 0) {
             return;
@@ -502,7 +506,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
     std::unordered_map<NodeRef, std::string> names;
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (model.eval(node.exec()).is_true()) {
+        if (z3::to_bool(model.eval(node.exec(), true))) {
             const std::string name = std::string("n") + std::to_string(next_id);
             names.emplace(ref, name);
             ++next_id;

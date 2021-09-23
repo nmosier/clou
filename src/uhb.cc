@@ -68,10 +68,10 @@ void UHBConstraints::add_to(z3::solver& solver) const {
 void UHBConstraints::operator()(const z3::expr& clause, const std::string& name) {
     assert(!name.empty());
     if ((simplify_before_checking_for_false_constraints ? clause.simplify() : clause).is_false()) {
-       std::cerr << "adding false constraint: " << clause << "\n";
-      throw std::logic_error("adding constraint 'false'");
-   }
-   exprs.emplace_back(clause, name);
+        std::cerr << "adding false constraint: " << clause << "\n";
+        throw std::logic_error("adding constraint 'false'");
+    }
+    exprs.emplace_back(clause, name);
 }
 
 void UHBConstraints::simplify() {
@@ -126,9 +126,9 @@ z3::expr UHBNode::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
     
     if (is_entry(a)) { return aeg.context.TRUE; }
     if (is_entry(b)) { return aeg.context.FALSE; }
+    if (is_exit(a) && is_exit(b)) { return aeg.context.bool_val(a < b); }
     if (is_exit(a)) { return aeg.context.FALSE; }
     if (is_exit(b)) { return aeg.context.TRUE; }
     
-   const z3::expr diff = an.xsaccess_order.value() - bn.xsaccess_order.value();
-   return a < b ? diff <= 0 : diff < 0;
+    return a < b ? *an.xsaccess_order <= *bn.xsaccess_order : *an.xsaccess_order < *bn.xsaccess_order;
 }
