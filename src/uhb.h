@@ -18,6 +18,8 @@ enum XSAccess {
     XSREAD, XSWRITE
 };
 
+enum ExecMode {ARCH, TRANS, EXEC};
+
 struct TupleSort {
     z3::context& ctx;
     z3::func_decl cons;
@@ -128,8 +130,8 @@ struct UHBNode {
     z3::expr taint_mem; // int -> bool
     UHBConstraints constraints;
     
-    z3::expr exec() const { return arch || trans; }
-    z3::expr xsaccess() const { return xsread || xswrite; }
+    z3::expr exec() const { return (arch || trans).simplify(); }
+    z3::expr xsaccess() const { return (xsread || xswrite).simplify(); }
 
     // TODO: remove this.
     z3::expr get_addr_def() const { return *addr_def; }
@@ -189,12 +191,19 @@ struct UHBNode {
     bool is_special() const;
     
     struct xsaccess_order_less;
+    struct access_order_less;
 };
 
 struct UHBNode::xsaccess_order_less {
     const AEG& aeg;
     xsaccess_order_less(const AEG& aeg): aeg(aeg) {}
     z3::expr operator()(NodeRef a, NodeRef b) const;
+};
+
+struct UHBNode::access_order_less {
+    const AEG& aeg;
+    access_order_less(const AEG& aeg): aeg(aeg) {}
+    bool operator()(NodeRef a, NodeRef b) const;
 };
 
 struct UHBEdge {

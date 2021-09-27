@@ -3,7 +3,9 @@
 #include "aeg.h"
 #include "timer.h"
 #include "fork_work_queue.h"
+#include "hash.h"
 #include "llvm-util.h"
+#include "fol.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
  * Any rfx edges, it's leakage, as long as the tail of the rfx edge is a READ.
@@ -52,25 +54,24 @@ fr/frx: There will only ever be leakage ... if the latter is an xswrite.
  
  */
 
-
-z3::expr AEG::leakage_rfx2() const {
-    z3::expr acc = ctx().FALSE;
-    
+template <typename OutputIt>
+void AEG::leakage_rfx2(OutputIt out) const {
     for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
-        acc = acc || (addr_edge.exists && lookup(addr_dst).xswrite);
+        std::stringstream ss;
+        ss << "rfx-" << addr_dst;
+        *out++ = std::make_tuple(addr_edge.exists && lookup(addr_dst).xswrite, ss.str());
     });
-    
-    return acc;
 }
 
-z3::expr AEG::leakage_cox2() const {
-    z3::expr acc = ctx().FALSE;
-    
+template <typename OutputIt>
+void AEG::leakage_cox2(OutputIt out) const {
     // silent store check
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
         if (node.is_write()) {
-            acc = acc || !node.xswrite;
+            std::stringstream ss;
+            ss << "ss-" << ref;
+            *out++ = std::make_tuple(node.arch && !node.xswrite, ss.str());
         }
     }
     
@@ -82,15 +83,15 @@ z3::expr AEG::leakage_cox2() const {
         for (NodeRef write : node_range()) {
             const Node& write_node = lookup(write);
             if (!write_node.is_write() || write_node.xswrite.is_false()) { continue; }
-            acc = acc || (Node::xsaccess_order_less(*this)(addr_dst, write) && addr_dst_node.trans && write_node.xswrite && write_node.exec());
+            std::stringstream ss;
+            ss << "cox-" << addr_dst << "-" << write;
+            *out++ = std::make_tuple((Node::xsaccess_order_less(*this)(addr_dst, write) && addr_dst_node.xswrite && addr_dst_node.trans && write_node.xswrite && write_node.exec()), ss.str());
         }
-        
     });
-    
-    return acc;
 }
 
-z3::expr AEG::leakage_frx2() const {
+template <typename OutputIt>
+void AEG::leakage_frx2(OutputIt out) const {
     
     /*
      frx leakage doesn't ever involve trans addr deps anyway. The only way frx leakage can arise is if A -fr-> B but B is not an xswrite, A is not an xsread, or B's xswrite happens before A's xsread.
@@ -100,55 +101,84 @@ z3::expr AEG::leakage_frx2() const {
      Now, consider if the orders are reversed. Haven't covered this case yet.
      */
     
-    z3::expr acc = ctx().FALSE;
-    
     // NOTE: This is actually the same assertion as before, in leakage_cox2(). So omitting for now.
-#if 0
+#if 1
     for (NodeRef write : node_range()) {
         const Node& write_node = lookup(write);
-        acc = acc || !write_node.xswrite;
+        if (!write_node.is_write()) { continue; }
+        std::stringstream ss;
+        ss << "frx-" << write;
+        *out++ = std::make_tuple(write_node.arch && !write_node.xswrite, ss.str());
     }
 #endif
-    
-    return acc;
 }
 
-unsigned AEG::leakage2(z3::solver& solver, unsigned max) const {
+unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
     solver.push();
     
     unsigned nleaks = 0;
     
-    const z3::expr leakage = leakage_rfx2() || leakage_cox2() || leakage_frx2();
+    std::vector<std::tuple<z3::expr, std::string>> clauses;
+    const auto clauses_out = std::back_inserter(clauses);
+    leakage_rfx2(clauses_out);
+    leakage_cox2(clauses_out);
+    leakage_frx2(clauses_out);
+    const z3::expr leakage = std::transform_reduce(clauses.begin(), clauses.end(), context.FALSE, util::logical_or<z3::expr>(), [] (const auto& t) -> z3::expr {
+        return std::get<0>(t);
+    });
     solver.add(leakage, "leakage");
+    
+    std::set<Leakage> leakages;
     
     for (unsigned i = 0; i < max; ++i) {
         const z3::check_result res = solver.check();
         std::cerr << res << "\n";
         switch (res) {
-            case z3::unsat: goto done;
+            case z3::unsat:
+                std::cerr << solver.unsat_core() << "\n";
+                goto done;
             case z3::sat: {
-                const z3::model model = solver.get_model();
+                const z3::eval eval {solver.get_model()};
+                
+                std::cerr << i << ": ";
+                for (const auto& clause : clauses) {
+                    if (eval(std::get<0>(clause))) {
+                        std::cerr << std::get<1>(clause) << " ";
+                    }
+                }
+                std::cerr << "\n";
+                
+                std::set<Leakage> new_leakages;
+                process_leakage(std::inserter(new_leakages, new_leakages.end()), eval);
                 
                 // add constraints
-                std::cerr << "adding different solution constraints...\n";
-                Stopwatch timer;
-                timer.start();
-                std::vector<z3::expr> exprs;
-                auto it = std::back_inserter(exprs);
-                for (const Node& node : nodes) {
-                    *it++ = node.arch;
-                    *it++ = node.trans;
+                std::stringstream dot;
+                dot << output_dir << "/leakage-" << i << ".dot";
+                output_execution(dot.str(), eval.model);
+                
+                z3::expr acc = context.FALSE;
+                for (const Leakage& lkg : new_leakages) {
+                    switch (lkg.kind) {
+                        case Edge::RF:
+                            acc = acc || !rfx_exists(lkg.comx.first, lkg.comx.second);
+                            break;
+                            
+                        case Edge::CO:
+                            
+                        case Edge::FR:
+                        default:
+                            std::abort();
+                            // TODO
+                    }
                 }
                 
-                for_each_edge([&] (NodeRef, NodeRef, const Edge& edge) {
-                    *it++ = edge.exists;
-                });
+                solver.add(acc);
                 
-                const z3::expr same_sol = std::transform_reduce(exprs.begin(), exprs.end(), context.TRUE, util::logical_and<z3::expr>(), [&] (const z3::expr& e) -> z3::expr {
-                    return e == model.eval(e);
-                });
+                const auto before = leakages.size();
+                leakages.merge(new_leakages);
+                const auto after = leakages.size();
+                std::cerr << "new leakages: " << after - before << "\n";
                 
-                solver.add(!same_sol);
                 
                 // TODO: process concrete output to get all leakage
                 
@@ -162,7 +192,148 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) const {
     
 done:
     solver.pop();
+    
+    std::stringstream path;
+    path << output_dir << "/leakage.txt";
+    std::ofstream ofs {path.str()};
+    for (const auto& leakage : leakages) {
+        ofs << Edge::kind_tostr(leakage.kind) << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
+    }
+    
     return nleaks;
+}
+
+template <typename OutputIt>
+OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
+    // get xsaccess order
+    const auto xsaccess_less = [&] (NodeRef a, NodeRef b) -> bool {
+        return eval(Node::xsaccess_order_less(*this)(a, b));
+    };
+    
+    std::set<NodeRef, decltype(xsaccess_less)> xsaccesses {xsaccess_less};
+    for (NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (eval(node.xsaccess() && node.exec())) {
+            xsaccesses.insert(ref);
+        }
+    }
+    
+    NodeRefVec accesses;
+    get_path(eval, std::back_inserter(accesses));
+    
+    // TODO: do this analysis in axiomatic land, just on rf, rfx, etc. relations?
+    
+    
+    fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
+    const auto rf = fol_ctx.edge_rel(Edge::RF);
+    const auto co = fol_ctx.edge_rel(Edge::CO);
+    const auto fr = fol_ctx.edge_rel(Edge::FR);
+    const auto rfx = fol_ctx.edge_rel(Edge::RFX);
+    const auto cox = fol_ctx.edge_rel(Edge::COX);
+    const auto frx = fol_ctx.edge_rel(Edge::FRX);
+    const auto entry = fol_ctx.node_rel(Inst::ENTRY, ExecMode::ARCH);
+    const auto exit = fol_ctx.node_rel(Inst::EXIT, ExecMode::ARCH);
+    const auto exec = fol_ctx.node_rel(ExecMode::EXEC);
+    const auto same_addr = fol_ctx.same_addr();
+    const auto same_xstate = fol_ctx.same_xstate();
+    const auto addr = fol_ctx.edge_rel(Edge::ADDR);
+    const auto flags = fol::element<1>(addr);
+    const auto xswrites = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xswrite; });
+    const auto xsreads = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xsread; });
+    const auto writes = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.arch && node.is_write(); });
+    
+    /* rf/rfx leakage */
+    {
+        // find read nodes that are rfx successors to flagged xswrite nodes
+        // trace back architectural rfs from same xstate
+        const auto rfx_flagged = fol::restrict_element<0>(rfx, flags);
+        const auto same_xstate_flagged = fol::join(fol::element<0>(rfx_flagged), same_xstate);
+        const auto rf_flagged = fol::restrict_element<1>(rf, fol::element<1>(rfx_flagged));
+        const auto rf_leakage = fol::restrict_element<0>(rf_flagged, same_xstate_flagged);
+        const auto rf_leakage2 = fol_ctx.filter(fol::join2(rfx_flagged, ~rf_leakage), [&] (const auto& t) {
+            return lookup(std::get<0>(t)).same_xstate(lookup(std::get<2>(t)));
+        });
+        
+        for (const auto& x : rf_leakage2) {
+            std::stringstream ss;
+            ss << "rf without rfx ";
+            const auto ref1 = std::get<0>(x.first);
+            const auto ref2 = std::get<1>(x.first);
+            const auto ref3 = std::get<2>(x.first);
+            ss << "(" << ref1 << ", " << ref2 << ") (" << ref3 << ", " << ref2 << ")";
+            *out++ = {Edge::RF, {ref3, ref2}, {ref1, ref2}, ss.str()};
+        }
+
+        std::cerr << "rf leakage: " << rf_leakage2 << "\n";
+    }
+    
+    // co
+    {
+        // silent stores
+        {
+            const auto silent_stores = writes - xswrites;
+            const auto impacted_cos = fol::restrict_element<0>(co, silent_stores) + fol::restrict_element<1>(co, silent_stores);
+            for (const auto& edge : impacted_cos) {
+                *out++ = {Edge::CO, {std::get<0>(edge.first), std::get<1>(edge.first)}, {0, 0}, "silent store"};
+            }
+        }
+        
+        // transient
+        {
+            const auto co_u = co - fol::join(co, co); // unit co
+            const auto mismatched_co = co_u - (rfx & cox);
+            std::cerr << "mismatched co: " << mismatched_co << "\n";
+        }
+    }
+    
+#if 0
+    // cox
+    // silent store check
+    for (NodeRef write : node_range()) {
+        const Node& write_node = lookup(write);
+        if (!write_node.is_write()) { continue; }
+        if (eval(write_node.arch && !write_node.xswrite)) {
+            // missing rfx edges due to silent store
+            // iterate over all reads that read from this write
+            auto it = std::find(accesses.begin(), accesses.end(), write);
+            if (*it == write) { ++it; }
+            for (; it != accesses.end(); ++it) {
+                const Node& node = lookup(*it);
+                if (node.is_read() && eval(node.arch && node.same_xstate(write_node))) {
+                    *out++ = {Edge::RF, {write, *it}, {0, 0}, "silent-store"};
+                }
+            }
+        }
+    }
+    
+    // check for subsequent writes to same address
+    for_each_edge(Edge::ADDR, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
+        if (!eval(edge.exists)) { return; }
+        const Node& dst_node = lookup(dst);
+        
+        const auto dst_it = xsaccesses.find(dst);
+        
+        const auto get_writes = [&] (auto& out, auto begin, auto end) {
+            for (auto it = begin; it != end; ++it) {
+                const Node& node = lookup(*it);
+                if (node.is_write() && eval(node.xswrite && node.same_xstate(dst_node))) {
+                    out.push_back(*it);
+                }
+            }
+        };
+        NodeRefVec pre, post;
+        get_writes(pre, xsaccesses.begin(), dst_it);
+        get_writes(post, std::next(dst_it), xsaccesses.end());
+        
+        for (NodeRef src : pre) {
+            for (NodeRef dst : post) {
+                *out++ = {Edge::CO, {src, dst}, {0, 0}, "co"};
+            }
+        }
+    });
+#endif
+    
+    return out;
 }
 
 

@@ -284,11 +284,12 @@ void AEG::test() {
 #endif
 
     {
-        const auto addr_rel = fol::edge_rel(*this, Edge::ADDR);
-        const auto trans_rel = fol::node_rel(*this, [&] (NodeRef, const Node& node) -> z3::expr {
+        fol::Context<z3::expr, fol::SymEval> fol_ctx {fol::Logic<z3::expr>(context.context), fol::SymEval(context.context), *this};
+        const auto addr_rel = fol_ctx.edge_rel(Edge::ADDR);
+        const auto trans_rel = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) -> z3::expr {
             return node.trans;
         });
-        const auto addr_expr = fol::some(fol::join(addr_rel, trans_rel), context.context);
+        const auto addr_expr = fol::some(fol::join(addr_rel, trans_rel));
         solver.push();
         solver.add(addr_expr);
         if (solver.check() == z3::sat) {
@@ -304,7 +305,7 @@ void AEG::test() {
 #if 0
         const auto nleaks = leakage(solver);
 #else
-        const auto nleaks = leakage2(solver, 16);
+        const auto nleaks = leakage2(solver, 32);
 #endif
         std::cerr << "Detected " << nleaks << " leaks.\n";
         if (nleaks == 0) {
@@ -591,12 +592,25 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
         }
     });
     
+    const fol::Context<bool, fol::ConEval> fol_ctx {fol::Logic<bool>(), fol::ConEval(z3::eval(model)), *this};
+    
+    const auto output_rel = [&] (const auto& rel, Edge::Kind kind) {
+        for (const auto& p : rel) {
+            output_edge(std::get<0>(p.first), std::get<1>(p.first), kind);
+        }
+    };
+    
+    static const Edge::Kind rels[] = {Edge::RF, Edge::CO, Edge::FR, Edge::RFX, Edge::COX, Edge::FRX};
+    for (const Edge::Kind kind : rels) {
+        output_rel(fol_ctx.edge_rel(kind), kind);
+    }
+    
     // output pseudo com and comx
     using EdgeSig = std::tuple<NodeRef, NodeRef, Edge::Kind>;
     using EdgeSigVec = std::vector<EdgeSig>;
     EdgeSigVec com, comx;
-    get_concrete_com(model, std::back_inserter(com));
-    get_concrete_comx(model, std::back_inserter(comx));
+        // get_concrete_com(model, std::back_inserter(com));
+        // get_concrete_comx(model, std::back_inserter(comx));
     for (const auto& edge : com) {
         std::apply(output_edge, edge);
     }
@@ -690,23 +704,31 @@ AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) {
     return it == edges.end() ? nullptr : it->get();
 }
 
-z3::expr AEG::edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const {
-    switch (kind) {
-        case Edge::CO:
-            return co_exists(src, dst);
-            
-        default:
-            if (const Edge *edge = find_edge(src, dst, kind)) {
-                return edge->exists;
-            } else {
-                return context.FALSE;
-            }
-    }
-}
-
 NodeRef AEG::add_node(const Node& node) {
     const NodeRef ref = size();
     nodes.push_back(node);
     graph.add_node(ref);
     return ref;
+}
+
+
+z3::expr AEG::exists(Edge::Kind kind, NodeRef src, NodeRef dst) {
+    switch (kind) {
+        case Edge::CO: return co_exists(src, dst);
+        case Edge::RF: return rf_exists(src, dst);
+        case Edge::FR: return fr_exists(src, dst);
+        case Edge::COX: return cox_exists(src, dst);
+        case Edge::RFX: return rfx_exists(src, dst);
+        case Edge::FRX: return frx_exists(src, dst);
+            // case Edge::TFO: return tfo_exists(src, dst);
+        case Edge::ADDR: {
+            if (const Edge *edge = find_edge(src, dst, kind)) {
+                return edge->exists;
+            } else {
+                return context.FALSE;
+            }
+        }
+            
+        default: std::abort();
+    }
 }

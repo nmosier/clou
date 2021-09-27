@@ -93,31 +93,35 @@ bool UHBNode::is_special() const {
         case Inst::ENTRY:
         case Inst::EXIT:
             return true;
-        case Inst::READ:
-        case Inst::WRITE:
-            return false;
         default:
-            throw std::logic_error("same addr called on a non-memory-access");
+            return false;
     }
 }
 
 z3::expr UHBNode::same_addr(const UHBNode& a, const UHBNode& b) {
+    z3::context& ctx = a.arch.ctx();
     if (a.is_special() || b.is_special()) {
-        return a.arch.ctx().bool_val(true);
-    } else {
-        return a.get_memory_address() == b.get_memory_address();
+        return ctx.bool_val(true);
     }
+    if (!(a.is_memory_op() && b.is_memory_op())) {
+        return ctx.bool_val(false);
+    }
+    return a.get_memory_address() == b.get_memory_address();
 }
 
 z3::expr UHBNode::same_xstate(const UHBNode& a, const UHBNode& b) {
+    z3::context& ctx = a.arch.ctx();
     if (a.is_special() || b.is_special()) {
-        return a.arch.ctx().bool_val(true);
-    } else {
-        return a.xstate == b.xstate;
+        return ctx.bool_val(true);
     }
+    if (a.xsaccess().is_false() || b.xsaccess().is_false()) {
+        return ctx.bool_val(false);
+    }
+    return a.xstate == b.xstate;
 }
 
 z3::expr UHBNode::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
+    if (a == b) { return aeg.context.FALSE; }
    const UHBNode& an = aeg.lookup(a);
    const UHBNode& bn = aeg.lookup(b);
     
@@ -131,4 +135,13 @@ z3::expr UHBNode::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
     if (is_exit(b)) { return aeg.context.TRUE; }
     
     return a < b ? *an.xsaccess_order <= *bn.xsaccess_order : *an.xsaccess_order < *bn.xsaccess_order;
+}
+
+bool UHBNode::access_order_less::operator()(NodeRef a, NodeRef b) const {
+    // TODO: imporve runtime
+    NodeRefVec order;
+    aeg.po.reverse_postorder(std::back_inserter(order));
+    const auto a_it = std::find(order.begin(), order.end(), a);
+    const auto b_it = std::find(order.begin(), order.end(), b);
+    return a_it < b_it;
 }

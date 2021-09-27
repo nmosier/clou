@@ -821,6 +821,7 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
 z3::expr AEG::cox_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
+    if (src_node.xswrite.is_false() || dst_node.xswrite.is_false()) { return context.FALSE; }
     const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xswrite && src_node.same_xstate(dst_node);
     const z3::expr cond = UHBNode::xsaccess_order_less(*this)(src, dst);
     return precond && cond;
@@ -830,27 +831,82 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    // TODO: does xsread, xswrite => exec?
+    if (src_node.inst.kind == Inst::ENTRY && dst_node.inst.kind == Inst::EXIT) {
+        return src_node.exec() && dst_node.exec();
+    }
+    
+    if (src_node.xswrite.is_false() || dst_node.xsread.is_false()) { return context.FALSE; }
+    
     const UHBNode::xsaccess_order_less less {*this};
     const z3::expr precond = src_node.exec() && dst_node.exec() && src_node.xswrite && dst_node.xsread && src_node.same_xstate(dst_node) && less(src, dst);
-    NodeRefVec xswrites;
-    get_nodes_if(std::back_inserter(xswrites), [&] (NodeRef, const Node& node) -> bool {
-        return !node.xswrite.is_false();
-    });
     
-    const z3::expr cond = util::all_of(xswrites.begin(), xswrites.end(), [&] (NodeRef write) -> z3::expr {
-        const z3::expr f = cox_exists(src, write) && less(write, dst);
-        return !f;
-    }, context.TRUE);
-    return precond && cond;
+    z3::expr intervening = context.FALSE;
+    for (NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (node.xswrite.is_false()) { continue; }
+        intervening = intervening || node.exec() && node.xswrite && node.same_xstate(src_node) && less(src, ref) && less(ref, dst);
+    }
+    
+    return precond && !intervening;
 }
 
 z3::expr AEG::frx_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
+    if (src_node.xsread.is_false() || dst_node.xswrite.is_false()) { return context.FALSE; }
     const UHBNode::xsaccess_order_less less {*this};
     const z3::expr cond = src_node.exec() && dst_node.exec() && src_node.xsread && dst_node.xswrite && src_node.same_xstate(dst_node) && less(src, dst);
     return cond;
+}
+
+z3::expr AEG::rf_exists(NodeRef src, NodeRef dst) {
+    const Node& src_node = lookup(src);
+    const Node& dst_node = lookup(dst);
+    if (!src_node.is_write() || !dst_node.is_read()) { return context.FALSE; }
+    if (src_node.is_special() && dst_node.is_special()) {
+        return context.bool_val(src_node.inst.kind == Inst::ENTRY && dst_node.inst.kind == Inst::EXIT) && src_node.arch && dst_node.arch;
+    }
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    const auto get_val = [&] (NodeRef ref) -> z3::expr {
+        return context.context.bool_val(src == ref);
+    };
+    
+    const z3::expr seed = get_val(entry);
+    z3::expr mem = z3::const_array(context.context.int_sort(), seed);
+    const z3::expr addr = src == entry ? dst_node.get_memory_address() : src_node.get_memory_address();
+    for (NodeRef ref : order) {
+        if (ref == dst) { break; }
+        const Node& node = lookup(ref);
+        if (node.inst.kind == Inst::WRITE) {
+            mem = z3::conditional_store(mem, node.get_memory_address(), get_val(ref), node.arch);
+        }
+    }
+    
+    return src_node.arch && dst_node.arch && src_node.same_addr(dst_node) && mem[addr];
+}
+
+z3::expr AEG::fr_exists(NodeRef src, NodeRef dst) {
+    const Node& src_node = lookup(src);
+    const Node& dst_node = lookup(dst);
+    if (!(src_node.is_read() && dst_node.is_write())) { return context.FALSE; }
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));;
+    const auto src_it = std::find(order.begin(), order.end(), src);
+    const auto dst_it = std::find(order.begin(), order.end(), dst);
+    if (!(src_it < dst_it)) { return context.FALSE; }
+    return src_node.arch && dst_node.arch && src_node.same_addr(dst_node);
+}
+
+z3::expr AEG::co_exists(NodeRef src, NodeRef dst) {
+    const Node& srcn = lookup(src);
+    const Node& dstn = lookup(dst);
+    if (!(srcn.is_write() && dstn.is_write())) { return context.FALSE; }
+    UHBNode::access_order_less less {*this};
+    const z3::expr f = context.bool_val(less(src, dst)) && srcn.arch && dstn.arch && srcn.same_addr(dstn);
+    return f.simplify();
 }
 
 

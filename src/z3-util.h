@@ -44,15 +44,25 @@ inline bool to_bool(const z3::expr& e) {
     }
 }
 
-struct eval {
-    const z3::model& model;
-    eval(const z3::model& model): model(model) {}
-    
-    bool get_bool(const z3::expr& e) const {
-        return z3::to_bool(model.eval(e));
-    }
+struct concrete_value {
+    z3::expr e;
+    operator bool() const { return z3::to_bool(e); }
 };
 
+struct eval {
+    const z3::model model;
+    eval(const z3::model& model): model(model) {}
+    concrete_value operator()(const z3::expr& val) const { return {model.eval(val, true)}; }
+};
+
+inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3::expr& v, const z3::expr& c) {
+    return store(a, i, ite(c, v, a[i]));
+}
+
+}
+
+inline std::ostream& operator<<(std::ostream& os, const z3::concrete_value& x) {
+    return os << x.e;
 }
 
 namespace std {
@@ -65,3 +75,4 @@ struct hash<z3::expr> {
 };
 
 }
+

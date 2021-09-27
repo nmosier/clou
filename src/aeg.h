@@ -96,10 +96,29 @@ private:
     template <typename OutputIt>
     void leakage_frx(NodeRef write, z3::solver& solver, OutputIt out) const;
 
-    z3::expr leakage_rfx2() const;
-    z3::expr leakage_cox2() const;
-    z3::expr leakage_frx2() const;
-    unsigned leakage2(z3::solver& solver, unsigned max) const;
+    template <typename OutputIt>
+    void leakage_rfx2(OutputIt out) const;
+    template <typename OutputIt>
+    void leakage_cox2(OutputIt out) const;
+    template <typename OutputIt>
+    void leakage_frx2(OutputIt out) const;
+    unsigned leakage2(z3::solver& solver, unsigned max);
+    
+    struct Leakage {
+        Edge::Kind kind;
+        using Pair = std::pair<NodeRef, NodeRef>;
+        Pair com, comx;
+        std::string desc;
+        
+        auto to_tuple() const { return std::make_tuple(kind, com, comx, desc); }
+
+        bool operator<(const Leakage& other) const {
+            return to_tuple() < other.to_tuple();
+        }
+    };
+    
+    template <typename OutputIt>
+    OutputIt process_leakage(OutputIt out, const z3::eval& eval);
     
     /** Detect all 3 kinds of leakage in the AEG.
      * \param solver Solver to use. This solver should already have all the constraints added.
@@ -139,8 +158,7 @@ private:
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;
-    z3::expr edge_exists(NodeRef src, NodeRef dst, Edge::Kind kind) const;
-    
+
     template <typename Pred>
     z3::expr cyclic(Pred pred) const;
     
@@ -191,20 +209,16 @@ public:
         return get_nodes(out, std::unordered_set<Inst::Kind> {Inst::EXIT, Inst::READ});
     }
     
-    z3::expr co_exists(NodeRef src, NodeRef dst) const {
-        const Node& srcn = lookup(src);
-        const Node& dstn = lookup(dst);
-        const z3::expr f = context.bool_val(srcn.arch_order < dstn.arch_order) && srcn.arch && dstn.arch && srcn.same_addr(dstn);
-        return f.simplify();
-    }
+    z3::expr exists(Edge::Kind kind, NodeRef src, NodeRef dst);
     
-    // NOTE: We don't include an rf_exists() predicate since this would be expensive to compute directly.
+    z3::expr co_exists(NodeRef src, NodeRef dst);
+    z3::expr rf_exists(NodeRef src, NodeRef dst);
+    z3::expr fr_exists(NodeRef src, NodeRef dst);
     
     z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr frx_exists(NodeRef src, NodeRef dst) const;
-
-
+    
     template <typename T>
     class Dataflow;
     
@@ -241,11 +255,20 @@ private:
     OutputIt get_concrete_comx(const z3::model& model, OutputIt out) const;
     
     template <typename OutputIt>
-    OutputIt get_concrete_com(const z3::model& model, OutputIt out) const;
+    OutputIt get_concrete_com(const z3::eval& eval, OutputIt out);
     
     friend class Taint;
     friend class Taint_Array;
     std::unique_ptr<Taint> tainter;
+    
+    template <typename OutputIt>
+    OutputIt get_path(const z3::eval& eval, OutputIt out) const {
+        NodeRefVec order;
+        po.reverse_postorder(std::back_inserter(order));
+        return std::copy_if(order.begin(), order.end(), out, [&] (NodeRef ref) -> bool {
+            return eval(lookup(ref).arch);
+        });
+    }
 };
 
 template <typename Function>
@@ -462,16 +485,17 @@ OutputIt AEG::get_concrete_comx(const z3::model& model, OutputIt out) const {
 
 
 template <typename OutputIt>
-OutputIt AEG::get_concrete_com(const z3::model& model, OutputIt out) const {
+OutputIt AEG::get_concrete_com(const z3::eval& eval, OutputIt out) {
     // get po execution stream
     NodeRefVec order;
     po.reverse_postorder(std::back_inserter(order));
     NodeRefVec path;
     std::copy_if(order.begin(), order.end(), std::back_inserter(path), [&] (NodeRef ref) -> bool {
-        return model.eval(lookup(ref).arch).is_true();
+        return eval(lookup(ref).arch);
     });
     
     // rf
+#if 0
     std::unordered_map<z3::expr, NodeRef> mem;
     for (const NodeRef ref : path) {
         const Node& node = lookup(ref);
@@ -502,6 +526,15 @@ OutputIt AEG::get_concrete_com(const z3::model& model, OutputIt out) const {
             default: std::abort();
         }
     }
+#else
+    for (auto it1 = path.begin(); it1 != path.end(); ++it1) {
+        for (auto it2 = std::next(it1); it2 != path.end(); ++it2) {
+            if (eval(rf_exists(*it1, *it2))) {
+                *out++ = std::make_tuple(*it1, *it2, Edge::RF);
+            }
+        }
+    }
+#endif
     
     // co
     for (auto it1 = path.begin(); it1 != path.end(); ++it1) {
@@ -510,7 +543,7 @@ OutputIt AEG::get_concrete_com(const z3::model& model, OutputIt out) const {
         for (auto it2 = std::next(it1); it2 != path.end(); ++it2) {
             const Node& n2 = lookup(*it2);
             if (!n2.is_write()) { continue; }
-            if (model.eval(n1.same_addr(n2)).is_false()) { continue; }
+            if (!eval(n1.same_addr(n2))) { continue; }
             *out++ = std::make_tuple(*it1, *it2, Edge::CO);
         }
     }
@@ -522,7 +555,7 @@ OutputIt AEG::get_concrete_com(const z3::model& model, OutputIt out) const {
         for (auto write_it = std::next(read_it); write_it != path.end(); ++write_it) {
             const Node& write = lookup(*write_it);
             if (!write.is_write()) { continue; }
-            if (model.eval(read.same_addr(write)).is_false()) { continue; }
+            if (!eval(read.same_addr(write))) { continue; }
             *out++ = std::make_tuple(*read_it, *write_it, Edge::FR);
         }
     }

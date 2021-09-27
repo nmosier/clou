@@ -151,6 +151,7 @@ struct Empty {
 
 
 namespace util {
+
 template <typename T>
 struct identity {
     constexpr T&& operator()(T&& t) const noexcept { return std::forward<T>(t); }
@@ -458,4 +459,48 @@ std::ostream& operator<<(std::ostream& os, const std::optional<T>& x) {
     return os;
 }
 
+template <typename T, typename U>
+std::ostream& operator<<(std::ostream& os, const std::pair<T, U>& pair) {
+    return os << "(" << pair.first << ", " << pair.second << ")";
+}
+
+
+template <typename... Ts>
+struct TuplePrinter {
+    using Tuple = std::tuple<Ts...>;
+    friend std::ostream& operator<<(std::ostream& os, const Tuple& tuple);
+    
+    template <std::size_t i>
+    void print(std::ostream& os, const Tuple& tuple) const {
+        if constexpr (i < sizeof...(Ts)) {
+            if constexpr (i > 0) {
+                os << ", ";
+            }
+            os << std::get<i>(tuple);
+            print<i+1>(os, tuple);
+        }
+    }
+};
+
+
+template <typename... Ts>
+std::ostream& operator<<(std::ostream& os, const std::tuple<Ts...>& tuple) {
+    os << "(";
+    TuplePrinter<Ts...>().template print<0>(os, tuple);
+    os << ")";
+    return os;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
+    os << "{";
+    for (auto it = v.begin(); it != v.end(); ++it) {
+        if (it != v.begin()) {
+            os << ", ";
+        }
+        os << *it;
+    }
+    os << "}";
+    return os;
+}
 
