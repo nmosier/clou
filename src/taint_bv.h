@@ -36,15 +36,3 @@ private:
     void handle_exit(NodeRef ref, Node& node);
     void handle_inst(NodeRef ref, Node& node);
 };
-
-#if 0
-class Taint_Function: public Taint_BV {
-public:
-    Taint_Function(AEG& aeg);
-    
-    virtual void run() override;
-
-private:
-    z3::expr taint_mem;
-};
-#endif

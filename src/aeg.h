@@ -111,6 +111,7 @@ private:
         using Pair = std::pair<NodeRef, NodeRef>;
         Pair com, comx;
         std::string desc;
+        z3::expr pred;
         
         auto to_tuple() const { return std::make_tuple(kind, com, comx, desc); }
 

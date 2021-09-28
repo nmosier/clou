@@ -128,7 +128,7 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
     });
     solver.add(leakage, "leakage");
     
-    std::set<Leakage> leakages;
+    std::map<Leakage, unsigned> leakages;
     
     for (unsigned i = 0; i < max; ++i) {
         const z3::check_result res = solver.check();
@@ -156,26 +156,14 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
                 dot << output_dir << "/leakage-" << i << ".dot";
                 output_execution(dot.str(), eval.model);
                 
-                z3::expr acc = context.FALSE;
                 for (const Leakage& lkg : new_leakages) {
-                    switch (lkg.kind) {
-                        case Edge::RF:
-                            acc = acc || !rfx_exists(lkg.comx.first, lkg.comx.second);
-                            break;
-                            
-                        case Edge::CO:
-                            
-                        case Edge::FR:
-                        default:
-                            std::abort();
-                            // TODO
-                    }
+                    std::stringstream ss;
+                    ss << Edge::kind_tostr(lkg.kind) << "-" << lkg.com << "-" << lkg.comx << "-" << i;
+                    solver.add(lkg.pred, ss.str().c_str());
                 }
                 
-                solver.add(acc);
-                
                 const auto before = leakages.size();
-                leakages.merge(new_leakages);
+                std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
                 const auto after = leakages.size();
                 std::cerr << "new leakages: " << after - before << "\n";
                 
@@ -196,8 +184,9 @@ done:
     std::stringstream path;
     path << output_dir << "/leakage.txt";
     std::ofstream ofs {path.str()};
-    for (const auto& leakage : leakages) {
-        ofs << Edge::kind_tostr(leakage.kind) << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
+    for (const auto& pair : leakages) {
+        const Leakage& leakage = pair.first;
+        ofs << pair.second << " " << Edge::kind_tostr(leakage.kind) << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
     }
     
     return nleaks;
@@ -255,13 +244,25 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
         });
         
         for (const auto& x : rf_leakage2) {
-            std::stringstream ss;
-            ss << "rf without rfx ";
             const auto ref1 = std::get<0>(x.first);
             const auto ref2 = std::get<1>(x.first);
             const auto ref3 = std::get<2>(x.first);
-            ss << "(" << ref1 << ", " << ref2 << ") (" << ref3 << ", " << ref2 << ")";
-            *out++ = {Edge::RF, {ref3, ref2}, {ref1, ref2}, ss.str()};
+            z3::expr cond {context};
+            if (lookup(ref2).inst.kind == Inst::EXIT) {
+                // rfx implies rf
+                cond = z3::implies(rfx_exists(ref1, ref2), rf_exists(ref1, ref2));
+            } else {
+                // rf implies rfx
+                cond = z3::implies(rf_exists(ref3, ref2), rfx_exists(ref3, ref2));
+            }
+
+            *out++ = {
+                .kind = Edge::RF,
+                .com = {ref3, ref2},
+                .comx = {ref1, ref2},
+                .desc = "rf without rfx",
+                .pred = cond,
+            };
         }
 
         std::cerr << "rf leakage: " << rf_leakage2 << "\n";
@@ -274,64 +275,56 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
             const auto silent_stores = writes - xswrites;
             const auto impacted_cos = fol::restrict_element<0>(co, silent_stores) + fol::restrict_element<1>(co, silent_stores);
             for (const auto& edge : impacted_cos) {
-                *out++ = {Edge::CO, {std::get<0>(edge.first), std::get<1>(edge.first)}, {0, 0}, "silent store"};
+                const NodeRef ref1 = std::get<0>(edge.first);
+                const NodeRef ref2 = std::get<1>(edge.first);
+                const auto cond = [&] (NodeRef ref) -> z3::expr {
+                    const Node& node = lookup(ref);
+                    return z3::implies(node.is_write() && node.arch, node.xswrite);
+                };
+                *out++ = {
+                    .kind = Edge::CO,
+                    .com = {ref1, ref2},
+                    .comx = {0, 0},
+                    .desc = "silent store",
+                    .pred = cond(ref1) && cond(ref2),
+                };
             }
         }
         
         // transient
         {
             const auto co_u = co - fol::join(co, co); // unit co
+            const auto cox_u = cox - fol::join(cox, cox); // unit cox
             const auto mismatched_co = co_u - (rfx & cox);
-            std::cerr << "mismatched co: " << mismatched_co << "\n";
+            const auto mismatched_co_rfx = mismatched_co - rfx;
+            const auto mismatched_co_cox = mismatched_co - cox;
+            const auto mismatched_co_rfx_dsts = fol::element<1>(mismatched_co_rfx);
+            const auto rfx_flagged = fol::restrict_element<0>(rfx, flags);
+            const auto cox_u_flagged = fol::restrict_element<0>(cox_u, flags);
+            const auto co_rfx_triples = fol::join2(mismatched_co_rfx, ~rfx_flagged);
+            const auto mismatched_co_cox_dsts = fol::element<1>(mismatched_co_cox);
+            const auto co_cox_triples = fol::join2(mismatched_co_cox, ~cox_u_flagged);
+            
+            const auto f = [&] (const auto& co_comx_triples, Edge::Kind kind) {
+                for (const auto& triple : co_comx_triples) {
+                    const NodeRef co_src = std::get<0>(triple.first);
+                    const NodeRef dst = std::get<1>(triple.first);
+                    const NodeRef comx_src = std::get<2>(triple.first);
+                    const z3::expr cond = z3::implies(co_exists(co_src, dst), exists(kind, co_src, dst));
+                    *out++ = {
+                        .kind = Edge::CO,
+                        .com = {co_src, dst},
+                        .comx = {comx_src, dst},
+                        .desc = std::string("co without ") + Edge::kind_tostr(kind),
+                        .pred = cond,
+                    };
+                }
+            };
+            
+            f(co_rfx_triples, Edge::RFX);
+            f(co_cox_triples, Edge::COX);
         }
     }
-    
-#if 0
-    // cox
-    // silent store check
-    for (NodeRef write : node_range()) {
-        const Node& write_node = lookup(write);
-        if (!write_node.is_write()) { continue; }
-        if (eval(write_node.arch && !write_node.xswrite)) {
-            // missing rfx edges due to silent store
-            // iterate over all reads that read from this write
-            auto it = std::find(accesses.begin(), accesses.end(), write);
-            if (*it == write) { ++it; }
-            for (; it != accesses.end(); ++it) {
-                const Node& node = lookup(*it);
-                if (node.is_read() && eval(node.arch && node.same_xstate(write_node))) {
-                    *out++ = {Edge::RF, {write, *it}, {0, 0}, "silent-store"};
-                }
-            }
-        }
-    }
-    
-    // check for subsequent writes to same address
-    for_each_edge(Edge::ADDR, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
-        if (!eval(edge.exists)) { return; }
-        const Node& dst_node = lookup(dst);
-        
-        const auto dst_it = xsaccesses.find(dst);
-        
-        const auto get_writes = [&] (auto& out, auto begin, auto end) {
-            for (auto it = begin; it != end; ++it) {
-                const Node& node = lookup(*it);
-                if (node.is_write() && eval(node.xswrite && node.same_xstate(dst_node))) {
-                    out.push_back(*it);
-                }
-            }
-        };
-        NodeRefVec pre, post;
-        get_writes(pre, xsaccesses.begin(), dst_it);
-        get_writes(post, std::next(dst_it), xsaccesses.end());
-        
-        for (NodeRef src : pre) {
-            for (NodeRef dst : post) {
-                *out++ = {Edge::CO, {src, dst}, {0, 0}, "co"};
-            }
-        }
-    });
-#endif
     
     return out;
 }

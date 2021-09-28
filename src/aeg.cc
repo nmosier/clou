@@ -547,10 +547,9 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
             // DEBUG: taint
             ss << " taint(" << model.eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
-                std::cerr << "DEBUG: " << model.eval(((const Taint_Array&) *tainter).taint_mem.simplify()) << "\n";
                 const z3::expr flag = tainter->flag(ref);
                 if (model.eval(flag).is_true()) {
-                    ss << " TAINTED_ACCESS";
+                    ss << " FLAGGED";
                 }
                 
             }
