@@ -19,6 +19,8 @@
 #include "progress.h"
 #include "taint.h"
 
+class Taint_Array;
+
 class AEG {
 public:
     const AEGPO& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */

@@ -13,6 +13,7 @@
 #include "taint.h"
 #include "fork_work_queue.h"
 #include "shm.h"
+#include "taint_bv.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -541,9 +542,12 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
                 ss << "[" << model.eval(node.trans_group_min) << " " << model.eval(node.trans_group_max) << "] ";
             }
 #endif
+            // TODO: use eval here
+            
             // DEBUG: taint
             ss << " taint(" << model.eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
+                std::cerr << "DEBUG: " << model.eval(((const Taint_Array&) *tainter).taint_mem.simplify()) << "\n";
                 const z3::expr flag = tainter->flag(ref);
                 if (model.eval(flag).is_true()) {
                     ss << " TAINTED_ACCESS";

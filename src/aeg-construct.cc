@@ -72,9 +72,11 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_mem();
 #endif
 
+#if 1
     logv(2) << "Constructing taint\n";
-    tainter = std::make_unique<Taint_Function>(*this);
+    tainter = std::make_unique<Taint_Array>(*this);
     tainter->run();
+#endif
 }
 
 void AEG::construct_nodes() {
