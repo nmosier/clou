@@ -66,8 +66,13 @@ z3::expr Taint_BV::get_value(NodeRef ref, const llvm::Value *V) const {
         } else if (const llvm::BasicBlock *B = llvm::dyn_cast<llvm::BasicBlock>(V)) {
             return ctx.bool_val(false);
         } else {
-            llvm::errs() << "error: " << *V << "\n";
-            std::abort();
+            const auto I = std::get<const llvm::Instruction *>(node.v);
+            if (llvm::isa<llvm::PHINode>(I)) {
+                return ctx.bool_val(false);
+            } else {
+                llvm::errs() << "error: " << *V << "\n";
+                std::abort();
+            }
         }
     } else {
         // TODO: This might be a bug, or at least inaccurate.

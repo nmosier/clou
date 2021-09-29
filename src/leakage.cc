@@ -56,10 +56,14 @@ fr/frx: There will only ever be leakage ... if the latter is an xswrite.
 
 template <typename OutputIt>
 void AEG::leakage_rfx2(OutputIt out) const {
+    /* NOTE: This is actually an over-approximation, since addr-dst xswrite may not be sourced by an architetcural instruction.
+     *
+     */
     for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
         std::stringstream ss;
         ss << "rfx-" << addr_dst;
-        *out++ = std::make_tuple(addr_edge.exists && lookup(addr_dst).xswrite, ss.str());
+        const Node& addr_dst_node = lookup(addr_dst);
+        *out++ = std::make_tuple(addr_edge.exists && addr_dst_node.xswrite && addr_dst_node.trans, ss.str());
     });
 }
 
@@ -154,11 +158,17 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
                 // add constraints
                 std::stringstream dot;
                 dot << output_dir << "/leakage-" << i << ".dot";
-                output_execution(dot.str(), eval.model);
+                
+                EdgeSet flag_edges;
+                for (const Leakage& lkg : new_leakages) {
+                    flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
+                    flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
+                }
+                output_execution(dot.str(), eval.model, flag_edges);
                 
                 for (const Leakage& lkg : new_leakages) {
                     std::stringstream ss;
-                    ss << Edge::kind_tostr(lkg.kind) << "-" << lkg.com << "-" << lkg.comx << "-" << i;
+                    ss << Edge::kind_tostr(lkg.com_kind) << "-" << lkg.com << "-" << lkg.comx << "-" << i;
                     solver.add(lkg.pred, ss.str().c_str());
                 }
                 
@@ -186,7 +196,7 @@ done:
     std::ofstream ofs {path.str()};
     for (const auto& pair : leakages) {
         const Leakage& leakage = pair.first;
-        ofs << pair.second << " " << Edge::kind_tostr(leakage.kind) << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
+        ofs << pair.second << " " << Edge::kind_tostr(leakage.com_kind) << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
     }
     
     return nleaks;
@@ -257,8 +267,9 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
             }
 
             *out++ = {
-                .kind = Edge::RF,
+                .com_kind = Edge::RF,
                 .com = {ref3, ref2},
+                .comx_kind = Edge::RFX,
                 .comx = {ref1, ref2},
                 .desc = "rf without rfx",
                 .pred = cond,
@@ -282,8 +293,9 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
                     return z3::implies(node.is_write() && node.arch, node.xswrite);
                 };
                 *out++ = {
-                    .kind = Edge::CO,
+                    .com_kind = Edge::CO,
                     .com = {ref1, ref2},
+                    .comx_kind = Edge::CO, // really should be 'none'
                     .comx = {0, 0},
                     .desc = "silent store",
                     .pred = cond(ref1) && cond(ref2),
@@ -312,8 +324,9 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
                     const NodeRef comx_src = std::get<2>(triple.first);
                     const z3::expr cond = z3::implies(co_exists(co_src, dst), exists(kind, co_src, dst));
                     *out++ = {
-                        .kind = Edge::CO,
+                        .com_kind = Edge::CO,
                         .com = {co_src, dst},
+                        .comx_kind = kind,
                         .comx = {comx_src, dst},
                         .desc = std::string("co without ") + Edge::kind_tostr(kind),
                         .pred = cond,

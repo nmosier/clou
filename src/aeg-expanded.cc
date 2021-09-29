@@ -118,6 +118,13 @@ void AEGPO_Expanded::resolve_refs(const AEGPO_Unrolled& in) {
         maps[ref] = std::move(map);
     }
     
+    for (NodeRef ref : order) {
+        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&lookup(ref).v)) {
+            llvm::errs() << ref << " " << **Ip << "\n";
+        }
+    }
+        
+    
     /* Now resolve refs */
     for (const NodeRef ref : order) {
         Node& node = lookup(ref);
@@ -147,7 +154,9 @@ void AEGPO_Expanded::resolve_refs(const AEGPO_Unrolled& in) {
                         for (const Key& source : sources) {
                             const auto it = map.find(source);
                             if (kind == INST) {
-                                assert(it != map.end());
+                                if (!llvm::isa<llvm::PHINode>(I)) {
+                                    assert(it != map.end());
+                                }
                             }
                             if (it != map.end()) {
                                 const NodeRefSet& refs = it->second;

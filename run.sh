@@ -35,4 +35,4 @@ shift $((OPTIND-1))
 
 ARGS+=" -j$JOBS "
 
-LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER clang-12 -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"
+LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER clang-12 -fdeclspec -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"

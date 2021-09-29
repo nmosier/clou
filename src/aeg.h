@@ -106,14 +106,17 @@ private:
     void leakage_frx2(OutputIt out) const;
     unsigned leakage2(z3::solver& solver, unsigned max);
     
+    // TODO: this should be more general than hard-coding two com/comx edges, maybe?
     struct Leakage {
-        Edge::Kind kind;
+        Edge::Kind com_kind;
         using Pair = std::pair<NodeRef, NodeRef>;
-        Pair com, comx;
+        Pair com;
+        Edge::Kind comx_kind;
+        Pair comx;
         std::string desc;
         z3::expr pred;
         
-        auto to_tuple() const { return std::make_tuple(kind, com, comx, desc); }
+        auto to_tuple() const { return std::make_tuple(com_kind, com, comx_kind, comx, desc); }
 
         bool operator<(const Leakage& other) const {
             return to_tuple() < other.to_tuple();
@@ -156,8 +159,9 @@ private:
     
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
-    void output_execution(std::ostream& os, const z3::model& model);
-    void output_execution(const std::string& path, const z3::model& model);
+    using EdgeSet = std::set<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
+    void output_execution(std::ostream& os, const z3::model& model, const EdgeSet& flag_edges = EdgeSet());
+    void output_execution(const std::string& path, const z3::model& model, const EdgeSet& flag_edges = EdgeSet());
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;

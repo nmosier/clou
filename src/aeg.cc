@@ -495,7 +495,7 @@ std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
     return os;
 }
 
-void AEG::output_execution(std::ostream& os, const z3::model& model) {
+void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeSet& flag_edges) {
     os << R"=(
     digraph G {
     overlap = scale;
@@ -581,10 +581,13 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
             {Edge::RFX, "gray"},
             {Edge::COX, "blue"},
             {Edge::FRX, "purple"},
-            {Edge::ADDR, "red"},
+            {Edge::ADDR, "brown"},
             {Edge::PO, "black"},
         };
-        const std::string& color = colors.at(kind);
+        std::string color = colors.at(kind);
+        if (flag_edges.find(std::make_tuple(src, dst, kind)) != flag_edges.end()) {
+            color = "red";
+        }
         dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(kind)}, {"color", color}});
         os << ";\n";
     };
@@ -653,9 +656,9 @@ void AEG::output_execution(std::ostream& os, const z3::model& model) {
     os << "}\n";
 }
 
-void AEG::output_execution(const std::string& path, const z3::model& model) {
+void AEG::output_execution(const std::string& path, const z3::model& model, const EdgeSet& flag_edges) {
     std::ofstream ofs {path};
-    output_execution(ofs, model);
+    output_execution(ofs, model, flag_edges);
 }
 
 template <typename OutputIt>
