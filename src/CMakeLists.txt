@@ -25,6 +25,7 @@ if(APPLE)
 endif()
 
 
+if(0)
 add_library(alias MODULE
   alias-main.cc
   )
@@ -32,8 +33,10 @@ target_compile_options(alias PRIVATE -fno-rtti)
 if(APPLE)
   target_link_options(alias PRIVATE -undefined dynamic_lookup)
 endif()
+endif()
 
 
+if(0)
 add_library(loops MODULE
   loops-main.cc
   )
@@ -41,16 +44,10 @@ target_compile_options(loops PRIVATE -fno-rtti)
 if(APPLE)
   target_link_options(loops PRIVATE -undefined dynamic_lookup)
 endif()
+endif()
 
+if(0)
 add_executable(tarjan-test
   tarjan-test.cc
   )
-
-add_executable(shm-test
-  shm-test.cc
-  shm.cc
-  )
-target_compile_options(shm-test PRIVATE -fno-rtti)
-if(APPLE)
-  target_link_options(shm-test PRIVATE -undefined dynamic_lookup)
 endif()

@@ -231,7 +231,7 @@ struct SymEval {
 struct ConEval {
     z3::eval eval; /*!< z3 evalutor use for converting z3 expressions to plain `bool`s */
     bool operator()(bool b) const { return b; }
-    bool operator()(const z3::expr& e) const { return eval(e); }
+    bool operator()(const z3::expr& e) const { return (bool) eval(e); }
     
     /** \param eval Z3 evaluator to use */
     ConEval(const z3::eval& eval): eval(eval) {}

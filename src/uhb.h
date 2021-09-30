@@ -17,6 +17,9 @@ class AEG;
 enum XSAccess {
     XSREAD, XSWRITE
 };
+enum Access {
+    READ, WRITE
+};
 
 enum ExecMode {ARCH, TRANS, EXEC};
 
@@ -130,8 +133,19 @@ struct UHBNode {
     z3::expr taint_mem; // int -> bool
     UHBConstraints constraints;
     
+    z3::context& ctx() const { return arch.ctx(); }
     z3::expr exec() const { return (arch || trans).simplify(); }
     z3::expr xsaccess() const { return (xsread || xswrite).simplify(); }
+    const z3::expr& xsaccess(XSAccess kind) const {
+        switch (kind) {
+            case XSREAD: return xsread;
+            case XSWRITE: return xswrite;
+            default: std::abort();
+        }
+    }
+    
+    bool can_xsread() const { return !xsread.is_false(); }
+    bool can_xswrite() const { return !xswrite.is_false(); }
 
     // TODO: remove this.
     z3::expr get_addr_def() const { return *addr_def; }

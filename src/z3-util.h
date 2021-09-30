@@ -46,8 +46,16 @@ inline bool to_bool(const z3::expr& e) {
 
 struct concrete_value {
     z3::expr e;
-    operator bool() const { return z3::to_bool(e); }
+    explicit operator bool() const { return z3::to_bool(e); }
 };
+
+inline z3::expr operator==(const concrete_value& a, const z3::expr& b) {
+    return a.e == b;
+}
+
+inline z3::expr operator==(const z3::expr& a, const concrete_value& b) {
+    return a == b.e;
+}
 
 struct eval {
     const z3::model model;

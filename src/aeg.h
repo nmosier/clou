@@ -160,8 +160,8 @@ private:
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
     using EdgeSet = std::set<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
-    void output_execution(std::ostream& os, const z3::model& model, const EdgeSet& flag_edges = EdgeSet());
-    void output_execution(const std::string& path, const z3::model& model, const EdgeSet& flag_edges = EdgeSet());
+    void output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet& flag_edges = EdgeSet());
+    void output_execution(const std::string& path, const z3::eval& eval, const EdgeSet& flag_edges = EdgeSet());
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;
@@ -218,10 +218,16 @@ public:
     
     z3::expr exists(Edge::Kind kind, NodeRef src, NodeRef dst);
     
+private:
+    z3::expr com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Access dst_kind) const;
+public:
     z3::expr co_exists(NodeRef src, NodeRef dst);
     z3::expr rf_exists(NodeRef src, NodeRef dst);
     z3::expr fr_exists(NodeRef src, NodeRef dst);
     
+private:
+    z3::expr comx_exists_precond(NodeRef src, NodeRef dst, XSAccess src_kind, XSAccess dst_kind) const;
+public:
     z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr frx_exists(NodeRef src, NodeRef dst) const;
@@ -273,7 +279,7 @@ private:
         NodeRefVec order;
         po.reverse_postorder(std::back_inserter(order));
         return std::copy_if(order.begin(), order.end(), out, [&] (NodeRef ref) -> bool {
-            return eval(lookup(ref).arch);
+            return static_cast<bool>(eval(lookup(ref).arch));
         });
     }
 };
@@ -498,7 +504,7 @@ OutputIt AEG::get_concrete_com(const z3::eval& eval, OutputIt out) {
     po.reverse_postorder(std::back_inserter(order));
     NodeRefVec path;
     std::copy_if(order.begin(), order.end(), std::back_inserter(path), [&] (NodeRef ref) -> bool {
-        return eval(lookup(ref).arch);
+        return static_cast<bool>(eval(lookup(ref).arch));
     });
     
     // rf

@@ -206,7 +206,7 @@ template <typename OutputIt>
 OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
     // get xsaccess order
     const auto xsaccess_less = [&] (NodeRef a, NodeRef b) -> bool {
-        return eval(Node::xsaccess_order_less(*this)(a, b));
+        return (bool) eval(Node::xsaccess_order_less(*this)(a, b));
     };
     
     std::set<NodeRef, decltype(xsaccess_less)> xsaccesses {xsaccess_less};

@@ -351,8 +351,8 @@ void AEG::test() {
                 goto done;
             }
             case z3::sat: {
-                const z3::model model = solver.get_model();
-                output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", model);
+                const z3::eval eval {solver.get_model()};
+                output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", eval);
 #if CHECKING
                 dump_expressions(model);
 #endif
@@ -375,7 +375,7 @@ void AEG::test() {
                 });
                 
                 const z3::expr same_sol = std::transform_reduce(exprs.begin(), exprs.end(), context.TRUE, util::logical_and<z3::expr>(), [&] (const z3::expr& e) -> z3::expr {
-                    return e == model.eval(e);
+                    return e == eval(e);
                 });
                 
                 solver.add(!same_sol);
@@ -495,7 +495,7 @@ std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
     return os;
 }
 
-void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeSet& flag_edges) {
+void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet& flag_edges) {
     os << R"=(
     digraph G {
     overlap = scale;
@@ -508,7 +508,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
     std::unordered_map<NodeRef, std::string> names;
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (z3::to_bool(model.eval(node.exec(), true))) {
+        if (eval(node.exec())) {
             const std::string name = std::string("n") + std::to_string(next_id);
             names.emplace(ref, name);
             ++next_id;
@@ -520,13 +520,13 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
             switch (node.inst.kind) {
                 case Inst::WRITE:
                 case Inst::READ:
-                    ss << "{" << model.eval(node.get_memory_address()) << "} ";
+                    ss << "{" << eval(node.get_memory_address()) << "} ";
                     break;
                 default: break;
             }
             
-            const bool xsread = model.eval(node.xsread).is_true();
-            const bool xswrite = model.eval(node.xswrite).is_true();
+            const bool xsread = (bool) eval(node.xsread);
+            const bool xswrite = (bool) eval(node.xswrite);
             if (xsread) {
                 ss << "R";
             }
@@ -534,7 +534,7 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
                 ss << "W";
             }
             if ((xsread || xswrite) && node.xsaccess_order) {
-                ss << "(" << model.eval(*node.xsaccess_order) << ") ";
+                ss << "(" << eval(*node.xsaccess_order) << ") ";
             }
             
 #if 0
@@ -545,10 +545,10 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
             // TODO: use eval here
             
             // DEBUG: taint
-            ss << " taint(" << model.eval(node.taint) << ")";
+            ss << " taint(" << eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
                 const z3::expr flag = tainter->flag(ref);
-                if (model.eval(flag).is_true()) {
+                if (eval(flag)) {
                     ss << " FLAGGED";
                 }
                 
@@ -556,9 +556,9 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
             
             
             std::string color;
-            if (model.eval(node.arch).is_true()) {
+            if (eval(node.arch)) {
                 color = "green";
-            } else if (model.eval(node.trans).is_true()) {
+            } else if (eval(node.trans)) {
                 color = "red";
             }
             
@@ -593,12 +593,12 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
     };
     
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
-        if (model.eval(edge.exists).is_true()) {
+        if (eval(edge.exists)) {
             output_edge(src, dst, edge.kind);
         }
     });
     
-    const fol::Context<bool, fol::ConEval> fol_ctx {fol::Logic<bool>(), fol::ConEval(z3::eval(model)), *this};
+    const fol::Context<bool, fol::ConEval> fol_ctx {fol::Logic<bool>(), fol::ConEval(eval), *this};
     
     const auto output_rel = [&] (const auto& rel, Edge::Kind kind) {
         for (const auto& p : rel) {
@@ -628,11 +628,11 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
     // add tfo rollback edges
     for (const NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (model.eval(node.arch).is_false()) { continue; }
+        if (!eval(node.arch)) { continue; }
         const auto next = [&] (NodeRef ref, Edge::Kind kind) -> std::optional<NodeRef> {
             const auto tfos = get_nodes(Direction::OUT, ref, kind);
             const auto tfo_it = std::find_if(tfos.begin(), tfos.end(), [&] (const auto& x) -> bool {
-                return model.eval(x.second).is_true();
+                return (bool) eval(x.second);
             });
             if (tfo_it == tfos.end()) {
                 return std::nullopt;
@@ -656,9 +656,9 @@ void AEG::output_execution(std::ostream& os, const z3::model& model, const EdgeS
     os << "}\n";
 }
 
-void AEG::output_execution(const std::string& path, const z3::model& model, const EdgeSet& flag_edges) {
+void AEG::output_execution(const std::string& path, const z3::eval& eval, const EdgeSet& flag_edges) {
     std::ofstream ofs {path};
-    output_execution(ofs, model, flag_edges);
+    output_execution(ofs, eval, flag_edges);
 }
 
 template <typename OutputIt>
