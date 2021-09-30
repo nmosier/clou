@@ -15,3 +15,4 @@ include_directories(${LIBPROFILER_INCLUDE_DIRS})
 link_directories(${LIBPROFILER_LIBRARY_DIRS})
 
 add_subdirectory(src)
+add_subdirectory(docs)

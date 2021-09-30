@@ -6,6 +6,8 @@
 #include <initializer_list>
 #include <type_traits>
 
+#if 0
+
 namespace status {
 
 class bar;
@@ -66,3 +68,5 @@ protected:
 };
 
 }
+
+#endif

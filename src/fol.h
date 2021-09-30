@@ -11,13 +11,19 @@
 #include "aeg.h"
 #include "default_map.h"
 #include "util.h"
+#include "tuple-util.h"
 
+/** First-order relational logic library
+ */
 namespace fol {
 
 /* It would be nice to be able to easily construct simple first-order logic expressions/formulas over the AEG
  * to verify that the implementation is correct. For example, we could verify that ~rf.co == fr.
  */
 
+/** Abstract representation of a boolean logic.
+ * \tparam Bool The boolean type (bool, z3::expr, etc.) that the logic is over.
+ */
 template <typename Bool>
 struct Logic {};
 
@@ -49,42 +55,53 @@ struct Logic<z3::expr> {
     };
 };
 
+/** FOL relation, represented as a set of tuples.
+ * \tparam Bool boolean type representing element containment
+ * \tparam Ts Types of a tuple
+ */
 template <typename Bool, typename... Ts>
 struct relation {
-    using Tuple = std::tuple<Ts...>;
+    using Tuple = std::tuple<Ts...>; /*!< Tuples contained in the relation */
+    
+    /** Hash function for tuples in the relation. */
     struct Hash {
         auto operator()(const Tuple& tuple) const {
             return llvm::hash_value(tuple);
         }
     };
-    using Map = std::unordered_map<Tuple, Bool, Hash>;
+    
+    using Map = std::unordered_map<Tuple, Bool, Hash>; /*!< Map from tuples to containment booleans */
     using logic_type = Logic<Bool>;
     using bool_type = Bool;
     
-    logic_type logic;
+    logic_type logic; /*!< logic structure of this relation */
     Map map;
     
     using const_iterator = typename Map::const_iterator;
     using value_type = typename Map::value_type;
     
+    /** Find tuple in relation */
     template <typename... Args>
     const_iterator find(Args&&... args) const { return map.find(std::forward<Args>(args)...); }
     
     const_iterator begin() const { return map.begin(); }
     const_iterator end() const { return map.end(); }
     
+    /** Emplace tuple in relation if condition is true. */
     void emplace(const Tuple& tuple, const Bool& cond) {
         if (!logic.is_false(cond)) {
             map.emplace(tuple, cond);
         }
     }
     
+    /** Insert tuple in relation if condition is true. */
     void insert(const std::pair<Tuple, Bool>& pair) {
         if (!logic.is_false(pair.second)) {
             map.insert(pair);
         }
     }
     
+    /** Insert tuple in relation if condition is true, assigning the existing boolean to `b` if the tuple is already present. */
     void insert_or_assign(const Tuple& t, const Bool& b) {
         if (logic.is_false(b)) {
             map.erase(t);
@@ -95,30 +112,22 @@ struct relation {
     
     const Bool& at(const Tuple& t) const { return map.at(t); }
     
-    bool empty() const { return map.empty(); }
-    std::size_t size() const { return map.size(); }
-    
-    void update(const Tuple& tuple, const Bool& b) {
-        const auto it = map.find(tuple);
-        if (logic.is_false(b)) {
-            map.erase(it);
-        } else {
-            it->second = b;
-        }
-    }
-    
     // get by tuple, defaults to false if tuple not in map
+    /** Get condition by tuple, defaulting to relation::logic definition of false if tuple not in relation's underlying map. */
     Bool get(const Tuple& t) const {
         const auto it = find(t);
         return it == end() ? logic.F : it->second;
     }
     
-    relation(const logic_type& logic = logic_type()): logic(logic) {}
+    relation(const logic_type& logic = logic_type()): logic(logic) {} /*!< Construct empty relation using logic `logic`. */
     relation(const relation& other) = default;
     relation(relation&& other) = default;
 };
 
-
+/** Class for managing necessary information to construct fol::relation's from an ::AEG.
+ * \tparam Bool boolean type for tuple containment in relation
+ * \tparam Eval functor converting values to `Bool`.
+ */
 template <typename Bool, typename Eval = util::identity<Bool>>
 struct Context {
     using bool_type = Bool;
@@ -127,17 +136,26 @@ struct Context {
     using relation_type = relation<Bool, Ts...>;
     logic_type logic;
     Eval eval;
-    AEG& aeg;
+    AEG& aeg; /*!< AEG to construct relations from */
     
+    /** Construct an empty relation given an example tuple. The value type of the relation is equal to the type of `tuple`.
+     */
     template <typename... Ts>
     relation_type<Ts...> make_relation(const std::tuple<Ts...>& example_tuple) const {
         return relation_type<Ts...>(logic);
     }
     
+    /** Get the binary relation on ::NodeRef corresponding to the given edge `kind`. */
     relation_type<NodeRef, NodeRef> edge_rel(UHBEdge::Kind kind) const;
     
-    relation_type<NodeRef> node_rel(Inst::Kind kind, ExecMode mode);
-    relation_type<NodeRef> node_rel(ExecMode mode);
+    relation_type<NodeRef> node_rel(Inst::Kind kind, ExecMode mode); /*!< Get the set of nodes of the given `kind` and execution `mode`. */
+    relation_type<NodeRef> node_rel(ExecMode mode); /*!< Get the set of all nodes of the given execution `mode`. */
+    
+    /** Get the set of nodes satisfying the condition (of type \a Bool ) when each node is applied to \p pred .
+     * \tparam Pred predicate functor type equivalent to std::function<Bool (NodeRef, AEG::NodeRef)>
+     * \param pred predicate functor
+     * \return Set of nodes
+     */
     template <typename Pred>
     relation_type<NodeRef> node_rel_if(Pred pred) {
         relation_type<NodeRef> rel {logic};
@@ -150,6 +168,10 @@ struct Context {
         return rel;
     }
     
+    /** Get the binary relation over NodeRef consisting of all pairs of nodes that satisy the predicate functor \p pred
+     * \tparam Pred Predicate functor type, which should be equivalent to std::function<Bool (NodeRef, NodeRef)>
+     * \param pred Predicate functor
+     */
     template <typename Pred>
     relation_type<NodeRef, NodeRef> binary_rel_if(Pred pred) const {
         relation_type<NodeRef, NodeRef> rel;
@@ -161,13 +183,17 @@ struct Context {
         }
         return rel;
     }
+   
+    relation_type<NodeRef, NodeRef> same_addr() const; /*!< Get the same-address binary relation for Context::aeg. It should be reflexive, symmetric, and transitive, except for entry and exit nodes. */
+    relation_type<NodeRef, NodeRef> same_xstate() const; /*!< Get the same-xstate binary relation for Context::aeg. It should be reflexive, symmetric, and transitive, except for entry and exit nodes. */
     
-    relation_type<NodeRef, NodeRef> co() const;
-    relation_type<NodeRef, NodeRef> fr() const;
-    
-    relation_type<NodeRef, NodeRef> same_addr() const;
-    relation_type<NodeRef, NodeRef> same_xstate() const;
-    
+    /** Filter the relation \p a by applying the function \p func to each member to produce a new membership condition.
+     * \tparam Func Function type, which should be equivalent to std::function<Bool (NodeRef)>.
+     * \tparam Ts Relation member types.
+     * \param a Input relation
+     * \param func Transformation function
+     * \returns New relation with filter given by \p func applied
+     */
     template <typename Func, typename... Ts>
     relation_type<Ts...> filter(const relation_type<Ts...>& a, Func func) const {
         relation_type<Ts...> res {logic};
@@ -177,41 +203,41 @@ struct Context {
         return res;
     }
     
+    /** Construct a new context for \p AEG over the given boolean logic \p logic and using the evaluator \p eval to convert z3 formulae in \p aeg into values of `Bool` type.
+     * \param logic Boolean logic to use
+     * \param eval Evaluator to use to convert z3 formulae in \p aeg into `Bool`
+     * \param aeg AEG to construct relations from.
+     */
     Context(const logic_type& logic, Eval eval, AEG& aeg): logic(logic), eval(eval), aeg(aeg) {}
 };
 
+/** Make an empty relation over the given types \p Ts and using the boolean type \p Bool */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> make_relation(const std::tuple<Ts...>& example_tuple, const Logic<Bool>& logic) {
     return relation<Bool, Ts...>(logic);
 }
 
+/** Symbolic evaluator, which converts boolean expressions to symbolic z3::expr expressions. */
 struct SymEval {
-    z3::context *ctx;
+    z3::context *ctx; /*!< underlying context */
     z3::expr operator()(bool b) const { return ctx->bool_val(b); }
     const z3::expr& operator()(const z3::expr& e) const { return e; }
+    
+    /** \param ctx Underlying context to use */
     SymEval(z3::context& ctx): ctx(&ctx) {}
 };
 
+/** Concrete evaluator, which converts boolean expressions to concrete `bool` expressions. */
 struct ConEval {
-    z3::eval eval;
+    z3::eval eval; /*!< z3 evalutor use for converting z3 expressions to plain `bool`s */
     bool operator()(bool b) const { return b; }
     bool operator()(const z3::expr& e) const { return eval(e); }
+    
+    /** \param eval Z3 evaluator to use */
     ConEval(const z3::eval& eval): eval(eval) {}
 };
 
-#if 0
-template <typename T, typename U>
-std::unordered_map<T, std::unordered_set<U>> to_map(const relation<T,U>& rel) {
-    std::unordered_map<T, std::unordered_set<U>> map;
-    for (const auto& p : rel) {
-        const auto& tuple = p.first;
-        map[std::get<0>(tuple)].insert(std::get<1>(tuple));
-    }
-    return map;
-}
-#endif
-
-// relation union
+/** Relational union. Performs \f$ a \gets a \cup b \f$. */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...>& operator+=(relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     for (const auto& pair : b) {
@@ -221,13 +247,15 @@ relation<Bool, Ts...>& operator+=(relation<Bool, Ts...>& a, const relation<Bool,
     return a;
 }
 
+/** Relational union.
+ * \return \f$ a \cup b \f$ */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> operator+(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     auto res = a;
     return res += b;
 }
 
-// relation difference
+/** Relational difference. Performs \f$ a \gets a \setminus b \f$. */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> operator-=(relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     for (const auto& pair : b) {
@@ -237,12 +265,16 @@ relation<Bool, Ts...> operator-=(relation<Bool, Ts...>& a, const relation<Bool, 
     return a;
 }
 
+/** Relational difference.
+ * \return \f$ a \setminus b \f$ */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> operator-(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     auto res = a;
     return res -= b;
 }
 
+/** Relation intersection.
+ * \return \f$ a \cap b \f$ */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> operator&(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     relation<Bool, Ts...> res {a.logic};
@@ -256,53 +288,33 @@ relation<Bool, Ts...> operator&(const relation<Bool, Ts...>& a, const relation<B
     return res;
 }
 
+/** Relation intersection. Performs \f$ a \gets a \cap b \f$. */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...>& operator&=(relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     return a = a & b;
 }
 
-template <std::size_t I, typename... Ts>
-auto invert_tuple(const std::tuple<Ts...>& in) {
-    constexpr std::size_t N = sizeof...(Ts);
-    if constexpr (I == N) {
-        return std::make_tuple();
-    } else {
-        return std::tuple_cat(invert_tuple<I+1, Ts...>(in), std::make_tuple(std::get<I>(in)));
-    }
-}
-
-template <typename Bool, typename... Ts>
-auto invert_tuple(const std::tuple<Bool, Ts...>& in) {
-    return invert_tuple<0, Bool, Ts...>(in);
-}
-
-
-template <std::size_t Begin, std::size_t End, typename Bool, typename... Ts>
-auto get_tuple_slice(const std::tuple<Ts...>& in) {
-    if constexpr (Begin == End) {
-        return std::make_tuple();
-    } else {
-        return std::tuple_cat(std::make_tuple(std::get<Begin>(in)), get_tuple_slice<Begin+1, End, Bool>(in));
-    }
-}
-
-
-// relation inverse
+/** Relational inverse.
+ * \return \f$ \left\{ \left(a_n, \ldots, a_1 \right) \mid \left(a_1, \ldots, a_n \right) \in \texttt{in} \right\}  \f$
+ */
 template <typename Bool, typename... Ts>
 auto inverse(const relation<Bool, Ts...>& in) {
-    const auto out_tuple = invert_tuple(std::tuple<Ts...>());
+    const auto out_tuple = tuples::invert(std::tuple<Ts...>());
     auto out = make_relation(out_tuple, in.logic);
     std::transform(in.begin(), in.end(), std::inserter(out.map, out.map.end()), [] (const auto& in_pair) {
-        return std::make_pair(invert_tuple(in_pair.first), in_pair.second);
+        return std::make_pair(tuples::invert(in_pair.first), in_pair.second);
     });
     return out;
 }
 
+/** Relational inverse. See inverse(). */
 template <typename Bool, typename... Ts>
 auto operator~(const relation<Bool, Ts...>& a) {
     return inverse(a);
 }
 
+/** Cartesian product of two relations.
+ * \return \f$ a \times b \f$ */
 template <typename R1, typename R2>
 auto cartesian_product(const R1& a, const R2& b) {
     const auto example_out_tuple = std::tuple_cat(typename R1::Tuple {}, typename R2::Tuple {});
@@ -315,6 +327,15 @@ auto cartesian_product(const R1& a, const R2& b) {
     return out;
 }
 
+/** Cartesian product of two relations. See cartesian_product(). */
+template <typename R1, typename R2>
+auto operator*(const R1& a, const R2& b) {
+    return cartesian_product(a, b);
+}
+
+/** Inclusive join of two relations.
+ * \return \f$  \left\{ \left( a_1, \ldots, a_{n-1}, b_2, \ldots, b_n \right) \mid \left(a_1, \ldots, a_n \right) \in a \wedge \left(b_1, \ldots, b_n \right) \in b \wedge a_n = b_1 \right\} \f$
+ */
 template <typename R1, typename R2>
 auto join(const R1& a, const R2& b) {
     using Tuple1 = typename R1::Tuple;
@@ -326,8 +347,8 @@ auto join(const R1& a, const R2& b) {
     using Type2 = decltype(std::get<0>(Tuple2 {}));
     static_assert(std::is_same<Type1, Type2>(), "incompatible tuple element types for join");
     const auto join_tuples = [] (const Tuple1& t1, const Tuple2& t2) {
-        return std::tuple_cat(get_tuple_slice<0, Size1-1, Bool>(t1),
-                              get_tuple_slice<1, Size2, Bool>  (t2));
+        return std::tuple_cat(tuples::slice<0, Size1-1, Bool>(t1),
+                              tuples::slice<1, Size2, Bool>  (t2));
     };
     
     const auto example_out_tuple = join_tuples(Tuple1 {}, Tuple2 {});
@@ -347,6 +368,9 @@ auto join(const R1& a, const R2& b) {
     return out;
 }
 
+/** Restrict a position in a relation to be in a given set.
+ * \return \f$  \left\{ (a_1, \ldots, a_n) \mid (a_1, \ldots, a_n) \in a \wedge a_i \in b \right\}\f$, where \a i is equal to \p idx.
+ */
 template <std::size_t idx, typename Bool, typename T, typename... Ts>
 relation<Bool, Ts...> restrict_element(const relation<Bool, Ts...>& a, const relation<Bool, T>& b) {
     static_assert(std::is_same<T, typename std::tuple_element<idx, std::tuple<Ts...>>::type>());
@@ -358,97 +382,43 @@ relation<Bool, Ts...> restrict_element(const relation<Bool, Ts...>& a, const rel
     return res;
 }
 
-#if 0
-// TODO: move this somewhere else, e.g. 'graphutils.h'
-template <typename T>
-class postorder {
-private:
-    using Set = std::unordered_set<T>;
-    using Map = std::unordered_map<T, Set>;
-public:
-    using Rel = relation<T, T>;
-    
-    template <typename OutputIt>
-    OutputIt operator()(const Map& map, OutputIt out) const {
-        // construct map and node set
-        Set srcs;
-        Set dsts;
-        for (const auto& p1 : map) {
-            srcs.insert(p1.first);
-            for (const T p2 : p1.second) {
-                dsts.insert(p2);
-            }
-        }
-        
-        // find entry (in degree 0)
-        T entry;
-        for (const T src : srcs) {
-            if (dsts.find(src) == dsts.end()) {
-                entry = src;
-                break;
-            }
-        }
-        
-        Set done;
-        rec(map, done, out, entry);
-        
-        return out;
-    }
-private:
-    template <typename OutputIt>
-    bool rec(const Map& map, Set& done, OutputIt& out, T cur) const {
-        if (done.find(cur) != done.end()) {
-            return true;
-        }
-        bool acc = true;
-        for (const T succ : map.at(cur)) {
-            acc &= postorder_rec(map, done, out, succ);
-        }
-        
-        if (acc) {
-            done.insert(cur);
-            *out++ = cur;
-        }
-        
-        return acc;
-    }
-};
-#endif
 
 
-// Predicates
+// MARK: Predicates
+
+/** Compute whether this relation is empty.
+ * \return \f$  a \neq \emptyset \f$ */
 template <typename Bool, typename... Ts>
-Bool some(const relation<Bool, Ts...>& rel) {
-    return util::any_of(rel.begin(), rel.end(), [] (const auto& p) -> Bool {
+Bool some(const relation<Bool, Ts...>& a) {
+    return util::any_of(a.begin(), a.end(), [] (const auto& p) -> Bool {
         return p.second;
-    }, rel.logic.F);
+    }, a.logic.F);
 }
 
+/** Compute whether this relation has exactly one element.
+ * \return \f$ \left| a \right| = 1 \f$ */
 template <typename Bool, typename... Ts>
-Bool all(const relation<Bool, Ts...>& rel) {
-    return util::all_of(rel.begin(), rel.end(), [] (const auto& p) -> Bool {
-        return p.second;
-    }, rel.logic.T);
-}
-
-template <typename Bool, typename... Ts>
-Bool one(const relation<Bool, Ts...>& rel) {
+Bool one(const relation<Bool, Ts...>& a) {
     if constexpr (std::is_same<Bool, z3::expr>()) {
-        z3::expr_vector vec {rel.logic.T.ctx()};
-        for (const auto& pair : rel) {
+        z3::expr_vector vec {a.logic.T.ctx()};
+        for (const auto& pair : a) {
             vec.push_back(pair.second);
         }
         return z3::exactly(vec, 1);
     } else {
-        return util::one_of(rel.begin(), rel.end(), [] (const auto& p) -> Bool { return p.second; }, rel.logic.T, rel.logic.F);
+        return util::one_of(a.begin(), a.end(), [] (const auto& p) -> Bool { return p.second; }, a.logic.T, a.logic.F);
     }
 }
 
+/** Compute whether this relation is empty.
+ * \return \f$ a = \emptyset \f$ */
 template <typename Bool, typename... Ts>
-Bool no(const relation<Bool, Ts...>& rel) {
-    return !some(rel);
+Bool no(const relation<Bool, Ts...>& a) {
+    return !some(a);
 }
 
+/** Compute whether this relation has one or zero elements.
+ * \return \f$ \left| a \right| \leq 1 \f$ */
 template <typename Bool, typename... Ts>
 Bool lone(const relation<Bool, Ts...>& rel) {
     if constexpr (std::is_same<Bool, z3::expr>()) {
@@ -462,6 +432,8 @@ Bool lone(const relation<Bool, Ts...>& rel) {
     }
 }
 
+/** Compute whether \p a is a subset of \b
+ * \return \f$ a \subseteq b \f$ */
 template <typename Bool, typename... Ts>
 Bool subset(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     const auto& L = a.logic;
@@ -474,7 +446,8 @@ Bool subset(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     return acc;
 }
 
-// NOTE: We could write this as a bidirection subset, but it's more efficient to rewrite it as equality.
+/** Compute whether two relations are equal.
+ * \return \f$ a = b \f$ */
 template <typename Bool, typename... Ts>
 Bool equal(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     const auto& L = a.logic;
@@ -495,11 +468,28 @@ Bool equal(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     return acc;
 }
 
+/** Compute whether two relations are equal. See equal(). */
+template <typename Bool, typename... Ts>
+Bool operator==(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
+    return equal(a, b);
+}
+
+/** Compute whether two relations are not equal
+ * \return \f$ a \neq b \f$ */
 template <typename Bool, typename... Ts>
 Bool not_equal(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     return !equal(a, b);
 }
 
+/** Compute whether two relations are not equal. See not_equal(). */
+template <typename Bool, typename... Ts>
+Bool operator!=(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
+    return not_equal(a, b);
+}
+
+/** Extract the set consisting of the elements at the given position in the relation.
+ * \tparam N Element position to extract.
+ * \return \f$  \left\{ a_N \mid (a_1, \ldots, a_n) \in a \right\} \f$ */
 template <unsigned N, typename Bool, typename... Ts>
 auto element(const relation<Bool, Ts...>& a) {
     using T = std::remove_reference_t<decltype(std::get<N>(std::tuple<Ts...> {}))>;
@@ -511,7 +501,10 @@ auto element(const relation<Bool, Ts...>& a) {
     return res;
 }
 
-// transitive closure
+/** Compute the irreflexive transitive closure of the binary relation \p a.
+ * \tparam T the type of both elements in the binary relation \p a.
+ * \return \f$   a^* \text{ such that }  \forall (a_1, a_3) \in a^*, \left( \exists a_2 \mid (a_1, a_2), (a_2, a_3) \in a^* \right) \vee (a_1, a_3) \in a \f$
+ */
 template <typename Bool, typename T>
 relation<Bool, T, T> irreflexive_transitive_closure(const relation<Bool, T, T>& a) {
     // keep going until no new constraints added
@@ -565,24 +558,20 @@ relation<Bool, T, T> irreflexive_transitive_closure(const relation<Bool, T, T>& 
     return res;
 }
 
-template <std::size_t N, typename T>
-auto make_repeated_tuple(const T& element) {
-    if constexpr (N == 0) {
-        return std::make_tuple();
-    } else {
-        return std::tuple_cat(std::make_tuple(element), make_repeated_tuple<N-1>(element));
-    }
-}
-
+/** Get the \p N-ary identity relation over set \p a
+ * \return \f$ \left\{ \{x\}^N \mid x \in a \right\} \f$ */
 template <std::size_t N = 2, typename Bool, typename T>
 auto identity(const relation<Bool, T>& a) {
-    auto res = make_relation(make_repeated_tuple<N, T>(T()), a.logic);
+    auto res = make_relation(tuples::make_repeated<N, T>(T()), a.logic);
     for (const auto& pair : a) {
-        res.emplace(make_repeated_tuple<N>(std::get<0>(pair.first)), pair.second);
+        res.emplace(tuples::make_repeated<N>(std::get<0>(pair.first)), pair.second);
     }
     return res;
 }
 
+/** Duplicate the last element of the relation.
+ * \return \f$  \left\{ (a_1, \ldots, a_n, a_n) \mid (a_1, \ldots, a_n) \in a \f$
+ */
 template <typename Bool, typename... Ts>
 auto extend_last(const relation<Bool, Ts...>& a) {
     constexpr std::size_t last = sizeof...(Ts) - 1;
@@ -594,12 +583,15 @@ auto extend_last(const relation<Bool, Ts...>& a) {
     return res;
 }
 
+/** Inclusive join.
+ * \return \f$ \left\{ (a_1, \ldots, a_n, b_2, \ldots, b_m) \mid (a_1, \ldots, a_n) \in a \wedge (b_1, \ldots, b_m) \in b \wedge a_n = b_1  \right\} \f$ */
 template <typename Rel1, typename Rel2>
 auto join2(const Rel1& a_, const Rel2& b) {
     const auto a = extend_last(a_);
     return join(a, b);
 }
 
+/** Check whether the relation is cylic. */
 template <typename Bool, typename T>
 Bool cyclic(const relation<T,T>& a) {
     const relation<Bool, T> srcs = element<0>(a);
@@ -608,6 +600,7 @@ Bool cyclic(const relation<T,T>& a) {
     return some(id & closure);
 }
 
+/** Check whether the relation is acyclic. */
 template <typename Bool, typename T>
 Bool acyclic(const relation<Bool, T, T>& a) {
     return !cyclic(a);
@@ -655,74 +648,6 @@ Bool for_none(const relation<Bool, Ts...>& rel, const for_func<Bool, Ts...>& f) 
     return util::none_of(rel.begin(), rel.end(), [&] (const auto& pair) {
         return pair.second && f(pair.first);
     }, L.T, L.F);
-}
-
-
-
-template <typename Bool, typename Eval>
-relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::co() const {
-    NodeRefVec writes;
-    aeg.get_writes(std::back_inserter(writes));
-    
-    relation<Bool, NodeRef, NodeRef> rel {logic};
-    for (auto it1 = writes.begin(); it1 != writes.end(); ++it1) {
-        for (auto it2 = writes.begin(); it2 != writes.end(); ++it2) {
-            const auto f = aeg.co_exists(*it1, *it2);
-            if (!f.is_false()) {
-                const auto tuple = std::make_tuple(*it1, *it2);
-                const AEG::Node& src = aeg.lookup(*it1);
-                const AEG::Node& dst = aeg.lookup(*it2);
-                rel.emplace(tuple, eval(src.arch && dst.arch && src.same_addr(dst)));
-            }
-        }
-    }
-    
-    return rel;
-}
-
-#if 0
-template <typename Bool, typename Eval>
-relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::rf() const {
-    using Node = UHBNode;
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    relation<Bool, NodeRef, NodeRef> rel {logic};
-    using ::operator<<;
-    std::cerr << "ORDER: " << order << "\n";
-    for (auto it1 = order.begin(); it1 != order.end(); ++it1) {
-        const Node& src = aeg.lookup(*it1);
-        if (!src.is_write()) { continue; }
-        for (auto it2 = std::next(it1); it2 != order.end(); ++it2) {
-            const Node& dst = aeg.lookup(*it2);
-            if (!dst.is_read()) { continue; }
-            if (*it1 == 0) {
-                std::cerr << "rf_exists(0, " << *it2 << ") = " << aeg.rf_exists(*it1, *it2) << "\n";
-            }
-            const z3::expr exists = aeg.rf_exists(*it1, *it2);
-            rel.emplace(std::make_tuple(*it1, *it2), eval(exists));
-        }
-    }
-    return rel;
-}
-#endif
-
-template <typename Bool, typename Eval>
-relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::fr() const {
-    using Node = UHBNode;
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    relation_type<NodeRef, NodeRef> rel {logic};
-    for (auto it1 = order.begin(); it1 != order.end(); ++it1) {
-        const Node& src = aeg.lookup(*it1);
-        if (!src.is_read()) { continue; }
-        for (auto it2 = std::next(it1); it2 != order.end(); ++it2) {
-            const Node& dst = aeg.lookup(*it2);
-            if (!dst.is_write()) { continue; }
-            const z3::expr exists = aeg.fr_exists(*it1, *it2);
-            rel.emplace(std::make_tuple(*it1, *it2), eval(exists));
-        }
-    }
-    return rel;
 }
 
 template <typename Bool, typename Eval>

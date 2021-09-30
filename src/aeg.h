@@ -502,38 +502,6 @@ OutputIt AEG::get_concrete_com(const z3::eval& eval, OutputIt out) {
     });
     
     // rf
-#if 0
-    std::unordered_map<z3::expr, NodeRef> mem;
-    for (const NodeRef ref : path) {
-        const Node& node = lookup(ref);
-        switch (node.inst.kind) {
-            case Inst::READ: {
-                const z3::expr addr = model.eval(lookup(ref).get_memory_address());
-                const auto mem_it = mem.find(addr);
-                const NodeRef src = mem_it == mem.end() ? entry : mem_it->second;
-                *out++ = std::make_tuple(src, ref, Edge::RF);
-                break;
-            }
-                
-            case Inst::WRITE: {
-                const z3::expr addr = model.eval(lookup(ref).get_memory_address());
-                mem[addr] = ref;
-                break;
-            }
-                
-            case Inst::ENTRY: break;
-            case Inst::EXIT: {
-                for (const auto& p : mem) {
-                    *out++ = std::make_tuple(p.second, ref, Edge::RF);
-                }
-                break;
-            }
-                
-            case Inst::OTHER: break;
-            default: std::abort();
-        }
-    }
-#else
     for (auto it1 = path.begin(); it1 != path.end(); ++it1) {
         for (auto it2 = std::next(it1); it2 != path.end(); ++it2) {
             if (eval(rf_exists(*it1, *it2))) {
@@ -541,7 +509,6 @@ OutputIt AEG::get_concrete_com(const z3::eval& eval, OutputIt out) {
             }
         }
     }
-#endif
     
     // co
     for (auto it1 = path.begin(); it1 != path.end(); ++it1) {
