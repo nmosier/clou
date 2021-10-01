@@ -125,7 +125,6 @@ private:
             }
         }
     };
-    void pass_resolve_addr_refs();
     
     template <typename InputIt>
     void connect(InputIt src_begin, InputIt src_end, NodeRef dst) {

@@ -25,9 +25,25 @@ inline z3::expr max(const z3::expr_vector& exprs) {
     return acc;
 }
 
+inline z3::expr atmost2(const z3::expr_vector& exprs, unsigned count) {
+    if (exprs.size() <= count) {
+        return exprs.ctx().bool_val(true);
+    } else {
+        return z3::atmost(exprs, count);
+    }
+}
+
+inline z3::expr atleast2(const z3::expr_vector& exprs, unsigned count) {
+    if (exprs.size() < count) {
+        return exprs.ctx().bool_val(false);
+    } else {
+        return z3::atleast(exprs, count);
+    }
+}
+
 inline z3::expr exactly(const z3::expr_vector& exprs, unsigned count) {
-    const z3::expr lower = z3::atleast(exprs, count);
-    const z3::expr upper = z3::atmost(exprs, count);
+    const z3::expr lower = z3::atleast2(exprs, count);
+    const z3::expr upper = z3::atmost2(exprs, count);
     return lower && upper;
 }
 

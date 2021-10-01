@@ -16,3 +16,4 @@ link_directories(${LIBPROFILER_LIBRARY_DIRS})
 
 add_subdirectory(src)
 add_subdirectory(docs)
+add_subdirectory(test)

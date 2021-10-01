@@ -19,7 +19,6 @@ void AEGPO_Unrolled::construct() {
         add_edge(exit_pair.second, exit);
     }
     prune();
-    pass_resolve_addr_refs();
 }
 
 void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
@@ -260,74 +259,6 @@ void AEGPO_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids)
     NodeRefSet func_nodes;
     construct_loop_forest(&LF, port, ids);
 }
-
-void AEGPO_Unrolled::pass_resolve_addr_refs() {
-#if 0
-    // use a reverse postorder traversal
-    std::unordered_map<NodeRef, Binding> bindings;
-    std::vector<NodeRef> order;
-    reverse_postorder(std::back_inserter(order));
-    
-    // Get mapping from translation key to node ref
-    std::unordered_map<Translations::Key, NodeRef, Translations::Key::Hash> defs;
-    for (NodeRef ref : order) {
-        const Node& node = lookup(ref);
-        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
-            const llvm::Instruction *I = *Ip;
-            const Translations::Key key(node.id->func, I);
-            defs.emplace(key, ref);
-        }
-    }
-    
-    for (NodeRef ref : order) {
-        Node& node = lookup(ref);
-        
-        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
-            const auto *I = *Ip;
-            for (const llvm::Value *V : I->operand_values()) {
-                std::vector<Translations::Key> sources;
-                const Translations::Key key(node.id->func, I);
-                translations.lookup(key, std::back_inserter(sources));
-                assert(!sources.empty());
-                for (const auto& source : sources) {
-                    node.refs.emplace(V, defs.at(source));
-                }
-            }
-        }
-        
-#if 0
-        
-        // compute binding: is union of all incoming paths
-        Binding binding;
-        const auto& preds = po.rev.at(ref);
-        for (NodeRef pred : preds) {
-            binding.join(bindings.at(pred));
-        }
-        
-        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
-            const llvm::Instruction *I = *Ip;
-            binding.insts.emplace(I, ref);
-            // TODO: Need to resolve operand dependencies.
-            for (const llvm::Value *V : I->operand_values()) {
-                if (std::optional<NodeRefSet> def = binding.bind(V)) {
-                    node.refs.emplace(V, *def);
-                } else {
-                    assert(llvm::dyn_cast<llvm::Instruction>(V) == nullptr);
-                }
-            }
-        }
-        
-        bindings.emplace(ref, binding);
-#else
-        
-        
-        
-#endif
-        
-    }
-#endif
-}
-
 
 std::optional<NodeRefSet> AEGPO_Unrolled::Binding::bind(const llvm::Value *V) const {
     if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {

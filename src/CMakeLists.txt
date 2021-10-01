@@ -16,6 +16,7 @@ add_library(lcm MODULE
   leakage.cc
   taint_bv.cc
   shm.cc
+  spec-prim.cc
   )
 
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)

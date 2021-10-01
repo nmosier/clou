@@ -346,182 +346,11 @@ void AEG::construct_tfo2() {
         
         // add 'at most one tfo successor' constraint
         if (exits.find(src) == exits.end()) {
-            src_node.constraints(z3::implies(src_node.exec(), z3::atmost(tfos, 1)), "tfo-succ");
+            src_node.constraints(z3::implies(src_node.exec(), z3::atmost2(tfos, 1)), "tfo-succ");
         }
     }
     std::cerr << "added " << nedges << " tfo edges\n";
 }
-
-
-#if 0
-void AEG::construct_tfo2() {
-    /* This adds a reduced tfo, specifically not including back-edges, since these are the most complex.
-     */
-    Progress progress;
-    
-    logv(3) << __FUNCTION__ << ": adding edges\n";
-    std::size_t n_fwd_edges = 0;
-    for (const NodeRef dst : node_range()) {
-        const Node& dst_node = lookup(dst);
-        for (const NodeRef src : po.po.rev.at(dst)) {
-            const Node& src_node = lookup(src);
-            
-            z3::expr cond = context.FALSE;
-            
-            // TODO: this should make sure the condition doesn't simplify to false! Or at least add_optional_edge should.
-            const auto add_tfo = [&] (const z3::expr& e) -> z3::expr {
-                ++n_fwd_edges;
-                return add_optional_edge(src, dst, Edge {Edge::TFO, e});
-            };
-            
-            // (arch, arch)
-            const z3::expr arch_arch = add_tfo(src_node.arch && dst_node.arch);
-            
-            // (arch, trans)
-            const z3::expr arch_trans = add_tfo(can_introduce_trans(src) && src_node.arch && dst_node.trans);
-            
-            // (trans, trans)
-            const z3::expr trans_trans = add_tfo(src_node.trans && dst_node.trans);
-        }
-    }
-    logv(3) << __FUNCTION__ << ": added " << n_fwd_edges << " forward edges\n";
-    
-    // exactly one predecessor
-    logv(3) << __FUNCTION__ << ": adding constraint 'exactly one predecessor'\n";
-    progress = Progress(size());
-    for (const NodeRef dst : node_range()) {
-        if (dst != entry) {
-            const auto tfos = get_edges(Direction::IN, dst, Edge::TFO);
-            z3::expr_vector vec {context};
-            for (const auto& tfo : tfos) {
-                vec.push_back(tfo->exists);
-            }
-            Node& node = lookup(dst);
-            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-pred");
-        }
-        ++progress;
-    }
-    progress.done();
-    
-    // exactly one successor
-    logv(3) << __FUNCTION__ << ": adding constraint 'exactly one successor'\n";
-    for (const NodeRef ref : node_range()) {
-        if (exits.find(ref) == exits.end()) {
-            const auto tfos = get_edges(Direction::OUT, ref, Edge::TFO);
-            z3::expr_vector vec {context};
-            for (const auto& tfo : tfos) {
-                vec.push_back(tfo->exists);
-            }
-            Node& node = lookup(ref);
-            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-succ");
-        }
-    }
-}
-#endif
-
-#if 0
-void AEG::construct_tfo() {
-    /* Consider multiple cases for tfo destination nodes.
-     * If all predecessors have one successor, then that is the exact set.
-     *
-     * Condider each (pred, dst) pair in turn.
-     * If the predecessor has one successor, then just add the tfo edge (pred, dst).
-     * If the predecessor has multiple successors, add the tfo edge (pred, dst) but also add tfo edges from other successors of the predecessor up until a node has multiple predecessors.
-     */
-    Progress progress;
-    
-    logv(3) << __FUNCTION__ << ": adding edges\n";
-    std::size_t n_fwd_edges = 0, n_rev_edges = 0;
-    for (const NodeRef dst : node_range()) {
-        const Node& dst_node = lookup(dst);
-        for (const NodeRef src : po.po.rev.at(dst)) {
-            const Node& src_node = lookup(src);
-            
-            z3::expr cond = context.FALSE;
-            
-            // (arch, arch)
-            cond = cond || (src_node.arch && dst_node.arch);
-            
-            // (arch, trans)
-            cond = cond || (src_node.arch && dst_node.trans && po.po.fwd.at(src).size() > 1);
-            
-            // (trans, trans)
-            cond = cond || (src_node.trans && dst_node.trans);
-            
-            const z3::expr exists = add_optional_edge(src, dst, Edge {Edge::TFO, cond}, "tfo-fwd");
-            ++n_fwd_edges;
-            
-            
-            const auto& succs = po.po.fwd.at(src);
-            std::vector<std::pair<NodeRef, unsigned>> todo;
-            std::unordered_map<NodeRef, unsigned> seen;
-            std::transform(succs.begin(), succs.end(), std::back_inserter(todo), [] (NodeRef ref) {
-                return std::make_pair(ref, 1U);
-            });
-            while (!todo.empty()) {
-                const auto pair = todo.back();
-                const NodeRef ref = pair.first;
-                const auto spec_depth = pair.second;
-                todo.pop_back();
-                
-                if (spec_depth > num_specs()) {
-                    continue;
-                }
-                
-                const auto seen_it = seen.find(ref);
-                if (seen_it != seen.end() && seen_it->second < spec_depth) {
-                    continue;
-                }
-                
-                seen[ref] = spec_depth;
-                
-                const auto& ref_preds = po.po.rev.at(ref);
-                if (ref_preds.size() == 1) {
-                    const Node& ref_node = lookup(ref);
-                    add_optional_edge(ref, dst, Edge {Edge::TFO, ref_node.trans && dst_node.arch}, "tfo-rev");
-                    ++n_rev_edges;
-                    const auto& ref_succs = po.po.fwd.at(ref);
-                    std::transform(ref_succs.begin(), ref_succs.end(), std::back_inserter(todo), [&] (NodeRef ref) {
-                        return std::make_pair(ref, spec_depth + 1);
-                    });
-                }
-            }
-        }
-    }
-    logv(3) << __FUNCTION__ << ": added " << n_fwd_edges << " forward edges and " << n_rev_edges << " backward edges\n";
-    
-    // exactly one predecessor
-    logv(3) << __FUNCTION__ << ": adding constraint 'exactly one predecessor'\n";
-    progress = Progress(size());
-    for (const NodeRef dst : node_range()) {
-        if (dst != entry) {
-            const auto tfos = get_edges(Direction::IN, dst, Edge::TFO);
-            z3::expr_vector vec {context};
-            for (const auto& tfo : tfos) {
-                vec.push_back(tfo->exists);
-            }
-            Node& node = lookup(dst);
-            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-pred");
-        }
-        ++progress;
-    }
-    progress.done();
-    
-    // exactly one successor
-    logv(3) << __FUNCTION__ << ": adding constraint 'exactly one successor'\n";
-    for (const NodeRef ref : node_range()) {
-        if (exits.find(ref) == exits.end()) {
-            const auto tfos = get_edges(Direction::OUT, ref, Edge::TFO);
-            z3::expr_vector vec {context};
-            for (const auto& tfo : tfos) {
-                vec.push_back(tfo->exists);
-            }
-            Node& node = lookup(ref);
-            node.constraints(z3::implies(node.exec(), z3::exactly(vec, 1)), "tfo-succ");
-        }
-    }
-}
-#endif
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     using ID = AEGPO::ID;
@@ -663,29 +492,6 @@ void AEG::construct_comx() {
     construct_xsaccess_order(xsaccesses);
 }
 
-
-#if 0
-void AEG::construct_trans_group() {
-    for (NodeRef ref : node_range()) {
-        Node& node = lookup(ref);
-        const auto& preds = po.po.rev.at(ref);
-        if (preds.size() == 1) {
-            const NodeRef pred = *preds.begin();
-            node.trans_group = context.make_int("trans_group");
-            const Node& pred_node = lookup(pred);
-            
-            node.trans_group = z3::ite(node.trans,
-                                       z3::ite(pred_node.trans,
-                                               pred_node.trans_group,
-                                               context.context.int_val(node.exec_order)),
-                                       context.context.int_val(-1));
-        } else {
-            node.trans_group = context.context.int_val(-1);
-        }
-    }
-}
-#endif
-
 // TODO: need to come up with definitive po edges. Then we can reference these directly.
 
 void AEG::construct_arch_order() {
@@ -743,73 +549,11 @@ void AEG::construct_exec_order() {
     }
 }
 
-void AEG::construct_trans_group() {
-    // TODO: need to fix
-    
-    // trans group min
-    {
-        NodeRefVec order;
-        po.reverse_postorder(std::back_inserter(order));
-        for (NodeRef ref : order) {
-            Node& node = lookup(ref);
-            NodeRef pred;
-            if (can_trans(ref, pred)) {
-                // can be speculated
-                const Node& pred_node = lookup(pred);
-                if (can_introduce_trans(pred)) {
-                    // can introduce speculation, so multiplex
-                    // NOTE: Again, since we're looking at only trans nodes, we don't consider those weird TFO rollback edges.
-                    node.trans_group_min = context.make_int("trans_group_min");
-                    const z3::expr f = z3::implies(node.trans, node.trans_group_min == z3::ite(pred_node.trans, pred_node.trans_group_min, node.exec_order));
-                    node.constraints(f, "trans-group-min");
-                } else {
-                    // cannot introduce speculation, so just reuse predecessor minimum
-                    // NOTE: The reason that this is true is nuanced -- non-CFG TFO edges can only be introduced when the src is trans and dst is arch, but here we're assuming the dst is trans, so we can ignore such non-CFG edges.
-                    node.trans_group_min = pred_node.trans_group_min;
-                }
-            } else {
-                // can't be speculated, so just set to some bogus value
-                node.trans_group_min = context.context.int_val(-1);
-            }
-        }
-    }
-    
-    // trans group max
-    {
-        NodeRefVec order;
-        po.postorder(std::back_inserter(order));
-        for (NodeRef ref : order) {
-            Node& node = lookup(ref);
-            if (can_trans(ref)) {
-                // can be speculated
-                node.trans_group_max = context.make_int("trans_group_max");
-                
-                z3::expr max = node.exec_order;
-                for (NodeRef succ : po.po.fwd.at(ref)) {
-                    const Node& succ_node = lookup(succ);
-                    max = z3::ite(succ_node.trans, succ_node.trans_group_max, max);
-                }
-                
-                const z3::expr f = z3::implies(node.trans, node.trans_group_max == max);
-                node.constraints(f, "trans-group-max");
-            } else {
-                // can't be speculated, so set to some bogus value
-                node.trans_group_max = context.context.int_val(-1);
-            }
-        }
-    }
-}
-
 void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
     // add variables
     for (NodeRef ref : xsaccesses) {
         Node& node = lookup(ref);
         node.xsaccess_order = context.make_int("xsaccess_order");
-
-#if 0
-        // dummy constraint
-        node.constraints(*node.xsaccess_order >= 0, "xsaccess-dummy");
-#endif
     }
     
     // require that all exits have same sequence number (not absolutely necessary)
