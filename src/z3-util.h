@@ -1,7 +1,10 @@
 #pragma once
 
 #include <type_traits>
+#include <unordered_map>
+
 #include <z3++.h>
+
 
 inline z3::expr& operator&=(z3::expr& a, const z3::expr& b) {
    a = a && b;
@@ -75,8 +78,10 @@ inline z3::expr operator==(const z3::expr& a, const concrete_value& b) {
 
 struct eval {
     const z3::model model;
-    eval(const z3::model& model): model(model) {}
-    concrete_value operator()(const z3::expr& val) const { return {model.eval(val, true)}; }
+    explicit eval(const z3::model& model): model(model) {}
+    concrete_value operator()(const z3::expr& val) const {
+        return {model.eval(val, true)};
+    }
 };
 
 inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3::expr& v, const z3::expr& c) {

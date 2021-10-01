@@ -168,7 +168,7 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
                     flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
                     flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
                 }
-                output_execution(dot.str(), eval.model, flag_edges);
+                output_execution(dot.str(), eval, flag_edges);
                 
                 for (const Leakage& lkg : new_leakages) {
                     std::stringstream ss;
@@ -210,6 +210,7 @@ done:
 
 template <typename OutputIt>
 OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
+#if 0
     // get xsaccess order
     const auto xsaccess_less = [&] (NodeRef a, NodeRef b) -> bool {
         return (bool) eval(Node::xsaccess_order_less(*this)(a, b));
@@ -222,30 +223,40 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
             xsaccesses.insert(ref);
         }
     }
-    
+#endif
+
+#if 0
     NodeRefVec accesses;
     get_path(eval, std::back_inserter(accesses));
+#endif
     
     // TODO: do this analysis in axiomatic land, just on rf, rfx, etc. relations?
     
     
     fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
+    const auto reads = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
+        return node.is_read() && node.arch;
+    });
+    const auto writes = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
+        return node.is_write() && node.arch;
+    });
+    const auto accesses = reads + writes;
+    const auto xswrites = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xswrite; });
+    const auto xsreads = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xsread; });
+    const auto entry = fol_ctx.node_rel(Inst::ENTRY, ExecMode::ARCH);
+    const auto exit = fol_ctx.node_rel(Inst::EXIT, ExecMode::ARCH);
+    const auto exec = fol_ctx.node_rel(ExecMode::EXEC);
+
     const auto rf = fol_ctx.edge_rel(Edge::RF);
     const auto co = fol_ctx.edge_rel(Edge::CO);
     const auto fr = fol_ctx.edge_rel(Edge::FR);
     const auto rfx = fol_ctx.edge_rel(Edge::RFX);
     const auto cox = fol_ctx.edge_rel(Edge::COX);
     const auto frx = fol_ctx.edge_rel(Edge::FRX);
-    const auto entry = fol_ctx.node_rel(Inst::ENTRY, ExecMode::ARCH);
-    const auto exit = fol_ctx.node_rel(Inst::EXIT, ExecMode::ARCH);
-    const auto exec = fol_ctx.node_rel(ExecMode::EXEC);
     const auto same_addr = fol_ctx.same_addr();
     const auto same_xstate = fol_ctx.same_xstate();
     const auto addr = fol_ctx.edge_rel(Edge::ADDR);
     const auto flags = fol::element<1>(addr);
-    const auto xswrites = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xswrite; });
-    const auto xsreads = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xsread; });
-    const auto writes = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.arch && node.is_write(); });
     
     /* rf/rfx leakage */
     {

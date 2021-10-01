@@ -194,6 +194,8 @@ public:
     }
     
     z3::expr exists(Edge::Kind kind, NodeRef src, NodeRef dst);
+    z3::expr exists_src(Edge::Kind kind, NodeRef src) const;
+    z3::expr exists_dst(Edge::Kind kind, NodeRef dst) const;
     
 private:
     z3::expr com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Access dst_kind) const;

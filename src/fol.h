@@ -661,19 +661,27 @@ relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::same_addr() const {
 
 template <typename Bool, typename Eval>
 relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::same_xstate() const {
-    return binary_rel_if([&] (NodeRef ref1, NodeRef ref2) -> z3::expr {
-        const auto& node1 = aeg.lookup(ref1);
-        const auto& node2 = aeg.lookup(ref2);
-        return node1.exec() && node2.exec() && node1.same_xstate(node2); // TODO: is the exec check redundant
-    });
+    relation_type<NodeRef, NodeRef> rel;
+    const auto skip = [&] (NodeRef ref) -> bool {
+        return logic.is_false(eval(aeg.lookup(ref).xsaccess()));
+    };
+    for (NodeRef src : aeg.node_range()) {
+        if (skip(src)) { continue; }
+        for (NodeRef dst : aeg.node_range()) {
+            if (skip(dst)) { continue; }
+            rel.emplace(std::make_tuple(src, dst), aeg.lookup(src).same_xstate(aeg.lookup(dst)));
+        }
+    }
+    return rel;
 }
-
 
 template <typename Bool, typename Eval>
 relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::edge_rel(UHBEdge::Kind kind) const {
     relation_type<NodeRef, NodeRef> rel {logic};
-    for (NodeRef src : aeg.node_range()) {
-        for (NodeRef dst : aeg.node_range()) {
+    for (const NodeRef src : aeg.node_range()) {
+        if (logic.is_false(eval(aeg.exists_src(kind, src)))) { continue; }
+        for (const NodeRef dst : aeg.node_range()) {
+            if (logic.is_false(eval(aeg.exists_dst(kind, dst)))) { continue; }
             rel.emplace(std::make_tuple(src, dst), eval(aeg.exists(kind, src, dst)));
         }
     }

@@ -294,7 +294,8 @@ void AEG::test() {
         solver.push();
         solver.add(addr_expr);
         if (solver.check() == z3::sat) {
-            output_execution("addr.dot", solver.get_model());
+            z3::eval eval {solver.get_model()};
+            output_execution("addr.dot", eval);
         } else {
             const auto exprs = solver.unsat_core();
             std::cerr << exprs << "\n";
@@ -303,11 +304,7 @@ void AEG::test() {
         solver.pop();
         
         Timer timer;
-#if 0
-        const auto nleaks = leakage(solver);
-#else
         const auto nleaks = leakage2(solver, 32);
-#endif
         std::cerr << "Detected " << nleaks << " leaks.\n";
         if (nleaks == 0) {
             return;
@@ -735,6 +732,38 @@ z3::expr AEG::exists(Edge::Kind kind, NodeRef src, NodeRef dst) {
             }
         }
             
+        default: std::abort();
+    }
+}
+
+z3::expr AEG::exists_src(Edge::Kind kind, NodeRef src) const {
+    const Node& node = lookup(src);
+    switch (kind) {
+        case Edge::PO: return node.arch;
+        case Edge::TFO: return node.exec();
+        case Edge::RF: return node.arch && node.is_write();
+        case Edge::CO: return node.arch && node.is_write();
+        case Edge::FR: return node.arch && node.is_read();
+        case Edge::RFX: return node.exec() && node.xswrite;
+        case Edge::COX: return node.exec() && node.xswrite;
+        case Edge::FRX: return node.exec() && node.xsread;
+        case Edge::ADDR: return node.exec() && node.is_read();
+        default: std::abort();
+    }
+}
+
+z3::expr AEG::exists_dst(Edge::Kind kind, NodeRef dst) const {
+    const Node& node = lookup(dst);
+    switch (kind) {
+        case Edge::PO: return node.arch;
+        case Edge::TFO: return node.exec();
+        case Edge::RF: return node.arch && node.is_read();
+        case Edge::CO: return node.arch && node.is_write();
+        case Edge::FR: return node.arch && node.is_write();
+        case Edge::RFX: return node.exec() && node.xsread;
+        case Edge::COX: return node.exec() && node.xswrite;
+        case Edge::FRX: return node.exec() && node.xswrite;
+        case Edge::ADDR: return node.exec() && node.is_memory_op();
         default: std::abort();
     }
 }

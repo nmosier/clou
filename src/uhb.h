@@ -134,8 +134,13 @@ struct UHBNode {
     UHBConstraints constraints;
     
     z3::context& ctx() const { return arch.ctx(); }
+#if 0
     z3::expr exec() const { return (arch || trans).simplify(); }
     z3::expr xsaccess() const { return (xsread || xswrite).simplify(); }
+#else
+    z3::expr exec() const { return arch || trans; }
+    z3::expr xsaccess() const { return xsread || xswrite; }
+#endif
     const z3::expr& xsaccess(XSAccess kind) const {
         switch (kind) {
             case XSREAD: return xsread;
