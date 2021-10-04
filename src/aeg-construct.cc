@@ -562,6 +562,14 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
     }
     
 
+#if 1
+    // DEBUG: make them all distinct
+    z3::expr_vector vec {context.context};
+    for (NodeRef ref : xsaccesses) {
+        vec.push_back(*lookup(ref).xsaccess_order);
+    }
+    constraints(z3::distinct(vec), "xsaccess-order-distinct");
+#endif
 }
 
 z3::expr AEG::comx_exists_precond(NodeRef src, NodeRef dst, XSAccess src_kind, XSAccess dst_kind) const {
@@ -569,7 +577,9 @@ z3::expr AEG::comx_exists_precond(NodeRef src, NodeRef dst, XSAccess src_kind, X
     const Node& dst_node = lookup(dst);
     const z3::expr src_access = src_node.xsaccess(src_kind);
     const z3::expr dst_access = dst_node.xsaccess(dst_kind);
-    if (src_access.is_false() || dst_access.is_false()) {
+    
+    // TODO: make xsaccess return optional.
+    if (src_access.simplify().is_false() || dst_access.simplify().is_false()) {
         return context.FALSE;
     }
     return src_access && dst_access && src_node.exec() && dst_node.exec() && src_node.same_xstate(dst_node);
@@ -599,10 +609,35 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
         if (node.xswrite.is_false()) { continue; }
-        intervening = intervening || node.exec() && node.xswrite && node.same_xstate(src_node) && less(src, ref) && less(ref, dst);
+        
+        // TODO: this can be simplified in most cases -- only need 1 xstate comparison unless dealing with special nodes.
+        intervening = intervening || node.exec() && node.xswrite && node.same_xstate(src_node) && node.same_xstate(dst_node) && less(src, ref) && less(ref, dst);
     }
     
     return precond && cond && !intervening;
+}
+
+z3::expr AEG::dbg_intervening_xswrite(NodeRef src, NodeRef dst) {
+    const Node& src_node = lookup(src);
+    const Node& dst_node = lookup(dst);
+    
+    if (src_node.inst.kind == Inst::ENTRY && dst_node.inst.kind == Inst::EXIT) {
+        return src_node.exec() && dst_node.exec();
+    }
+    
+    const UHBNode::xsaccess_order_less less {*this};
+    const z3::expr precond = comx_exists_precond(src, dst, XSWRITE, XSREAD);
+    if (precond.is_false()) { return context.FALSE; }
+
+    const z3::expr cond = less(src, dst);
+    z3::expr intervening = context.context.int_val(-1);
+    for (NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (node.xswrite.is_false()) { continue; }
+        intervening = z3::ite(node.exec() && node.xswrite && node.same_xstate(src_node) && less(src, ref) && less(ref, dst), context.context.int_val((int) ref), intervening);
+    }
+    
+    return intervening;
 }
 
 z3::expr AEG::frx_exists(NodeRef src, NodeRef dst) const {
