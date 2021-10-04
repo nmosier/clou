@@ -205,7 +205,7 @@ public:
     z3::expr fr_exists(NodeRef src, NodeRef dst);
     
 private:
-    z3::expr comx_exists_precond(NodeRef src, NodeRef dst, XSAccess src_kind, XSAccess dst_kind) const;
+    z3::expr comx_exists_precond(NodeRef src, NodeRef dst, XSAccessType src_kind, XSAccessType dst_kind) const;
 public:
     z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;

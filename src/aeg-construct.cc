@@ -462,7 +462,7 @@ void AEG::construct_comx() {
 
         if (!node.is_special()) {
             node.xstate = context.make_int("xstate");
-            node.constraints(node.xstate == node.get_memory_address(), "xstate-addr-eq");
+            node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
             if (xsread != NO || xswrite != NO) {
                 xsaccesses.insert(i);
             }
@@ -572,7 +572,7 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
 #endif
 }
 
-z3::expr AEG::comx_exists_precond(NodeRef src, NodeRef dst, XSAccess src_kind, XSAccess dst_kind) const {
+z3::expr AEG::comx_exists_precond(NodeRef src, NodeRef dst, XSAccessType src_kind, XSAccessType dst_kind) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     const z3::expr src_access = src_node.xsaccess(src_kind);

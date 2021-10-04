@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 usage() {
     cat <<EOF
 usage: $0 [-hg] arg...
@@ -9,7 +11,7 @@ EOF
 JOBS=`nproc`
 ARGS=
 
-while getopts "hgx:j:" OPTCHAR; do
+while getopts "hgx:j:o" OPTCHAR; do
     case "$OPTCHAR" in
 	h)
 	    usage
@@ -24,6 +26,9 @@ while getopts "hgx:j:" OPTCHAR; do
 	j)
 	    JOBS="$OPTARG"
 	    ;;
+	o)
+	    OPEN="yes"
+	    ;;
 	*)
 	    usage >&2
 	    exit 1
@@ -36,3 +41,13 @@ shift $((OPTIND-1))
 ARGS+=" -j$JOBS "
 
 LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER clang-12 -fdeclspec -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"
+
+if [[ "$OPEN" ]]; then
+    make2 -sj
+    IDS=$(cut -f1 -d' ' out/leakage.txt)
+    FILES=()
+    for ID in $IDS; do
+	FILES+=("out/leakage-$ID.png")
+    done
+    open "${FILES[@]}"
+fi

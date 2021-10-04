@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <variant>
 
 #include <z3++.h>
 
@@ -14,9 +15,6 @@
 
 class AEG;
 
-enum XSAccess {
-    XSREAD, XSWRITE
-};
 enum Access {
     READ, WRITE
 };
@@ -113,6 +111,28 @@ inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {
     return os << "addr(" << x.addr;
 }
 
+struct XSAccess {
+    enum Type {
+        XSREAD, XSWRITE
+    };
+    
+    struct All {};
+    
+    using State = std::variant<z3::expr, All>;
+    using Order = std::variant<z3::expr, Entry, Exit>;
+    
+    z3::expr read;
+    z3::expr write;
+    State state;
+    Order order;
+    
+    // XSAccess(const z3::expr& read, const z3::expr& write, const State& state, const Order& order): read(read), write(write), state(state), order(order) {}
+};
+
+enum XSAccessType {
+    XSREAD, XSWRITE
+};
+
 struct UHBNode {
     Inst inst;
     z3::expr arch;  // bool: program order variable
@@ -120,7 +140,7 @@ struct UHBNode {
     z3::expr trans_depth; // int: transient depth
     z3::expr introduces_trans; // bool: introduces transient execution
     std::optional<UHBAddress> addr_def;
-    z3::expr xstate;
+    std::optional<z3::expr> xstate;
     std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
     z3::expr xsread;
     z3::expr xswrite;
@@ -142,7 +162,7 @@ struct UHBNode {
     z3::expr exec() const { return arch || trans; }
     z3::expr xsaccess() const { return xsread || xswrite; }
 #endif
-    const z3::expr& xsaccess(XSAccess kind) const {
+    const z3::expr& xsaccess(XSAccessType kind) const {
         switch (kind) {
             case XSREAD: return xsread;
             case XSWRITE: return xswrite;

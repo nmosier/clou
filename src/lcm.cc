@@ -1,6 +1,7 @@
 #include <optional>
 #include <string>
 #include <signal.h>
+#include <regex>
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -41,9 +42,14 @@ struct LCMPass : public llvm::FunctionPass {
     virtual bool runOnFunction(llvm::Function& F) override {
         try {
             if (!function_names.empty()) {
-                if (function_names.find(static_cast<std::string>(F.getName())) == function_names.end()) {
-                    return false;
+                bool match = false;
+                for (const std::string& function_regex : function_names) {
+                    if (std::regex_match(static_cast<std::string>(F.getName()), std::regex {function_regex})) {
+                        match = true;
+                        break;
+                    }
                 }
+                if (!match) { return false; }
             }
             
             llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
