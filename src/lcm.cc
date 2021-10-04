@@ -62,9 +62,9 @@ struct LCMPass : public llvm::FunctionPass {
             
             logv(1) << "Collecting speculation info\n";
             SpeculationInfo spec_info {aegpo_unrolled};
-            spec_info.add(BranchPrimitive());
-            // spec_info.add(AddrSpecPrimitive());
-            assert(!spec_info.primitive_tfos.empty());
+            for (const auto& primitive : speculation_primitives) {
+                spec_info.add(*primitive);
+            }
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
             AEGPO_Expanded aegpo_expanded {spec_depth};

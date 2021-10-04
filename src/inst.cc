@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include "inst.h"
-#include "llvm-util.h"
+#include "util/llvm.h"
 
 const char *Inst::kind_tostr(Kind kind) {
    XM_ENUM_TOSTR(INST_KIND_X, kind, "(invalid)");
@@ -51,7 +51,7 @@ void Inst::set_addr() {
 }
 
 std::ostream& operator<<(std::ostream& os, const Inst& inst) {
-   os << inst.kind_tostr();
+    os << inst.kind;
    switch (inst.kind) {
    case Inst::Kind::ENTRY:
    case Inst::Kind::EXIT:

@@ -6,7 +6,7 @@
 #include "timer.h"
 #include "fork_work_queue.h"
 #include "hash.h"
-#include "llvm-util.h"
+#include "util/llvm.h"
 #include "fol.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
@@ -156,6 +156,7 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
                 }
                 std::cerr << "\n";
                 
+                log_ << "Leakage " << i << "\n";
                 std::set<Leakage> new_leakages;
                 process_leakage(std::inserter(new_leakages, new_leakages.end()), eval);
                 
@@ -172,7 +173,7 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
                 
                 for (const Leakage& lkg : new_leakages) {
                     std::stringstream ss;
-                    ss << Edge::kind_tostr(lkg.com_kind) << "-" << lkg.com << "-" << lkg.comx << "-" << i;
+                    ss << lkg.com_kind << "-" << lkg.com << "-" << lkg.comx << "-" << i;
                     solver.add(lkg.pred, ss.str().c_str());
                 }
                 
@@ -200,7 +201,7 @@ done:
     std::ofstream ofs {path.str()};
     for (const auto& pair : leakages) {
         const Leakage& leakage = pair.first;
-        ofs << pair.second << " " << Edge::kind_tostr(leakage.com_kind) << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
+        ofs << pair.second << " " << leakage.com_kind << " " << leakage.com << " " << leakage.comx << " " << leakage.desc << "\n";
     }
     
     ProfilerStop();
@@ -345,7 +346,7 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
                         .com = {co_src, dst},
                         .comx_kind = kind,
                         .comx = {comx_src, dst},
-                        .desc = std::string("co without ") + Edge::kind_tostr(kind),
+                        .desc = std::string("co without ") + util::to_string(kind),
                         .pred = cond,
                     };
                 }

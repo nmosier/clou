@@ -46,6 +46,7 @@ struct SpeculationPrimitive {
     // TODO: improve return type?
     using Result = std::optional<std::vector<Fork>>;
     virtual Result can_tfo(const llvm::Instruction *src, const llvm::Instruction *dst) const = 0;
+    virtual ~SpeculationPrimitive() {}
 };
 
 struct BranchPrimitive: public SpeculationPrimitive {

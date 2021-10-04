@@ -1,7 +1,7 @@
 #include "aeg.h"
 #include "progress.h"
 #include "timer.h"
-#include "z3-util.h"
+#include "util/z3.h"
 #include "taint.h"
 #include "taint_bv.h"
 

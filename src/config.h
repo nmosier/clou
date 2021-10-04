@@ -2,6 +2,9 @@
 
 #include <string>
 #include <unordered_set>
+#include <fstream>
+
+struct SpeculationPrimitive;
 
 extern std::string output_dir;
 extern std::unordered_set<std::string> function_names;
@@ -9,6 +12,7 @@ extern unsigned verbose;
 extern unsigned spec_depth;
 extern unsigned num_jobs;
 extern unsigned rob_size;
+extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;
@@ -23,3 +27,4 @@ constexpr bool should_name_constraints = true;
 #include "uhb.h"
 extern std::unordered_set<unsigned> include_edges;
 
+extern std::ofstream log_;

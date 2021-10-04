@@ -95,6 +95,7 @@ struct UHBConstraints {
 
 std::ostream& operator<<(std::ostream& os, const UHBConstraints& c);
 
+// TODO: inline this
 struct UHBAddress {
     z3::expr addr;
     

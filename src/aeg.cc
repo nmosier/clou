@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <fstream>
 
-#include "z3-util.h"
+#include "util/z3.h"
 #include "aeg.h"
 #include "config.h"
 #include "fol.h"
@@ -52,7 +52,7 @@ void AEG::dump_graph(llvm::raw_ostream& os) const {
         
         std::stringstream ss;
         ss << ref << " ";
-        ss << node.inst.kind_tostr() << "\n";
+        ss << node.inst.kind << "\n";
         ss << node.inst << "\n";
         ss << "po: " << node.arch << "\n"
         << "tfo: " << node.trans << "\n"
@@ -150,7 +150,7 @@ void AEG::test() {
         });
         os << std::transform_reduce(edge_constraints.begin(), edge_constraints.end(), 0, std::plus<unsigned>(), [] (const auto& pair) -> unsigned { return pair.second; }) << " edge constraints (total\n";
         for (const auto& pair : edge_constraints) {
-            os << Edge::kind_tostr(pair.first) << " " << pair.second << "\n";
+            os << pair.first << " " << pair.second << "\n";
         }
     }
     
@@ -534,13 +534,6 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
                 ss << "(" << eval(*node.xsaccess_order) << ") ";
             }
             
-#if 0
-            if (model.eval(node.trans).is_true()) {
-                ss << "[" << model.eval(node.trans_group_min) << " " << model.eval(node.trans_group_max) << "] ";
-            }
-#endif
-            // TODO: use eval here
-            
             // DEBUG: taint
             ss << " taint(" << eval(node.taint) << ")";
             if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
@@ -550,7 +543,6 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
                 }
                 
             }
-            
             
             std::string color;
             if (eval(node.arch)) {

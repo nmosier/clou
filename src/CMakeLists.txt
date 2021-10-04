@@ -1,22 +1,36 @@
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -pedantic)
 
 add_library(lcm MODULE
-  lcm.cc
-  addr.cc
-  aeg-po2.cc
-  config.cc
-  aeg.cc
-  inst.cc
-  aeg-expanded.cc
-  aeg-unrolled.cc
-  uhb.cc
-  aeg-util.cc
-  aeg-construct.cc
-  fol.cc
+  lcm.cc           lcm.h
+  addr.cc          addr.h
+  aeg-po2.cc       aeg-po2.h
+  config.cc        config.h
+  aeg.cc aeg.h	   
+  inst.cc inst.h   
+  aeg-expanded.cc  aeg-expanded.h
+  aeg-unrolled.cc  aeg-unrolled.h
+  uhb.cc           uhb.h
+  aeg-util.cc      
+  aeg-construct.cc 
+  fol.h
   leakage.cc
-  taint_bv.cc
-  shm.cc
-  spec-prim.cc
+  taint.h
+  taint_bv.cc      taint_bv.h
+  shm.cc           shm.h
+  spec-prim.cc     spec-prim.h
+  binrel.h
+  dot.h
+  graph.h
+  hash.h
+  noderef.h
+  progress.h
+  tarjan.h
+  timer.h
+  util.h
+  xmacro.h
+  util/tuple.h
+  util/z3.h
+  util/llvm.h
   )
 
 target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)

@@ -10,7 +10,7 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <z3++.h>
 
-#include "z3-util.h"
+#include "util/z3.h"
 #include "aeg-po2.h"
 #include "graph.h"
 #include "util.h"
@@ -211,6 +211,8 @@ public:
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr frx_exists(NodeRef src, NodeRef dst) const;
     
+    z3::expr dbg_intervening_xswrite(NodeRef src, NodeRef dst);
+    
 #if 0
     template <typename T>
     class Dataflow;
@@ -225,6 +227,8 @@ private:
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     
     // SPECULATION QUERIES
+    // TODO: omit
+#if 1
     bool can_trans(NodeRef ref, NodeRef& pred) const {
         const auto& preds = po.po.rev.at(ref);
         if (preds.size() == 1) {
@@ -243,6 +247,7 @@ private:
     bool can_introduce_trans(NodeRef ref) const {
         return po.po.fwd.at(ref).size() > 1;
     }
+#endif
 
     friend class Taint;
     friend class Taint_Array;

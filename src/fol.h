@@ -11,7 +11,7 @@
 #include "aeg.h"
 #include "default_map.h"
 #include "util.h"
-#include "tuple-util.h"
+#include "util/tuple.h"
 
 /** First-order relational logic library
  */
@@ -682,6 +682,17 @@ relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::edge_rel(UHBEdge::Kind kin
         if (logic.is_false(eval(aeg.exists_src(kind, src)))) { continue; }
         for (const NodeRef dst : aeg.node_range()) {
             if (logic.is_false(eval(aeg.exists_dst(kind, dst)))) { continue; }
+#if 0
+            if constexpr (std::is_same<Bool, bool>()) {
+                if (kind == UHBEdge::RFX && dst == 18) {
+                    const auto& src_node = aeg.lookup(src);
+                    const auto& dst_node = aeg.lookup(dst);
+                    if (eval(src_node.xsaccess() && dst_node.xsaccess() && src_node.same_xstate(dst_node))) {
+                        log_ << "making tuple (" << UHBEdge::kind_tostr(kind) << ", " << src << ", " << dst << "): " << eval.eval(aeg.dbg_intervening_xswrite(src, dst)) << ", xstates: " << eval.eval(src_node.xstate) << " " << eval.eval(dst_node.xstate) << "\n";
+                    }
+                }
+            }
+#endif
             rel.emplace(std::make_tuple(src, dst), eval(aeg.exists(kind, src, dst)));
         }
     }

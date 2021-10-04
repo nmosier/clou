@@ -5,7 +5,7 @@
 unsigned constraint_counter = 0;
 
 std::ostream& operator<<(std::ostream& os, const UHBEdge& e) {
-    os << e.kind_tostr() << " " << e.exists << "\n"
+    os << e.kind << " " << e.exists << "\n"
     << e.constraints << "\n";
     return os;
 }
@@ -127,12 +127,15 @@ z3::expr UHBNode::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
     
     const auto is_entry = [&] (NodeRef ref) -> bool { return ref == aeg.entry; };
     const auto is_exit = [&] (NodeRef ref) -> bool { return aeg.exits.find(ref) != aeg.exits.end(); };
-    
+
+    if (is_entry(a) && is_entry(b)) { return aeg.context.FALSE; }
+    if (is_entry(a) && is_exit(b))  { return aeg.context.TRUE; }
+    if (is_exit(a) && is_entry(b))  { return aeg.context.FALSE; }
+    if (is_exit(a) && is_exit(b))   { return aeg.context.bool_val(a < b); } // NOTE: this is consistent with ordering for non-special nodes.
     if (is_entry(a)) { return aeg.context.TRUE; }
     if (is_entry(b)) { return aeg.context.FALSE; }
-    if (is_exit(a) && is_exit(b)) { return aeg.context.bool_val(a < b); }
-    if (is_exit(a)) { return aeg.context.FALSE; }
-    if (is_exit(b)) { return aeg.context.TRUE; }
+    if (is_exit(a))  { return aeg.context.FALSE; }
+    if (is_exit(b))  { return aeg.context.TRUE; }
     
     return a < b ? *an.xsaccess_order <= *bn.xsaccess_order : *an.xsaccess_order < *bn.xsaccess_order;
 }
