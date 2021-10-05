@@ -863,6 +863,7 @@ void AEG::construct_taint() {
                     }
                 }
             }
+            node.taint_trans = node.taint_trans && node.trans;
         } else {
             node.taint_trans = context.FALSE;
         }

@@ -163,6 +163,9 @@ struct UHBNode {
     z3::expr exec() const { return arch || trans; }
     z3::expr xsaccess() const { return xsread || xswrite; }
 #endif
+    
+    bool can_xsaccess() const { return can_xsread() || can_xswrite(); }
+    
     const z3::expr& xsaccess(XSAccessType kind) const {
         switch (kind) {
             case XSREAD: return xsread;

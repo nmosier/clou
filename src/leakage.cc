@@ -67,6 +67,17 @@ void AEG::leakage_rfx2(OutputIt out) const {
         const Node& addr_dst_node = lookup(addr_dst);
         *out++ = std::make_tuple(addr_edge.exists && addr_dst_node.xswrite && addr_dst_node.trans, ss.str());
     });
+    
+    /* New kind of leakage to cover PHT10 -- branch condition leakage.
+     */
+    for (NodeRef ref : node_range()) {
+        const Node& node = lookup(ref);
+        if (node.can_xswrite()) {
+            std::stringstream ss;
+            ss << "rfx-br-" << ref;
+            *out++ = std::make_tuple(node.xswrite && node.taint_trans, ss.str());
+        }
+    }
 }
 
 template <typename OutputIt>
@@ -211,29 +222,6 @@ done:
 
 template <typename OutputIt>
 OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
-#if 0
-    // get xsaccess order
-    const auto xsaccess_less = [&] (NodeRef a, NodeRef b) -> bool {
-        return (bool) eval(Node::xsaccess_order_less(*this)(a, b));
-    };
-    
-    std::set<NodeRef, decltype(xsaccess_less)> xsaccesses {xsaccess_less};
-    for (NodeRef ref : node_range()) {
-        const Node& node = lookup(ref);
-        if (eval(node.xsaccess() && node.exec())) {
-            xsaccesses.insert(ref);
-        }
-    }
-#endif
-
-#if 0
-    NodeRefVec accesses;
-    get_path(eval, std::back_inserter(accesses));
-#endif
-    
-    // TODO: do this analysis in axiomatic land, just on rf, rfx, etc. relations?
-    
-    
     fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
     const auto reads = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
         return node.is_read() && node.arch;
@@ -257,7 +245,11 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
     const auto same_addr = fol_ctx.same_addr();
     const auto same_xstate = fol_ctx.same_xstate();
     const auto addr = fol_ctx.edge_rel(Edge::ADDR);
-    const auto flags = fol::element<1>(addr);
+    const auto addr_dsts = fol::element<1>(addr);
+    const auto tainted_trans = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
+        return node.trans && node.taint_trans;
+    });
+    const auto flags = addr_dsts | tainted_trans;
     
     /* rf/rfx leakage */
     {
@@ -295,6 +287,34 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
         }
 
         std::cerr << "rf leakage: " << rf_leakage2 << "\n";
+        
+#if 0
+        // also find rfx-branch type leakage
+        for (NodeRef ref : node_range()) {
+            const Node& node = lookup(ref);
+            if (node.trans && node.taint_trans) {
+                *out++ = {
+                    .com_kind = Edge::RF,
+                    .com = {ref}
+                };
+            }
+        }
+        
+        const auto tainted_trans = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
+            return node.trans && node.taint_trans;
+        });
+        const auto tainted_branch_cond = fol_ctx.node_rel_if([&] (NodeRef ref, const Node& node) {
+            if (const auto *I = node.inst.I) {
+                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(I)) {
+                    if (B->isConditional()) {
+                        return node.exec() && tainter->get_value(ref, B->getCondition());
+                    }
+                }
+            }
+            return context.FALSE;
+        });
+        tainted_trans & tainted_branch_cond;
+#endif
     }
     
     // co

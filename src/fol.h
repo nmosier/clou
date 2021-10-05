@@ -255,6 +255,13 @@ relation<Bool, Ts...> operator+(const relation<Bool, Ts...>& a, const relation<B
     return res += b;
 }
 
+/** Relational union. See operator+().
+  */
+template <typename Bool, typename... Ts>
+relation<Bool, Ts...> operator|(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
+    return a + b;
+}
+
 /** Relational difference. Performs \f$ a \gets a \setminus b \f$. */
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> operator-=(relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
