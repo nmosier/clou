@@ -43,6 +43,7 @@ void Taint_Array::run() {
                 
             case Inst::OTHER: {
                 taint = ctx.bool_val(false);
+                if (llvm::isa<llvm::BranchInst>(node.inst.I)) { break; }
                 for (const llvm::Value *V : node.inst.I->operand_values()) {
                     taint = taint || get_value(ref, V);
                 }

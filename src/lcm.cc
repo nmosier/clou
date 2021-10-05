@@ -61,7 +61,7 @@ struct LCMPass : public llvm::FunctionPass {
             AEGPO_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
             
-#if 0
+#if 1
             std::cerr << "outputting\n";
             output(aegpo_unrolled, "aegpo", F);
 #endif
@@ -92,7 +92,7 @@ struct LCMPass : public llvm::FunctionPass {
             });
             AEG aeg {aegpo_expanded};
             aeg.construct(AA, rob_size);
-#if 1
+#if 0
             output(aeg, "aeg", F);
 #endif
             ProfilerStop();
