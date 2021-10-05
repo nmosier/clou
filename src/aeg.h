@@ -90,6 +90,7 @@ private:
     void construct_mem();
     void construct_comx();
     void construct_addr();
+    void construct_taint();
     
     template <typename OutputIt>
     void leakage_rfx2(OutputIt out) const;
@@ -229,6 +230,15 @@ private:
     // SPECULATION QUERIES
     bool can_introduce_trans(NodeRef ref) const {
         return po.po.fwd.at(ref).size() > 1;
+    }
+    
+    std::optional<NodeRef> can_trans(NodeRef ref) const {
+        const auto& preds = po.po.rev.at(ref);
+        if (preds.size() == 1) {
+            return *preds.begin();
+        } else {
+            return std::nullopt;
+        }
     }
 
     friend class Taint;

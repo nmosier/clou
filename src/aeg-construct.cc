@@ -73,9 +73,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
 #endif
 
 #if 1
-    logv(2) << "Constructing taint\n";
-    tainter = std::make_unique<Taint_Array>(*this);
-    tainter->run();
+    construct_taint();
 #endif
 }
 
@@ -840,3 +838,33 @@ void AEG::construct_mem() {
     }
 }
 #endif
+
+
+void AEG::construct_taint() {
+    logv(2) << "Constructing taint\n";
+    tainter = std::make_unique<Taint_Array>(*this);
+    tainter->run();
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    // add transient execution taint pass
+    for (NodeRef ref : order) {
+        Node& node = lookup(ref);
+        if (const auto pred = can_trans(ref)) {
+            const Node& pred_node = lookup(*pred);
+            node.taint_trans = pred_node.taint_trans;
+            if (const auto *I = pred_node.inst.I) {
+                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(pred_node.inst.I)) {
+                    if (B->isConditional()) {
+                        const auto *C = B->getCondition();
+                        const auto cond_taint = tainter->get_value(*pred, C);
+                        node.taint_trans = node.taint_trans || cond_taint;
+                    }
+                }
+            }
+        } else {
+            node.taint_trans = context.FALSE;
+        }
+    }
+}

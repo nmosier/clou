@@ -11,4 +11,5 @@ public:
     virtual void run() = 0;
     virtual z3::expr flag(NodeRef ref) = 0;
     virtual ~Taint() {}
+    virtual z3::expr get_value(NodeRef ref, const llvm::Value *V) const = 0;
 };

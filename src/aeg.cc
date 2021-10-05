@@ -543,6 +543,9 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
                 }
                 
             }
+            if (eval(node.taint_trans)) {
+                ss << " taint_trans";
+            }
             
             std::string color;
             if (eval(node.arch)) {

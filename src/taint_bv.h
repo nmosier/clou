@@ -14,14 +14,14 @@ public:
         return get_value(ref, node.get_memory_address_pair().first);
     }
     
+    virtual z3::expr get_value(NodeRef ref, const llvm::Value *V) const override;
+    
 protected:
     using Node = AEG::Node;
     using Edge = AEG::Edge;
     AEG& aeg;
     z3::context& ctx;
     std::unordered_map<const llvm::Argument *, z3::expr> args;
-    
-    virtual z3::expr get_value(NodeRef ref, const llvm::Value *V) const;
 };
 
 class Taint_Array: public Taint_BV {

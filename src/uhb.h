@@ -152,6 +152,7 @@ struct UHBNode {
     z3::expr mem; // int -> int
     z3::expr taint; // bool
     z3::expr taint_mem; // int -> bool
+    z3::expr taint_trans;
     UHBConstraints constraints;
     
     z3::context& ctx() const { return arch.ctx(); }
