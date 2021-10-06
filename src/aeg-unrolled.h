@@ -100,7 +100,7 @@ private:
     Translations translations;
     
     void construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids);
-    void construct_call(const llvm::CallBase *C, Port& port, IDs& ids);
+    bool construct_call(const llvm::CallBase *C, Port& port, IDs& ids);
     void construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids);
     void construct_loop(const llvm::Loop *L, Port& port, IDs& ids);
     void construct_function(llvm::Function *F, Port& port, IDs& ids);

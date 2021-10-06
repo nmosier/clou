@@ -10,6 +10,10 @@
 struct Entry {};
 struct Exit {};
 
+enum class Option {
+    MUST, MAY, NO
+};
+
 namespace std {
    template <>
    struct hash<Entry> {

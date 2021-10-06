@@ -28,6 +28,7 @@ unsigned num_jobs = 1;
 unsigned rob_size = 10;
 std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 std::ofstream log_;
+std::unordered_set<LeakageSource> leakage_sources;
 
 
 // TODO: add automated way for describing default values
@@ -47,13 +48,25 @@ only examine given functions
 --rob, -r <n>        reorder buffer (ROB) size
 --speculation-primitives <primitive>[,<primitive>...]
                      use comma-separated speculation primitives (possibilities: "branch", "addr")
+--leakage-sources <source>[,<source>...]
+                     use comman-separated leakage sources (possibilities: "addr-dst", "taint-trans")
 )=";
     fprintf(f, s);
 }
 
 static void initialize() {
     speculation_primitives.push_back(std::make_unique<BranchPrimitive>());
+    leakage_sources = {LeakageSource::ADDR_DST};
     log_.open("log");
+}
+
+template <typename OutputIt, typename Handler>
+static OutputIt parse_list(char *s, OutputIt out, Handler handler) {
+    char *tok;
+    while ((tok = strsep(&s, ","))) {
+        *out++ = handler(tok);
+    }
+    return out;
 }
 
 static int parse_args() {
@@ -73,6 +86,7 @@ static int parse_args() {
     
     enum Option {
         SPECULATION_PRIMITIVES = 256,
+        LEAKAGE_SOURCES,
     };
     
     struct option opts[] = {
@@ -86,6 +100,7 @@ static int parse_args() {
         {"depth", required_argument, nullptr, 'd'},
         {"jobs", required_argument, nullptr, 'j'},
         {"speculation-primitives", required_argument, nullptr, SPECULATION_PRIMITIVES},
+        {"leakage-sources", required_argument, nullptr, LEAKAGE_SOURCES},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -133,18 +148,30 @@ static int parse_args() {
                 
             case SPECULATION_PRIMITIVES: {
                 speculation_primitives.clear();
-                char *tok;
-                while ((tok = strsep(&optarg, ",")) != nullptr) {
-                    const std::string s = tok;
+                std::cerr << "here\n";
+                parse_list(optarg, std::back_inserter(speculation_primitives), [] (const std::string& s) -> std::unique_ptr<SpeculationPrimitive>{
                     if (s == "branch") {
-                        speculation_primitives.push_back(std::make_unique<BranchPrimitive>());
+                        return std::make_unique<BranchPrimitive>();
                     } else if (s == "addr") {
-                        speculation_primitives.push_back(std::make_unique<AddrSpecPrimitive>());
+                        return std::make_unique<AddrSpecPrimitive>();
                     } else {
-                        error("invalid speculation primitive '%s'", tok);
-                        std::exit(1);
+                        error("invalid speculation primitive '%s'", s.c_str());
                     }
-                }
+                });
+                break;
+            }
+                
+            case LEAKAGE_SOURCES: {
+                leakage_sources.clear();
+                parse_list(optarg, std::inserter(leakage_sources, leakage_sources.end()), [] (const std::string& s) {
+                    if (s == "addr-dst") {
+                        return LeakageSource::ADDR_DST;
+                    } else if (s == "taint-trans") {
+                        return LeakageSource::TAINT_TRANS;
+                    } else {
+                        error("invalid leakage source '%s'", s.c_str());
+                    }
+                });
                 break;
             }
                 

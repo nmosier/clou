@@ -134,7 +134,7 @@ enum XSAccessType {
 };
 
 struct UHBNode {
-    Inst inst;
+    std::unique_ptr<Inst> inst;
     z3::expr arch;  // bool: program order variable
     z3::expr trans; // bool: transient fetch order variable
     z3::expr trans_depth; // int: transient depth
@@ -142,6 +142,8 @@ struct UHBNode {
     std::optional<UHBAddress> addr_def;
     std::optional<z3::expr> xstate;
     std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
+    z3::expr read;
+    z3::expr write;
     z3::expr xsread;
     z3::expr xswrite;
     z3::expr arch_order; // int
@@ -180,16 +182,6 @@ struct UHBNode {
     // TODO: remove this.
     z3::expr get_addr_def() const { return *addr_def; }
     
-    std::pair<const llvm::Value *, UHBAddress> get_addr_ref_pair(std::size_t idx) const {
-        const llvm::Value *V = inst.I->getOperand(idx);
-        return *addr_refs.find(V);
-    }
-    
-    template <typename Derived>
-    bool isa() const {
-        return inst.isa<Derived>();
-    }
-    
     void simplify();
     
     static z3::expr same_addr(const UHBNode& a, const UHBNode& b);
@@ -204,35 +196,20 @@ struct UHBNode {
         return same_xstate(*this, other);
     }
     
-    UHBNode(const Inst& inst, UHBContext& c);
+    UHBNode(std::unique_ptr<Inst>&& inst, UHBContext& c);
     
-    bool is_write() const {
-        return inst.kind == Inst::WRITE || inst.kind == inst.ENTRY;
-    }
-    
-    bool is_read() const {
-        return inst.kind == Inst::READ || inst.kind == inst.EXIT;
-    }
-    
-    bool is_memory_op() const {
-        return is_write() || is_read();
-    }
+    bool may_read() const { return inst->may_read() != Option::NO ; }
+    bool may_write() const { return inst->may_write() != Option::NO; }
+    bool may_access() const { return may_read() || may_write(); }
     
     std::pair<const llvm::Value *, UHBAddress> get_memory_address_pair() const {
-        assert(is_memory_op());
-        switch (inst.kind) {
-            case Inst::READ:
-                return get_addr_ref_pair(0);
-            case Inst::WRITE:
-                return get_addr_ref_pair(1);
-            default:
-                std::abort();
-        }
+        const auto *V = dynamic_cast<const MemoryInst&>(*inst).get_memory_operand();
+        return *addr_refs.find(V);
     }
     
     z3::expr get_memory_address() const { return get_memory_address_pair().second; }
     
-    bool is_special() const;
+    bool is_special() const { return inst->is_special(); }
     
     struct xsaccess_order_less;
     struct access_order_less;

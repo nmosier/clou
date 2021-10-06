@@ -88,6 +88,16 @@ inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3
     return store(a, i, ite(c, v, a[i]));
 }
 
+struct scope {
+    z3::solver& solver;
+    scope(z3::solver& solver): solver(solver) {
+        solver.push();
+    }
+    ~scope() {
+        solver.pop();
+    }
+};
+
 }
 
 inline std::ostream& operator<<(std::ostream& os, const z3::concrete_value& x) {

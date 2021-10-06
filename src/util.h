@@ -331,7 +331,7 @@ std::optional<typename Container::const_iterator> contains(const Container& cont
 template <typename Container, typename... Args>
 std::optional<typename Container::iterator> contains(Container& container, Args&&... args) {
     const auto it = container.find(std::forward<Args>(args)...);
-    return it == container.end() ? std::nullopt : it;
+    return it == container.end() ? std::nullopt : std::make_optional(it);
 }
 
 }
@@ -447,6 +447,13 @@ struct null_output_iterator {
     const T& operator=(const T& val) const { return val; }
 };
 
+#if 0
+template <typename Container>
+bool contains(const Container& container, const typename Container::value_type& value) {
+    return container.find(value) != container.end();
+}
+#endif
+
 }
 
 template <typename T>
@@ -504,3 +511,6 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
     return os;
 }
 
+
+
+#define todo() std::cerr << __FILE__ << ":" << __LINE__ << ": todo\n"; std::abort()

@@ -9,10 +9,10 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
     std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
                    [&] (const auto& node) {
-        const Inst inst =
-        std::visit(util::creator<Inst>(),
-                   node.v);
-        return Node {inst, context};
+        std::unique_ptr<Inst> inst(std::visit([] (const auto& x) {
+            return Inst::Create(x);
+        }, node.v));
+        return Node {std::move(inst), context};
     });
     
     // add entry, exit
@@ -20,7 +20,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     
     // TODO: This can be moved to CFG-Expanded, perhaps.
     for (NodeRef ref : node_range()) {
-        if (lookup(ref).inst.kind == Inst::EXIT) {
+        if (lookup(ref).inst->is_exit()) {
             exits.insert(ref);
         }
     }
@@ -32,11 +32,11 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // print out some information
     const auto count_kind = [&] (Inst::Kind kind) {
         return std::count_if(nodes.begin(), nodes.end(), [kind] (const Node& node) -> bool {
-            return node.inst.kind == kind;
+            return node.inst->kind() == kind;
         });
     };
-    logv(2) << "Number of reads: " << count_kind(Inst::READ) << "\n";
-    logv(2) << "Number of writes: " << count_kind(Inst::WRITE) << "\n";
+    logv(2) << "Number of loads: " << count_kind(Inst::Kind::LOAD) << "\n";
+    logv(2) << "Number of stores: " << count_kind(Inst::Kind::STORE) << "\n";
     
     
     logv(2) << "Constructing nodes\n";
@@ -55,6 +55,8 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_aliases(AA);
     logv(2) << "Constructing arch order\n";
     construct_arch_order();
+    logv(2) << "Constructing com\n";
+    construct_com();
 #if 0
     logv(2) << "Constructing exec order\n";
     construct_exec_order();
@@ -72,7 +74,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_mem();
 #endif
 
-#if 1
+#if USE_TAINT
     construct_taint();
 #endif
 }
@@ -148,8 +150,11 @@ void AEG::construct_nodes() {
 
 void AEG::construct_addr_defs() {
     for (Node& node : nodes) {
-        if (node.inst.addr_def) {
-            node.addr_def = UHBAddress {context};
+        if (auto *RI = dynamic_cast<RegularInst *>(node.inst.get())) {
+            // TODO: this is fragmented. Try to unify addr_defs
+            if (RI->addr_def) {
+                node.addr_def = UHBAddress {context};
+            }
         }
     }
 }
@@ -162,59 +167,62 @@ void AEG::construct_addr_refs() {
         const AEGPO::Node& po_node = po.lookup(ref);
         Node& node = lookup(ref);
         
-        for (const llvm::Value *V : node.inst.addr_refs) {
-            const auto defs_it = po_node.refs.find(V);
-            std::optional<UHBAddress> e;
-            if (defs_it == po_node.refs.end()) {
-                if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
-                    if (CD->isNullValue()) {
-                        const auto zero = context.context.int_val(0);
-                        e = UHBAddress {context.context.int_val(0)};
+        if (const RegularInst *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
+            
+            for (const llvm::Value *V : inst->addr_refs) {
+                const auto defs_it = po_node.refs.find(V);
+                std::optional<UHBAddress> e;
+                if (defs_it == po_node.refs.end()) {
+                    if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
+                        if (CD->isNullValue()) {
+                            const auto zero = context.context.int_val(0);
+                            e = UHBAddress {context.context.int_val(0)};
+                        } else {
+                            llvm::errs() << "unhandled constant data: " << *CD << "\n";
+                            std::abort();
+                        }
+                    } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+                        auto main_args_it = main_args.find(A);
+                        if (main_args_it == main_args.end()) {
+                            main_args_it = main_args.emplace(A, UHBAddress {context}).first;
+                        }
+                        e = main_args_it->second;
+                    } else if (const llvm::Constant *G = llvm::dyn_cast<llvm::Constant>(V)) {
+                        auto globals_it = globals.find(G);
+                        if (globals_it == globals.end()) {
+                            globals_it = globals.emplace(G, UHBAddress {context}).first;
+                        }
+                        e = globals_it->second;
+                        llvm::errs() << "GLOBAL: " << *G << "\n" << inst->I << "\n";
                     } else {
-                        llvm::errs() << "unhandled constant data: " << *CD << "\n";
+                        auto& os = llvm::errs();
+                        os << "Expected argument but got " << *V << "\n";
                         std::abort();
                     }
-                } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
-                    auto main_args_it = main_args.find(A);
-                    if (main_args_it == main_args.end()) {
-                        main_args_it = main_args.emplace(A, UHBAddress {context}).first;
-                    }
-                    e = main_args_it->second;
-                } else if (const llvm::Constant *G = llvm::dyn_cast<llvm::Constant>(V)) {
-                    auto globals_it = globals.find(G);
-                    if (globals_it == globals.end()) {
-                        globals_it = globals.emplace(G, UHBAddress {context}).first;
-                    }
-                    e = globals_it->second;
-                    llvm::errs() << "GLOBAL: " << *G << "\n" << *node.inst.I << "\n";
                 } else {
-                    auto& os = llvm::errs();
-                    os << "Expected argument but got " << *V << "\n";
-                    std::abort();
-                }
-            } else {
-                const NodeRefSet& defs = defs_it->second;
-                
-                /* If defs only has one element (likely case), then we can just lookup that element's
-                 * address definition integer. Otherwise, we define a new symbolic int that must be equal
-                 * to one of the possiblities.
-                 */
-                const auto lookup_def = [&] (NodeRef def) {
-                    return *lookup(def).addr_def;
-                };
-                if (defs.size() == 1) {
-                    e = lookup_def(*defs.begin());
-                } else {
-                    e = UHBAddress {context};
-                    if (defs.size() != 0) {
-                        node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
-                                                                [&] (NodeRef def) {
-                            return lookup_def(def) == *e;
-                        }, context.FALSE), "addr-ref");
+                    const NodeRefSet& defs = defs_it->second;
+                    
+                    /* If defs only has one element (likely case), then we can just lookup that element's
+                     * address definition integer. Otherwise, we define a new symbolic int that must be equal
+                     * to one of the possiblities.
+                     */
+                    const auto lookup_def = [&] (NodeRef def) {
+                        return *lookup(def).addr_def;
+                    };
+                    if (defs.size() == 1) {
+                        e = lookup_def(*defs.begin());
+                    } else {
+                        e = UHBAddress {context};
+                        if (defs.size() != 0) {
+                            node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
+                                                                    [&] (NodeRef def) {
+                                return lookup_def(def) == *e;
+                            }, context.FALSE), "addr-ref");
+                        }
                     }
                 }
+                node.addr_refs.emplace(V, *e);
             }
-            node.addr_refs.emplace(V, *e);
         }
     }
 }
@@ -360,11 +368,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     };
     std::vector<Info> addrs;
     std::unordered_map<std::pair<ID, const llvm::Value *>, NodeRef> seen;
-    for (NodeRef i = 0; i < size(); ++i) {
+    for (NodeRef i : node_range()) {
         const Node& node = lookup(i);
         if (node.addr_def) {
             const ID& id = *po.lookup(i).id;
-            const llvm::Value *V = node.inst.I;
+            const llvm::Value *V = dynamic_cast<const RegularInst&>(*node.inst).I;
             addrs.push_back({.id = id, .V = V, .e = *node.addr_def, .ref = i});
             [[maybe_unused]] const auto res = seen.emplace(std::make_pair(id, V), i);
             
@@ -376,16 +384,18 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     for (NodeRef i = 0; i < size(); ++i) {
         const Node& node = lookup(i);
         const AEGPO::Node& po_node = po.lookup(i);
-        for (const llvm::Value *V : node.inst.addr_refs) {
-            if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
-                const ID id {po_node.id->func, {}};
-                if (seen.emplace(std::make_pair(id, V), i).second) {
-                    const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),
-                                                 [&] (const auto& p) {
-                        return p.first == V;
-                    });
-                    assert(it != node.addr_refs.end());
-                    addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
+        if (const auto *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
+            for (const llvm::Value *V : inst->addr_refs) {
+                if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+                    const ID id {po_node.id->func, {}};
+                    if (seen.emplace(std::make_pair(id, V), i).second) {
+                        const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),
+                                                     [&] (const auto& p) {
+                            return p.first == V;
+                        });
+                        assert(it != node.addr_refs.end());
+                        addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
+                    }
                 }
             }
         }
@@ -443,47 +453,29 @@ void AEG::construct_comx() {
     /* Set xsread, xswrite */
     NodeRefSet xsaccesses;
     
-    enum Option {
-        YES, NO, MAYBE
-    };
-    
     const auto process = [&] (NodeRef i, Node& node, Option xsread, Option xswrite) {
         const auto make_xsaccess = [&] (Option xsaccess, const std::string& name) {
             switch (xsaccess) {
-                case YES: return context.TRUE;
-                case NO: return context.FALSE;
-                case MAYBE: return context.make_bool(name);
+                case Option::MUST: return context.TRUE;
+                case Option::NO: return context.FALSE;
+                case Option::MAY: return context.make_bool(name);
             }
         };
         node.xsread = make_xsaccess(xsread, "xsread");
         node.xswrite = make_xsaccess(xswrite, "xswrite");
-
+        
         if (!node.is_special()) {
-            node.xstate = context.make_int("xstate");
-            node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
-            if (xsread != NO || xswrite != NO) {
+            if (xsread != Option::NO || xswrite != Option::NO) {
+                node.xstate = context.make_int("xstate");
+                node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
                 xsaccesses.insert(i);
             }
         }
     };
     
-    for (NodeRef i = 0; i < size(); ++i) {
+    for (NodeRef i : node_range()) {
         Node& node = lookup(i);
-        struct Info {
-            Option xsread;
-            Option xswrite;
-        };
-        static const std::unordered_map<Inst::Kind, Info> map = {
-            {Inst::READ, {YES, MAYBE}},
-            {Inst::WRITE, {YES, YES}},
-            {Inst::ENTRY, {NO, YES}},
-            {Inst::EXIT, {YES, NO}},
-        };
-        const auto it = map.find(node.inst.kind);
-        if (it != map.end()) {
-            const Info& info = it->second;
-            process(i, node, info.xsread, info.xswrite);
-        }
+        process(i, node, node.inst->may_xsread(), node.inst->may_xswrite());
     }
     
     logv(3) << "constructing xsaccess order...\n";
@@ -594,7 +586,7 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    if (src_node.inst.kind == Inst::ENTRY && dst_node.inst.kind == Inst::EXIT) {
+    if (src_node.inst->is_entry() && dst_node.inst->is_exit()) {
         return src_node.exec() && dst_node.exec();
     }
     
@@ -619,7 +611,7 @@ z3::expr AEG::dbg_intervening_xswrite(NodeRef src, NodeRef dst) {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     
-    if (src_node.inst.kind == Inst::ENTRY && dst_node.inst.kind == Inst::EXIT) {
+    if (src_node.inst->is_entry() && dst_node.inst->is_exit()) {
         return src_node.exec() && dst_node.exec();
     }
     
@@ -650,8 +642,8 @@ z3::expr AEG::com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Acce
     const Node& dst_node = lookup(dst);
     const auto check_kind = [&] (const Node& node, Access kind) -> bool {
         switch (kind) {
-            case READ: return node.is_read();
-            case WRITE: return node.is_write();
+            case READ: return node.may_read();
+            case WRITE: return node.may_write();
             default: std::abort();
         }
     };
@@ -675,7 +667,7 @@ z3::expr AEG::rf_exists(NodeRef src, NodeRef dst) {
     const Node& src_node = lookup(src);
     const Node& dst_node = lookup(dst);
     if (src_node.is_special() && dst_node.is_special()) {
-        return context.bool_val(src_node.inst.kind == Inst::ENTRY && dst_node.inst.kind == Inst::EXIT) && src_node.arch && dst_node.arch;
+        return context.bool_val(src_node.inst->is_entry() && dst_node.inst->is_exit()) && src_node.arch && dst_node.arch;
     }
     
     NodeRefVec order;
@@ -691,8 +683,8 @@ z3::expr AEG::rf_exists(NodeRef src, NodeRef dst) {
     for (NodeRef ref : order) {
         if (ref == dst) { break; }
         const Node& node = lookup(ref);
-        if (node.inst.kind == Inst::WRITE) {
-            mem = z3::conditional_store(mem, node.get_memory_address(), get_val(ref), node.arch);
+        if (node.may_write() && node.inst->is_memory()) {
+            mem = z3::conditional_store(mem, node.get_memory_address(), get_val(ref), node.arch && node.write);
         }
     }
 
@@ -715,13 +707,11 @@ void AEG::construct_addr() {
     for (NodeRef dst : node_range()) {
         const Node& dst_node = lookup(dst);
         const AEGPO::Node& dst_po_node = po.lookup(dst);
-        if (dst_node.inst.kind == Inst::READ || dst_node.inst.kind == Inst::WRITE) {
+        if (const auto *inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get())) {
             const llvm::Value *V = dst_node.get_memory_address_pair().first;
             const auto refs_it = dst_po_node.refs.find(V);
             if (refs_it != dst_po_node.refs.end()) {
                 const NodeRefSet& srcs = refs_it->second;
-                // find all load operands that any of these sources depend on
-                NodeRefSet loads;
                 
                 struct Info {
                     NodeRef ref;
@@ -742,7 +732,7 @@ void AEG::construct_addr() {
                     const Node& node = lookup(in.ref);
                     const AEGPO::Node& po_node = po.lookup(in.ref);
                     
-                    if (node.inst.kind == Inst::READ) {
+                    if (node.inst->kind() == Inst::Kind::LOAD) {
                         if (in.state == Info::SEEN) {
                             add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.exec() && dst_node.exec()});
                             break;
@@ -750,7 +740,7 @@ void AEG::construct_addr() {
                     } else {
                         switch (in.state) {
                             case Info::UNSEEN:
-                                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(node.inst.I)) {
+                                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(node.inst->get_inst())) {
                                     for (const llvm::Value *V : GEP->indices()) {
                                         const auto refs_it = po_node.refs.find(V);
                                         if (refs_it != po_node.refs.end()) {
@@ -854,8 +844,8 @@ void AEG::construct_taint() {
         if (const auto pred = can_trans(ref)) {
             const Node& pred_node = lookup(*pred);
             node.taint_trans = pred_node.taint_trans;
-            if (const auto *I = pred_node.inst.I) {
-                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(pred_node.inst.I)) {
+            if (const auto *I = pred_node.inst->get_inst()) {
+                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(pred_node.inst->get_inst())) {
                     if (B->isConditional()) {
                         const auto *C = B->getCondition();
                         const auto cond_taint = tainter->get_value(*pred, C);
@@ -867,5 +857,23 @@ void AEG::construct_taint() {
         } else {
             node.taint_trans = context.FALSE;
         }
+    }
+}
+
+void AEG::construct_com() {
+    // initialize read, write
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        
+        const auto f = [&] (Option o, const std::string& name) -> z3::expr {
+            switch (o) {
+                case Option::MUST: return context.TRUE;
+                case Option::MAY: return context.make_bool(name);
+                case Option::NO: return context.FALSE;
+            }
+        };
+        
+        node.read = f(node.inst->may_read(), "read");
+        node.write = f(node.inst->may_write(), "write");
     }
 }

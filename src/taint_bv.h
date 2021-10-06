@@ -10,7 +10,11 @@ public:
     
     virtual z3::expr flag(NodeRef ref) override {
         const Node& node = aeg.lookup(ref);
+#if 0
         assert(node.is_memory_op());
+#else
+        todo();
+#endif
         return get_value(ref, node.get_memory_address_pair().first);
     }
     

@@ -46,7 +46,7 @@ public:
     
     explicit AEG(const AEGPO& po): po(po), context(), constraints() {}
     
-    void dump_graph(llvm::raw_ostream& os) const;
+    void dump_graph(std::ostream& os) const;
     void dump_graph(const std::string& path) const;
     
     void simplify();
@@ -99,6 +99,7 @@ private:
     template <typename OutputIt>
     void leakage_frx2(OutputIt out) const;
     unsigned leakage2(z3::solver& solver, unsigned max);
+    unsigned leakage3(z3::solver& solver, unsigned max);
     
     // TODO: this should be more general than hard-coding two com/comx edges, maybe?
     struct Leakage {
@@ -127,7 +128,7 @@ public:
     }
     
 private:
-    NodeRef add_node(const Node& node); /*!< Add node to the AEG and return its corresponding node ref. */
+    NodeRef add_node(Node&& node); /*!< Add node to the AEG and return its corresponding node ref. */
     
     void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e); /*!< Add a directed edge from \p src to \p dst with edge \p e */
     void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e); /*!< Add a directed edge in each direction between nodes \p a and \p b with edge \p e */
@@ -175,7 +176,7 @@ public:
     template <typename Container, typename OutputIt>
     OutputIt get_nodes(OutputIt out, const Container& container) const {
         return get_nodes_if(out, [&] (NodeRef, const Node& node) -> bool {
-            return container.find(node.inst.kind) != container.end();
+            return container.find(node.inst->kind()) != container.end();
         });
     }
     
@@ -186,12 +187,20 @@ public:
     
     template <typename OutputIt>
     OutputIt get_writes(OutputIt out) const {
-        return get_nodes(out, std::unordered_set<Inst::Kind> {Inst::ENTRY, Inst::WRITE});
+#if 0
+        return get_nodes(out, Inst::write_set);
+#else
+        todo();
+#endif
     }
     
     template <typename OutputIt>
     OutputIt get_reads(OutputIt out) const {
-        return get_nodes(out, std::unordered_set<Inst::Kind> {Inst::EXIT, Inst::READ});
+#if 0
+        return get_reads(out, Inst::read_set);
+#else
+        todo();
+#endif
     }
     
     z3::expr exists(Edge::Kind kind, NodeRef src, NodeRef dst);
@@ -343,7 +352,7 @@ private:
 template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f) {
     for (NodeRef ref : node_range()) {
         Node& node = lookup(ref);
-        if (node.inst.kind == kind) {
+        if (node.inst->kind() == kind) {
             f(ref, node);
         }
     }
@@ -352,7 +361,7 @@ template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f
 template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f) const {
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
-        if (node.inst.kind == kind) {
+        if (node.inst->kind() == kind) {
             f(ref, node);
         }
     }

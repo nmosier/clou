@@ -33,7 +33,7 @@ add_library(lcm MODULE
   util/llvm.h
   )
 
-target_compile_options(lcm PRIVATE -fno-rtti -Wno-format-security -g)
+target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)
 target_link_libraries(lcm PRIVATE ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
 if(APPLE)
   target_link_options(lcm PRIVATE -undefined dynamic_lookup)

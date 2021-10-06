@@ -23,17 +23,21 @@ void AEGPO_Unrolled::construct() {
 
 void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
     if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(I)) {
-        construct_call(C, port, ids);
-    } else {
-        const Node node {I, ids.id};
-        port.entry = add_node(node);
-        port.exits = {{I->getParent(), port.entry}};
+        if (construct_call(C, port, ids)) {
+            return;
+        }
+        
     }
+    
+    const Node node {I, ids.id};
+    port.entry = add_node(node);
+    port.exits = {{I->getParent(), port.entry}};
 }
 
-void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
+bool AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
     llvm::Function *F = C->getCalledFunction();
     if (F == nullptr || F->isDeclaration()) {
+#if 0
         llvm::errs() << "error: cannot introspect into function: " << *C << "\n";
         std::ofstream ofs {"extern.txt", std::ofstream::ios_base::app};
         std::string s;
@@ -42,6 +46,9 @@ void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& id
         ofs << s;
         ofs.close();
         throw util::resume("cannot introspect into function");
+#else
+        return false;
+#endif
     }
     
     const FuncID caller_id = ids.id.func;
@@ -80,6 +87,8 @@ void AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& id
         }
         translations.map.emplace(key, value);
     }
+    
+    return true;
 }
 
 void AEGPO_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids) {

@@ -4,11 +4,10 @@ llvm::AliasResult AEG::check_alias(NodeRef ref1, NodeRef ref2) const {
     const Node& node1 = lookup(ref1);
     const Node& node2 = lookup(ref2);
     
-    assert(node1.is_memory_op());
-    assert(node2.is_memory_op());
+    assert(node1.may_access());
+    assert(node2.may_access());
     
-    if (node1.inst.kind == Inst::ENTRY || node1.inst.kind == Inst::EXIT ||
-        node2.inst.kind == Inst::ENTRY || node2.inst.kind == Inst::EXIT) {
+    if (node1.inst->is_special() || node2.inst->is_special()) {
         return llvm::MustAlias;
     }
     

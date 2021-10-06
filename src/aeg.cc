@@ -22,16 +22,11 @@
  */
 
 void AEG::dump_graph(const std::string& path) const {
-    std::error_code ec;
-    llvm::raw_fd_ostream os {path, ec};
-    if (ec) {
-        llvm::errs() << ec.message() << "\n";
-        std::exit(1);
-    }
-    dump_graph(os);
+    std::ofstream ofs {path};
+    dump_graph(ofs);
 }
 
-void AEG::dump_graph(llvm::raw_ostream& os) const {
+void AEG::dump_graph(std::ostream& os) const {
     os << R"=(
     digraph G {
     overlap = scale;
@@ -52,8 +47,7 @@ void AEG::dump_graph(llvm::raw_ostream& os) const {
         
         std::stringstream ss;
         ss << ref << " ";
-        ss << node.inst.kind << "\n";
-        ss << node.inst << "\n";
+        ss << *node.inst << "\n";
         ss << "po: " << node.arch << "\n"
         << "tfo: " << node.trans << "\n"
         << "tfo_depth: " << node.trans_depth << "\n";
@@ -123,7 +117,7 @@ void AEG::test() {
     std::cerr << "Address edges: " << naddrs << "\n";
     if (naddrs > 0) {
         std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
-        ofs << lookup(1).inst.I->getFunction()->getName().str() << "\n";
+        ofs << lookup(1).inst->get_inst()->getFunction()->getName().str() << "\n";
     } else {
         return;
     }
@@ -304,7 +298,11 @@ void AEG::test() {
         solver.pop();
         
         Timer timer;
+#if 1
         const auto nleaks = leakage2(solver, 32);
+#else
+        const auto nleaks = leakage3(solver, 32);
+#endif
         std::cerr << "Detected " << nleaks << " leaks.\n";
         if (nleaks == 0) {
             return;
@@ -512,14 +510,10 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
             
             os << name << " ";
             std::stringstream ss;
-            ss << ref << " " << node.inst << "\n";
-            
-            switch (node.inst.kind) {
-                case Inst::WRITE:
-                case Inst::READ:
-                    ss << "{" << eval(node.get_memory_address()) << "} ";
-                    break;
-                default: break;
+            ss << ref << " " << *node.inst << "\n";
+
+            if (node.inst->is_memory()) {
+                ss << "{" << eval(node.get_memory_address()) << "} ";
             }
             
             const bool xsread = (bool) eval(node.xsread);
@@ -534,9 +528,10 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
                 ss << "(" << eval(*node.xsaccess_order) << ") ";
             }
             
+#if USE_TAINT
             // DEBUG: taint
             ss << " taint(" << eval(node.taint) << ")";
-            if (node.inst.kind == Inst::READ || node.inst.kind == Inst::WRITE) {
+            if (node.inst->is_memory()) {
                 const z3::expr flag = tainter->flag(ref);
                 if (eval(flag)) {
                     ss << " FLAGGED";
@@ -546,6 +541,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
             if (eval(node.taint_trans)) {
                 ss << " taint_trans";
             }
+#endif
             
             std::string color;
             if (eval(node.arch)) {
@@ -702,9 +698,9 @@ AEG::Edge *AEG::find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) {
     return it == edges.end() ? nullptr : it->get();
 }
 
-NodeRef AEG::add_node(const Node& node) {
+NodeRef AEG::add_node(Node&& node) {
     const NodeRef ref = size();
-    nodes.push_back(node);
+    nodes.push_back(std::move(node));
     graph.add_node(ref);
     return ref;
 }
@@ -736,13 +732,13 @@ z3::expr AEG::exists_src(Edge::Kind kind, NodeRef src) const {
     switch (kind) {
         case Edge::PO: return node.arch;
         case Edge::TFO: return node.exec();
-        case Edge::RF: return node.arch && node.is_write();
-        case Edge::CO: return node.arch && node.is_write();
-        case Edge::FR: return node.arch && node.is_read();
+        case Edge::RF: return node.arch && node.write;
+        case Edge::CO: return node.arch && node.write;
+        case Edge::FR: return node.arch && node.read;
         case Edge::RFX: return node.exec() && node.xswrite;
         case Edge::COX: return node.exec() && node.xswrite;
         case Edge::FRX: return node.exec() && node.xsread;
-        case Edge::ADDR: return node.exec() && node.is_read();
+        case Edge::ADDR: return node.exec() && node.read;
         default: std::abort();
     }
 }
@@ -752,13 +748,13 @@ z3::expr AEG::exists_dst(Edge::Kind kind, NodeRef dst) const {
     switch (kind) {
         case Edge::PO: return node.arch;
         case Edge::TFO: return node.exec();
-        case Edge::RF: return node.arch && node.is_read();
-        case Edge::CO: return node.arch && node.is_write();
-        case Edge::FR: return node.arch && node.is_write();
+        case Edge::RF: return node.arch && node.read;
+        case Edge::CO: return node.arch && node.write;
+        case Edge::FR: return node.arch && node.write;
         case Edge::RFX: return node.exec() && node.xsread;
         case Edge::COX: return node.exec() && node.xswrite;
         case Edge::FRX: return node.exec() && node.xswrite;
-        case Edge::ADDR: return node.exec() && node.is_memory_op();
+        case Edge::ADDR: return node.exec() && node.inst->is_memory();
         default: std::abort();
     }
 }

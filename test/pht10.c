@@ -10,7 +10,7 @@
 
 void victim_function_v10(size_t x, uint8_t k) {
      if (x < array1_size) {
-          if (array1[x] == k)
+          if (x == k)
                temp &= array2[0];
      }
 }

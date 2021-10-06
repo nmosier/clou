@@ -41,7 +41,7 @@ UHBEdge::Kind UHBEdge::kind_fromstr(const std::string& s_) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-UHBNode::UHBNode(const Inst& inst, UHBContext& c): inst(inst), arch(c), trans(c), trans_depth(c), introduces_trans(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), mem(c), taint(c), taint_mem(c), taint_trans(c), constraints() {}
+UHBNode::UHBNode(std::unique_ptr<Inst>&& inst, UHBContext& c): inst(std::move(inst)), arch(c), trans(c), trans_depth(c), introduces_trans(c), read(c), write(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), mem(c), taint(c), taint_mem(c), taint_trans(c), constraints() {}
 
 UHBContext::UHBContext(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
@@ -88,22 +88,12 @@ void UHBNode::simplify() {
     constraints.simplify();
 }
 
-bool UHBNode::is_special() const {
-    switch (inst.kind) {
-        case Inst::ENTRY:
-        case Inst::EXIT:
-            return true;
-        default:
-            return false;
-    }
-}
-
 z3::expr UHBNode::same_addr(const UHBNode& a, const UHBNode& b) {
     z3::context& ctx = a.arch.ctx();
     if (a.is_special() || b.is_special()) {
         return ctx.bool_val(true);
     }
-    if (!(a.is_memory_op() && b.is_memory_op())) {
+    if (!a.inst->is_memory() || !b.inst->is_memory()) {
         return ctx.bool_val(false);
     }
     return a.get_memory_address() == b.get_memory_address();

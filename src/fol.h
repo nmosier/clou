@@ -203,6 +203,11 @@ struct Context {
         return res;
     }
     
+    template <typename... Ts>
+    relation_type<Ts...> none() const {
+        return relation_type<Ts...> {logic};
+    }
+    
     /** Construct a new context for \p AEG over the given boolean logic \p logic and using the evaluator \p eval to convert z3 formulae in \p aeg into values of `Bool` type.
      * \param logic Boolean logic to use
      * \param eval Evaluator to use to convert z3 formulae in \p aeg into `Bool`
@@ -260,6 +265,11 @@ relation<Bool, Ts...> operator+(const relation<Bool, Ts...>& a, const relation<B
 template <typename Bool, typename... Ts>
 relation<Bool, Ts...> operator|(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     return a + b;
+}
+
+template <typename Bool, typename... Ts>
+relation<Bool, Ts...>& operator|=(relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
+    return a += b;
 }
 
 /** Relational difference. Performs \f$ a \gets a \setminus b \f$. */
@@ -716,7 +726,7 @@ relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(Inst::Kind kind, ExecMode 
             case EXEC: cond = node.exec(); break;
             default: std::abort();
         }
-        return cond && node.inst.kind == kind;
+        return cond && node.inst->kind() == kind;
     });
 }
 
