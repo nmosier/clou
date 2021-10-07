@@ -2,10 +2,11 @@
 
 #include "aeg-expanded.h"
 #include "aeg-unrolled.h"
+#include "cfg-calls.h"
 #include "util.h"
 #include "spec-prim.h"
 
-void AEGPO_Expanded::construct(const AEGPO_Unrolled& in, const SpeculationInfo& spec) {
+void AEGPO_Expanded::construct(const AEGPO& in, const SpeculationInfo& spec) {
     // create entry
     NodeRef in_src = in.entry;
     NodeRef src = add_node(in.lookup(in_src));
@@ -51,7 +52,7 @@ void AEGPO_Expanded::construct(const AEGPO_Unrolled& in, const SpeculationInfo& 
  *
  */
 template <typename OutputIt>
-void AEGPO_Expanded::construct_rec(const AEGPO_Unrolled& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out) {
+void AEGPO_Expanded::construct_rec(const AEGPO& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out) {
 
     /* check whether to merge or duplicate node */
     const unsigned spec_depth = task.spec_depth + 1;
@@ -112,7 +113,7 @@ void AEGPO_Expanded::construct_rec(const AEGPO_Unrolled& in, const SpeculationIn
     }
 }
 
-void AEGPO_Expanded::resolve_refs(const AEGPO_Unrolled& in) {
+void AEGPO_Expanded::resolve_refs(const AEGPO& in) {
     /* Approach
      * We want to bind all llvm::Argument's and llvm::Instruction's. We should leave other kinds of llvm::Value's alone.
      */

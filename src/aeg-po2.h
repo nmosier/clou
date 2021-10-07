@@ -38,7 +38,14 @@ public:
    };
    
    struct Node {
-      using Variant = std::variant<Entry, Exit, const llvm::Instruction *>;
+       struct Call {
+           const llvm::CallBase *C;
+           const llvm::Value *arg;
+           bool operator==(const Call& other) const {
+               return C == other.C && arg == other.arg;
+           }
+       };
+      using Variant = std::variant<Entry, Exit, const llvm::Instruction *, Call>;
       
       Variant v;
       std::optional<ID> id;
@@ -46,7 +53,7 @@ public:
       
       const Variant& operator()() const { return v; }
       Variant& operator()() { return v; }
-
+       
       Node() {} // TODO: remove this?
 
       template <typename Arg>
@@ -59,15 +66,15 @@ public:
       static Node make_entry() { return Node {Entry {}, std::nullopt}; }
       static Node make_exit() { return Node {Exit {}, std::nullopt}; }
       // static Node make(const llvm::Instruction *I) { return Node {I}; }
+       
+       bool operator==(const Node& other) const {
+           return v == other.v && id == other.id && refs == other.refs;
+       }
    };
    using Rel = binrel<NodeRef>;
    Rel po;
    NodeRef entry;
-#if 0
-   NodeRef exit;
-#else
-    NodeRefSet exits;
-#endif
+   NodeRefSet exits;
    const unsigned num_specs;
 
    std::vector<Node> nodes;
@@ -119,10 +126,71 @@ protected:
    void prune();
     
     bool is_block_boundary(NodeRef ref, const Rel::Map& fwd, const Rel::Map& rev) const;
+    
+public:
+    struct Translations {
+        struct Key {
+            FuncID id;
+            const llvm::Value *V;
+            Key(FuncID id, const llvm::Value *V): id(id), V(V) {}
+            struct Hash {
+                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_tuple(key.id, key.V)); }
+            };
+            bool operator==(const Key& other) const { return id == other.id && V == other.V; }
+        };
+        
+        struct Value {
+            FuncID id;
+            using ValueSet = std::unordered_set<const llvm::Value *>;
+            ValueSet Vs;
+            Value(FuncID id): id(id) {}
+            Value(FuncID id, const ValueSet& Vs): id(id), Vs(Vs) {}
+            bool operator==(const Value& other) const {
+                return id == other.id && Vs == other.Vs;
+            }
+        };
+        
+        using Map = std::unordered_map<Key, Value, Key::Hash>;
+        
+        Map map;
+        
+        template <typename OutputIt>
+        OutputIt lookup(const Key& key, OutputIt out) const {
+            std::vector<Key> todo {key};
+            std::unordered_set<Key, Key::Hash> seen;
+            std::unordered_set<Key, Key::Hash> done;
+            
+            while (!todo.empty()) {
+                const Key key = todo.back();
+                todo.pop_back();
+                if (seen.insert(key).second) {
+                    const auto it = map.find(key);
+                    if (it == map.end()) {
+                        done.insert(key);
+                    } else {
+                        for (const llvm::Value *V : it->second.Vs) {
+                            todo.emplace_back(it->second.id, V);
+                        }
+                    }
+                }
+            }
+            
+            return std::copy(done.begin(), done.end(), out);
+        }
+        
+        bool operator==(const Translations& other) const {
+            return map == other.map;
+        }
+    };
+    
+    Translations translations;
+    
+    bool operator==(const AEGPO& other) const {
+        return nodes == other.nodes && po == other.po && translations == other.translations;
+    }
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node);
-
 
 /* Functions and loops may have multiple exits.
  * For functions, these are return instructions.
@@ -171,3 +239,5 @@ void AEGPO::postorder(OutputIt out) const {
 }
 
 std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id);
+std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Call& call);
+std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Variant& v);

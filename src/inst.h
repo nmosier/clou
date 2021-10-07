@@ -9,6 +9,7 @@
 
 #include "xmacro.h"
 #include "lcm.h"
+#include "aeg-po2.h"
 
 #if 0
 struct Inst {
@@ -127,6 +128,7 @@ X(OTHER)
     static Inst *Create(Entry);
     static Inst *Create(Exit);
     static Inst *Create(const llvm::Instruction *I);
+    static Inst *Create(const AEGPO::Node::Call& call);
     
     virtual void print(std::ostream& os) const {
         os << kind();
@@ -224,6 +226,8 @@ struct StoreInst: MemoryInst {
 };
 
 struct CallInst: MemoryInst {
+    const llvm::Value *arg;
+    
     virtual Kind kind() const override { return CALL; }
     
     virtual Option may_read() const override { return Option::MAY; }
@@ -232,7 +236,12 @@ struct CallInst: MemoryInst {
     virtual Option may_xswrite() const override { return Option::MAY; }
     // TODO: this might need more fine-grained control over adding assertions, since write -> xswrite, etc.
     
-    CallInst(const llvm::Instruction *I): MemoryInst(I) { std::abort(); }
+    virtual const llvm::Value *get_memory_operand() const override {
+        return arg;
+    }
+    
+    CallInst(const llvm::Instruction *I, const llvm::Value *arg): MemoryInst(I), arg(arg) {}
+    
 };
 
 struct OtherInst: RegularInst {

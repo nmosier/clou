@@ -106,21 +106,9 @@ public:
    template <typename OutputIt>
    void get_nodes(OutputIt out) const;
 
-#if 0
-   void rename_node(const T& oldval, const T& newval) {
-      if (fwd.find(newval) != fwd.end()) {
-         throw std::logic_error("new node value already present; erase it first");
-      }
-      auto& old_succs = fwd.at(oldval);
-      for (const T& old_succ : old_succs) {
-         const auto& set = rev.at(old_succ);
-         set.erase(oldval);
-         set.insert(newval);
-      }
-
-      // TODO
-   }
-#endif
+    bool operator==(const binrel& other) const {
+        return fwd == other.fwd && rev == other.rev;
+    }
    
 private:
    Group get_group(const T& val) const;

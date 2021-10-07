@@ -8,6 +8,7 @@
 #include <numeric>
 #include <iterator>
 #include <exception>
+#include <variant>
 
 #include <llvm/IR/Function.h>
 #include <llvm/Support/Format.h>
@@ -508,6 +509,14 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
         os << *it;
     }
     os << "}";
+    return os;
+}
+
+template <typename... Ts>
+std::ostream& operator<<(std::ostream& os, const std::variant<Ts...>& v) {
+    std::visit([&] (const auto& x) {
+        os << x;
+    }, v);
     return os;
 }
 

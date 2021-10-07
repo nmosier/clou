@@ -3,6 +3,7 @@
 #include "inst.h"
 #include "util/llvm.h"
 #include "util.h"
+#include "aeg-po2.h"
 
 #if 0
 const char *Inst::kind_tostr(Kind kind) {
@@ -92,14 +93,15 @@ Inst *Inst::Create(const llvm::Instruction *I) {
         return new LoadInst(I);
     } else if (llvm::isa<llvm::StoreInst>(I)) {
         return new StoreInst(I);
-    } else if (llvm::isa<llvm::CallBase>(I)) {
-        todo();
     } else {
         assert(!I->mayReadOrWriteMemory());
         return new OtherInst(I);
     }
 }
 
+Inst *Inst::Create(const AEGPO::Node::Call& call) {
+    return new CallInst(call.C, call.arg);
+}
 
 RegularInst::RegularInst(const llvm::Instruction *I): I(I) {
     if (I->getType()->isPointerTy()) {

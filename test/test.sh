@@ -43,7 +43,8 @@ shift $((OPTIND-1))
 mkdir -p "$OUTDIR"
 
 LCM_ARGS="-o$OUTDIR $ARGS" clang-12 -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
-cut -f2- -d' ' < "$OUTDIR/leakage.txt" | sort > "$OUTDIR/leakage.txt.tmp"
+
+awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | sort > "$OUTDIR/leakage.txt.tmp"
 sort "$REF" > "$OUTDIR/ref.txt"
 echo "ACTUAL:"
 cat "$OUTDIR/leakage.txt.tmp"

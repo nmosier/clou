@@ -18,6 +18,7 @@
 #include "aeg.h"
 #include "aeg-expanded.h"
 #include "aeg-unrolled.h"
+#include "cfg-calls.h"
 #include "profiler.h"
 #include "spec-prim.h"
 
@@ -61,13 +62,19 @@ struct LCMPass : public llvm::FunctionPass {
             AEGPO_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
             
+            CFG_Calls cfg_calls {spec_depth};
+            cfg_calls.construct(aegpo_unrolled);
+            output(cfg_calls, "calls", F);
+            
+            assert(cfg_calls == aegpo_unrolled);
+
 #if 1
             std::cerr << "outputting\n";
             output(aegpo_unrolled, "aegpo", F);
 #endif
             
             logv(1) << "Collecting speculation info\n";
-            SpeculationInfo spec_info {aegpo_unrolled};
+            SpeculationInfo spec_info {cfg_calls};
             for (const auto& primitive : speculation_primitives) {
                 spec_info.add(*primitive);
             }
@@ -76,7 +83,7 @@ struct LCMPass : public llvm::FunctionPass {
             AEGPO_Expanded aegpo_expanded {spec_depth};
             {
                 Profiler profiler {format_graph_path("out/%s.prof", F)};
-                aegpo_expanded.construct(aegpo_unrolled, spec_info);
+                aegpo_expanded.construct(cfg_calls, spec_info);
             }
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
             << aegpo_expanded.size() << " (expanded)\n";

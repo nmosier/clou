@@ -6,3 +6,4 @@ using NodeRef = std::size_t;
 using NodeRefVec = std::vector<NodeRef>;
 using NodeRefSet = std::unordered_set<NodeRef>;
 using NodeRefRel = std::unordered_map<NodeRef, NodeRefSet>;
+using NodeRefMap = NodeRefRel;

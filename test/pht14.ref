@@ -1,1 +1,1 @@
-RF (0, 10) (17, 10) rf without rfx
+RF (<ENTRY>; <EXIT>) (  %15 = load i8, i8* %14, align 1; <EXIT>)

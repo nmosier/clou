@@ -15,6 +15,9 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node) {
          [&] (Entry) { os << "<ENTRY>"; },
          [&] (Exit)  { os << "<EXIT>";  },
          [&] (const llvm::Instruction *I) { os << *I; },
+       [&] (const AEGPO::Node::Call& call) {
+           os << *call.C << " " << call.arg;
+       },
       }, node());
    if (node.id) {
       os << " F" << node.id->func;
@@ -170,4 +173,26 @@ std::optional<NodeRef> AEGPO::get_block_successor(NodeRef ref) const {
     } else {
         return *po.fwd.at(ref).begin();
     }
+}
+
+std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Call& call) {
+    std::string s;
+    llvm::raw_string_ostream ss {s};
+    ss << *call.C << " " << *call.arg;
+    return os << ss.str();
+}
+
+std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Variant& v) {
+    std::visit(util::overloaded {
+        [&] (const auto *x) {
+            std::string s;
+            llvm::raw_string_ostream ss {s};
+            ss << *x;
+            os << ss.str();
+        },
+        [&] (const auto& x) {
+            os << x;
+        },
+    }, v);
+    return os;
 }
