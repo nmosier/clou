@@ -1,5 +1,5 @@
 #include "spec-prim.h"
-#include "aeg-po2.h"
+#include "cfg/cfg.h"
 
 SpeculationInfo::SpeculationInfo(const AEGPO& po): po(po) {}
 

@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "lcm.h"
-#include "aeg-po2.h"
+#include "cfg/cfg.h"
 #include "binrel.h"
 #include "config.h"
 #include "spec-prim.h" // for class Fork

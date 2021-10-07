@@ -1,8 +1,8 @@
 #include <deque>
 
-#include "aeg-expanded.h"
-#include "aeg-unrolled.h"
-#include "cfg-calls.h"
+#include "cfg/expanded.h"
+#include "cfg/unrolled.h"
+#include "cfg/calls.h"
 #include "util.h"
 #include "spec-prim.h"
 
@@ -195,15 +195,9 @@ void AEGPO_Expanded::resolve_refs(const AEGPO& in) {
             [] (Entry) {},
             [] (Exit) {},
         }, node.v);
-
-#if 0
-        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
-            map[Key {node.id->func, *Ip}].insert(ref);
-        }
-#endif
         
         maps[ref] = std::move(map);
-    }    
+    }
     
     /* Now resolve refs */
     for (const NodeRef ref : order) {

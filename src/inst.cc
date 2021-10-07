@@ -3,7 +3,7 @@
 #include "inst.h"
 #include "util/llvm.h"
 #include "util.h"
-#include "aeg-po2.h"
+#include "cfg/cfg.h"
 
 #if 0
 const char *Inst::kind_tostr(Kind kind) {

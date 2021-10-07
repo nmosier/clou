@@ -1,14 +1,16 @@
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -pedantic)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
+add_subdirectory(cfg)
+add_subdirectory(util)
+
 add_library(lcm MODULE
   lcm.cc           lcm.h
   addr.cc          addr.h
-  aeg-po2.cc       aeg-po2.h
   config.cc        config.h
   aeg.cc aeg.h	   
   inst.cc inst.h   
-  aeg-expanded.cc  aeg-expanded.h
-  aeg-unrolled.cc  aeg-unrolled.h
   uhb.cc           uhb.h
   aeg-util.cc      
   aeg-construct.cc 
@@ -18,7 +20,6 @@ add_library(lcm MODULE
   taint_bv.cc      taint_bv.h
   shm.cc           shm.h
   spec-prim.cc     spec-prim.h
-  cfg-calls.cc     cfg-calls.h
   binrel.h
   dot.h
   graph.h
@@ -29,9 +30,8 @@ add_library(lcm MODULE
   timer.h
   util.h
   xmacro.h
-  util/tuple.h
-  util/z3.h
-  util/llvm.h
+  $<TARGET_OBJECTS:cfg_objs>
+  $<TARGET_OBJECTS:util_objs>
   )
 
 target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)

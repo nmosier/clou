@@ -1,5 +1,5 @@
 
-#include "aeg-po2.h"
+#include "cfg/cfg.h"
 #include "util.h"
 
 /* Construction Algorithm

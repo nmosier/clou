@@ -4,7 +4,7 @@
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Operator.h>
 
-#include "aeg-unrolled.h"
+#include "cfg/unrolled.h"
 #include "util.h"
 
 void AEGPO_Unrolled::construct() {

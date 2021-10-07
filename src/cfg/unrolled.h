@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aeg-po2.h"
+#include "cfg/cfg.h"
 
 class AEGPO_Unrolled: public AEGPO {
 public:

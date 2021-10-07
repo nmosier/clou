@@ -9,7 +9,7 @@
 
 #include "xmacro.h"
 #include "lcm.h"
-#include "aeg-po2.h"
+#include "cfg/cfg.h"
 
 #if 0
 struct Inst {
