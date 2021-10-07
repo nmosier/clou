@@ -9,15 +9,15 @@
 #include "config.h"
 #include "spec-prim.h" // for class Fork
 
-class AEGPO_Unrolled;
+class CFG_Unrolled;
 class CFG_Calls;
 struct SpeculationInfo;
 
-class AEGPO_Expanded: public AEGPO {
+class CFG_Expanded: public CFG {
 public:
-    explicit AEGPO_Expanded(unsigned num_specs): AEGPO(num_specs) {}
+    explicit CFG_Expanded(unsigned num_specs): CFG(num_specs) {}
     
-    void construct(const AEGPO& in, const SpeculationInfo& spec);
+    void construct(const CFG& in, const SpeculationInfo& spec);
     
 private:
     using NodeMap = std::unordered_map<NodeRef, NodeRef>;
@@ -34,10 +34,10 @@ private:
     std::unordered_map<NodeRef, NodeRefSet> expansions;
     
     template <typename OutputIt>
-    void construct_rec(const AEGPO& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out);
+    void construct_rec(const CFG& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out);
     
     using RefMap = std::unordered_map<Translations::Key, NodeRefSet, Translations::Key::Hash>;
-    void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const AEGPO &in, std::unordered_map<NodeRef, RefMap> &maps, AEGPO::Node &node, NodeRef ref);
+    void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::unordered_map<NodeRef, RefMap> &maps, CFG::Node &node, NodeRef ref);
     
-    void resolve_refs(const AEGPO& in);
+    void resolve_refs(const CFG& in);
 };

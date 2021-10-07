@@ -8,7 +8,7 @@
 
 #include "noderef.h"
 
-class AEGPO;
+class CFG;
 struct SpeculationPrimitive;
 
 /* Captures all information about a particular kind of speculation primitive.
@@ -34,10 +34,10 @@ struct SpeculationInfo {
         std::vector<Fork> forks;
     };
     
-    const AEGPO& po;
+    const CFG& po;
     std::map<std::pair<NodeRef, NodeRef>, PrimitiveTFOInfo> primitive_tfos;
  
-    SpeculationInfo(const AEGPO& po);
+    SpeculationInfo(const CFG& po);
     
     void add(const SpeculationPrimitive& primitive);
 };

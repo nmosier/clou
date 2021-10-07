@@ -10,12 +10,12 @@
  */
 
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node) {
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node) {
    std::visit(util::overloaded {
          [&] (Entry) { os << "<ENTRY>"; },
          [&] (Exit)  { os << "<EXIT>";  },
          [&] (const llvm::Instruction *I) { os << *I; },
-       [&] (const AEGPO::Node::Call& call) {
+       [&] (const CFG::Node::Call& call) {
            os << *call.C << " " << call.arg;
        },
       }, node());
@@ -29,7 +29,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node) {
    return os;
 }
 
-void AEGPO::prune() {
+void CFG::prune() {
    std::unordered_set<NodeRef> todo;
    for (NodeRef i = 0; i < nodes.size(); ++i) {
        if (exits.find(i) == exits.end()) {
@@ -88,7 +88,7 @@ void AEGPO::prune() {
    po = std::move(new_po);
 }
 
-bool AEGPO::alias_valid(const ID& a, const ID& b) {
+bool CFG::alias_valid(const ID& a, const ID& b) {
    if (a.func != b.func) {
       return false;
    }
@@ -101,14 +101,14 @@ bool AEGPO::alias_valid(const ID& a, const ID& b) {
    return true;
 }
 
-bool AEGPO::alias_valid(const Node& a, const Node& b) {
+bool CFG::alias_valid(const Node& a, const Node& b) {
    if (!(a.id && b.id)) {
       return false;
    }
    return alias_valid(*a.id, *b.id);
 }
 
-bool AEGPO::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
+bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
    if (done.find(ref) != done.end()) {
       return true;
    }
@@ -126,14 +126,14 @@ bool AEGPO::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) cons
    return acc;
 }
 
-NodeRef AEGPO::add_node(const Node& node) {
+NodeRef CFG::add_node(const Node& node) {
       const NodeRef ref = size();
       nodes.push_back(node);
       po.add_node(ref);
       return ref;
    }   
 
-std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id) {
+std::ostream& operator<<(std::ostream& os, const CFG::ID& id) {
     os << "F" << id.func << " L{";
     for (auto it = id.loop.begin(); it != id.loop.end(); ++it) {
         if (it != id.loop.begin()) {
@@ -145,7 +145,7 @@ std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id) {
     return os;
 }
 
-bool AEGPO::is_block_boundary(NodeRef ref, const Rel::Map& fwd, const Rel::Map& rev) const {
+bool CFG::is_block_boundary(NodeRef ref, const Rel::Map& fwd, const Rel::Map& rev) const {
     const auto& preds = rev.at(ref);
     if (preds.size() != 1) {
         return true;
@@ -159,15 +159,15 @@ bool AEGPO::is_block_boundary(NodeRef ref, const Rel::Map& fwd, const Rel::Map& 
     }
 }
 
-bool AEGPO::is_block_entry(NodeRef ref) const {
+bool CFG::is_block_entry(NodeRef ref) const {
     return is_block_boundary(ref, po.fwd, po.rev);
 }
 
-bool AEGPO::is_block_exit(NodeRef ref) const {
+bool CFG::is_block_exit(NodeRef ref) const {
     return is_block_boundary(ref, po.rev, po.fwd);
 }
 
-std::optional<NodeRef> AEGPO::get_block_successor(NodeRef ref) const {
+std::optional<NodeRef> CFG::get_block_successor(NodeRef ref) const {
     if (is_block_exit(ref)) {
         return std::nullopt;
     } else {
@@ -175,14 +175,14 @@ std::optional<NodeRef> AEGPO::get_block_successor(NodeRef ref) const {
     }
 }
 
-std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Call& call) {
+std::ostream& operator<<(std::ostream& os, const CFG::Node::Call& call) {
     std::string s;
     llvm::raw_string_ostream ss {s};
     ss << *call.C << " " << *call.arg;
     return os << ss.str();
 }
 
-std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Variant& v) {
+std::ostream& operator<<(std::ostream& os, const CFG::Node::Variant& v) {
     std::visit(util::overloaded {
         [&] (const auto *x) {
             std::string s;

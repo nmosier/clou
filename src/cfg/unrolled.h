@@ -2,10 +2,10 @@
 
 #include "cfg/cfg.h"
 
-class AEGPO_Unrolled: public AEGPO {
+class CFG_Unrolled: public CFG {
 public:
-    explicit AEGPO_Unrolled(llvm::Function& F, unsigned num_specs, unsigned num_unrolls):
-    AEGPO(num_specs),
+    explicit CFG_Unrolled(llvm::Function& F, unsigned num_specs, unsigned num_unrolls):
+    CFG(num_specs),
     F(F),
     num_unrolls(num_unrolls) {
         if (num_unrolls == 0) {
@@ -83,5 +83,5 @@ private:
         }
     }
     
-    friend class AEGPO_Expanded;
+    friend class CFG_Expanded;
 };

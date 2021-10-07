@@ -59,7 +59,7 @@ struct LCMPass : public llvm::FunctionPass {
             
             /* Construct AEG */
             logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
-            AEGPO_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
+            CFG_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
             
             CFG_Calls cfg_calls {spec_depth};
@@ -80,7 +80,7 @@ struct LCMPass : public llvm::FunctionPass {
             }
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
-            AEGPO_Expanded aegpo_expanded {spec_depth};
+            CFG_Expanded aegpo_expanded {spec_depth};
             {
                 Profiler profiler {format_graph_path("out/%s.prof", F)};
                 aegpo_expanded.construct(cfg_calls, spec_info);

@@ -6,7 +6,7 @@
 #include "util.h"
 #include "spec-prim.h"
 
-void AEGPO_Expanded::construct(const AEGPO& in, const SpeculationInfo& spec) {
+void CFG_Expanded::construct(const CFG& in, const SpeculationInfo& spec) {
     // create entry
     NodeRef in_src = in.entry;
     NodeRef src = add_node(in.lookup(in_src));
@@ -52,7 +52,7 @@ void AEGPO_Expanded::construct(const AEGPO& in, const SpeculationInfo& spec) {
  *
  */
 template <typename OutputIt>
-void AEGPO_Expanded::construct_rec(const AEGPO& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out) {
+void CFG_Expanded::construct_rec(const CFG& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out) {
 
     /* check whether to merge or duplicate node */
     const unsigned spec_depth = task.spec_depth + 1;
@@ -113,7 +113,7 @@ void AEGPO_Expanded::construct_rec(const AEGPO& in, const SpeculationInfo& spec,
     }
 }
 
-void AEGPO_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const AEGPO &in, std::unordered_map<NodeRef, RefMap> &maps, AEGPO::Node &node, NodeRef ref) {
+void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::unordered_map<NodeRef, RefMap> &maps, CFG::Node &node, NodeRef ref) {
     using Key = Translations::Key;
     using Map = RefMap;
     enum ValueKind {
@@ -161,14 +161,14 @@ void AEGPO_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::
     }
 }
 
-void AEGPO_Expanded::resolve_refs(const AEGPO& in) {
+void CFG_Expanded::resolve_refs(const CFG& in) {
     /* Approach
      * We want to bind all llvm::Argument's and llvm::Instruction's. We should leave other kinds of llvm::Value's alone.
      */
     
     std::vector<NodeRef> order;
     reverse_postorder(std::back_inserter(order));
-    using Translations = AEGPO_Unrolled::Translations;
+    using Translations = CFG_Unrolled::Translations;
     using Key = Translations::Key;
     using Map = std::unordered_map<Key, NodeRefSet, Key::Hash>;
     std::unordered_map<NodeRef, Map> maps;

@@ -99,7 +99,7 @@ Inst *Inst::Create(const llvm::Instruction *I) {
     }
 }
 
-Inst *Inst::Create(const AEGPO::Node::Call& call) {
+Inst *Inst::Create(const CFG::Node::Call& call) {
     return new CallInst(call.C, call.arg);
 }
 

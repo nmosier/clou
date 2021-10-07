@@ -164,7 +164,7 @@ void AEG::construct_addr_refs() {
     std::unordered_map<const llvm::Constant *, UHBAddress> globals;
     
     for (NodeRef ref = 0; ref < size(); ++ref) {
-        const AEGPO::Node& po_node = po.lookup(ref);
+        const CFG::Node& po_node = po.lookup(ref);
         Node& node = lookup(ref);
         
         if (const RegularInst *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
@@ -360,7 +360,7 @@ void AEG::construct_tfo2() {
 }
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
-    using ID = AEGPO::ID;
+    using ID = CFG::ID;
     struct Info {
         ID id;
         const llvm::Value *V;
@@ -384,7 +384,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     // check for arguments
     for (NodeRef i = 0; i < size(); ++i) {
         const Node& node = lookup(i);
-        const AEGPO::Node& po_node = po.lookup(i);
+        const CFG::Node& po_node = po.lookup(i);
         if (const auto *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
             for (const llvm::Value *V : inst->addr_refs) {
                 if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
@@ -707,7 +707,7 @@ void AEG::construct_addr() {
     
     for (NodeRef dst : node_range()) {
         const Node& dst_node = lookup(dst);
-        const AEGPO::Node& dst_po_node = po.lookup(dst);
+        const CFG::Node& dst_po_node = po.lookup(dst);
         if (const auto *inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get())) {
             const llvm::Value *V = dst_node.get_memory_address_pair().first;
             const auto refs_it = dst_po_node.refs.find(V);
@@ -731,7 +731,7 @@ void AEG::construct_addr() {
                     const Info in = todo.back();
                     todo.pop_back();
                     const Node& node = lookup(in.ref);
-                    const AEGPO::Node& po_node = po.lookup(in.ref);
+                    const CFG::Node& po_node = po.lookup(in.ref);
                     
                     if (node.inst->kind() == Inst::Kind::LOAD) {
                         if (in.state == Info::SEEN) {

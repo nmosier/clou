@@ -145,7 +145,7 @@ struct Context {
         return relation_type<Ts...>(logic);
     }
     
-    /** Get the binary relation on ::NodeRef corresponding to the given edge `kind`. */
+    /** Get the binary relation on NodeRef corresponding to the given edge `kind`. */
     relation_type<NodeRef, NodeRef> edge_rel(UHBEdge::Kind kind) const;
     
     relation_type<NodeRef> node_rel(Inst::Kind kind, ExecMode mode); /*!< Get the set of nodes of the given `kind` and execution `mode`. */
@@ -449,8 +449,9 @@ Bool lone(const relation<Bool, Ts...>& rel) {
     }
 }
 
-/** Compute whether \p a is a subset of \b
- * \return \f$ a \subseteq b \f$ */
+/** Compute whether \p a is a subset of \p b
+ * \return \f$ a \subseteq b \f$
+ */
 template <typename Bool, typename... Ts>
 Bool subset(const relation<Bool, Ts...>& a, const relation<Bool, Ts...>& b) {
     const auto& L = a.logic;

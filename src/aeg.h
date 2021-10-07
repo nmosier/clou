@@ -23,7 +23,7 @@ class Taint_Array;
 
 class AEG {
 public:
-    const AEGPO& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
+    const CFG& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
     UHBContext context; /*!<  The context for AEG construction. */
 
     using Node = UHBNode;
@@ -44,7 +44,7 @@ public:
     const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
     Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
     
-    explicit AEG(const AEGPO& po): po(po), context(), constraints() {}
+    explicit AEG(const CFG& po): po(po), context(), constraints() {}
     
     void dump_graph(std::ostream& os) const;
     void dump_graph(const std::string& path) const;
@@ -229,7 +229,7 @@ public:
 #endif
     
 private:
-    using ValueLoc = std::pair<AEGPO::ID, const llvm::Value *>;
+    using ValueLoc = std::pair<CFG::ID, const llvm::Value *>;
     using ValueLocRel = std::unordered_map<std::pair<ValueLoc, ValueLoc>, llvm::AliasResult>;
     ValueLocRel alias_rel;
     

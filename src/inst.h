@@ -128,7 +128,7 @@ X(OTHER)
     static Inst *Create(Entry);
     static Inst *Create(Exit);
     static Inst *Create(const llvm::Instruction *I);
-    static Inst *Create(const AEGPO::Node::Call& call);
+    static Inst *Create(const CFG::Node::Call& call);
     
     virtual void print(std::ostream& os) const {
         os << kind();

@@ -1,7 +1,7 @@
 #include "cfg/calls.h"
 #include "cfg/unrolled.h"
 
-void CFG_Calls::construct(const AEGPO& in) {
+void CFG_Calls::construct(const CFG& in) {
     std::unordered_map<NodeRef, NodeRefSet> map;
     
     // copy nodes
@@ -12,7 +12,7 @@ void CFG_Calls::construct(const AEGPO& in) {
             if (const auto *C = llvm::dyn_cast<llvm::CallBase>(*I)) {
                 for (const llvm::Value *arg : C->args()) {
                     if (arg->getType()->isPointerTy()) {
-                        const NodeRef ref = add_node(Node(AEGPO::Node::Call {
+                        const NodeRef ref = add_node(Node(CFG::Node::Call {
                             .C = C,
                             .arg = arg
                         }, in_node.id));

@@ -1,7 +1,7 @@
 #include "spec-prim.h"
 #include "cfg/cfg.h"
 
-SpeculationInfo::SpeculationInfo(const AEGPO& po): po(po) {}
+SpeculationInfo::SpeculationInfo(const CFG& po): po(po) {}
 
 void SpeculationInfo::add(const SpeculationPrimitive& primitive) {
     NodeRefVec order;

@@ -7,7 +7,7 @@
 #include "cfg/unrolled.h"
 #include "util.h"
 
-void AEGPO_Unrolled::construct() {
+void CFG_Unrolled::construct() {
     entry = add_node(Node::make_entry());
     NodeRef exit = add_node(Node::make_exit());
     exits = {exit};
@@ -21,7 +21,7 @@ void AEGPO_Unrolled::construct() {
     prune();
 }
 
-void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
+void CFG_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
     if (const llvm::CallBase *C = llvm::dyn_cast<llvm::CallBase>(I)) {
         if (construct_call(C, port, ids)) {
             return;
@@ -34,7 +34,7 @@ void AEGPO_Unrolled::construct_instruction(const llvm::Instruction *I, Port& por
     port.exits = {{I->getParent(), port.entry}};
 }
 
-bool AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
+bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
     llvm::Function *F = C->getCalledFunction();
     if (F == nullptr || F->isDeclaration()) {
 #if 0
@@ -91,7 +91,7 @@ bool AEGPO_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& id
     return true;
 }
 
-void AEGPO_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids) {
+void CFG_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids) {
     std::vector<Port> ports;
     ports.resize(B->size());
     
@@ -109,7 +109,7 @@ void AEGPO_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs&
     port.exits = std::move(ports.back().exits);
 }
 
-void AEGPO_Unrolled::construct_loop_forest(const LoopForest *LF, Port& port, IDs& ids) {
+void CFG_Unrolled::construct_loop_forest(const LoopForest *LF, Port& port, IDs& ids) {
     /* construct loops */
     std::unordered_map<const llvm::BasicBlock *, const llvm::Loop *> block_to_loop;
     std::unordered_map<const llvm::Loop *, Port> loop_to_port;
@@ -196,7 +196,7 @@ void AEGPO_Unrolled::construct_loop_forest(const LoopForest *LF, Port& port, IDs
     }
 }
 
-void AEGPO_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
+void CFG_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
     LoopForest LF;
     LF.entry = L->getHeader();
     llvm::SmallVector<llvm::BasicBlock *> exits;
@@ -248,7 +248,7 @@ void AEGPO_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
 
 
 // NOTE: A function may be constructed multiple times.
-void AEGPO_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
+void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
     const llvm::DominatorTree dom_tree {*F};
     const llvm::LoopInfo loop_info {dom_tree};
     LoopForest LF;
@@ -269,7 +269,7 @@ void AEGPO_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids)
     construct_loop_forest(&LF, port, ids);
 }
 
-std::optional<NodeRefSet> AEGPO_Unrolled::Binding::bind(const llvm::Value *V) const {
+std::optional<NodeRefSet> CFG_Unrolled::Binding::bind(const llvm::Value *V) const {
     if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
         if (insts.find(I) == insts.end()) {
             llvm::errs() << "Binding error for instruction " << *I << "\n";

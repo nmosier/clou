@@ -1,3 +1,6 @@
+/** \dir src/cfg
+ */
+
 #pragma once
 
 #include <variant>
@@ -23,12 +26,20 @@
  * 
  */
 
-class AEGPO {
+/**
+ * Control-flow graph representation during pre-processing of the function being analyzed.
+ * All CFGs should have the property of being loop-free.
+ * Multiple passes are performed on the original CFG before it is transformed into the AEG for analysis.
+ */
+class CFG {
 public:
-   using FuncID = unsigned;
-   using LoopID = unsigned;
+   using FuncID = unsigned; /*!< Globally (in the entire CFG) uniquely identifies current function instantiation (used for distinguishing multiply inlined functions) */
+   using LoopID = unsigned; /*!< Locally (only in the current function/loop context) uniquely identifies a loop iteration (used for distinguishing different iterations of an unrolled loop) */
 
-   // TODO: Need to use stack for loops too
+    /** A unique identifier for a node in the CFG.
+     * This captures the current loop-nest context and function context.
+     * This identifier is essential to correctly interpret the results of some LLVM analysis, e.g. LLVM alias analysis.
+     */
    struct ID {
       FuncID func = 0;
       std::vector<LoopID> loop;
@@ -37,6 +48,12 @@ public:
       }
    };
    
+    /** A node in the control flow graph. A node can represent one of the following:
+     * - Entry: program entry node (top). Each CFG contains exactly one of these. It does not have a corresponding llvm::Instruction.
+     * - Exit: program exit node (bottom). Each CFG contains at least one of these. It does not have a corresponding llvm::Instruction.
+     * - llvm::Instruction: an instruction. There is possibly a 1-to-many correspondence from these nodes to LLVM-IR instructions due to function inlining and loop unrolling.
+     * - Node::Call: the evaluation of a single pointer argument of an external call.
+     */
    struct Node {
        struct Call {
            const llvm::CallBase *C;
@@ -58,14 +75,9 @@ public:
 
       template <typename Arg>
       explicit Node(const Arg& arg, std::optional<ID> id): v(arg), id(id) {}
-      
-#if 0
-      template <typename Arg>
-      explicit Node(const Arg& arg): v(arg) {}
-#endif
+
       static Node make_entry() { return Node {Entry {}, std::nullopt}; }
       static Node make_exit() { return Node {Exit {}, std::nullopt}; }
-      // static Node make(const llvm::Instruction *I) { return Node {I}; }
        
        bool operator==(const Node& other) const {
            return v == other.v && id == other.id && refs == other.refs;
@@ -104,7 +116,7 @@ public:
    template <typename OutputIt>
    void postorder(OutputIt out) const;
 
-   AEGPO(unsigned num_specs): num_specs(num_specs) {}
+   CFG(unsigned num_specs): num_specs(num_specs) {}
     
     bool is_block_entry(NodeRef ref) const;
     bool is_block_exit(NodeRef ref) const;
@@ -185,12 +197,12 @@ public:
     
     Translations translations;
     
-    bool operator==(const AEGPO& other) const {
+    bool operator==(const CFG& other) const {
         return nodes == other.nodes && po == other.po && translations == other.translations;
     }
 };
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node);
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node);
 
 /* Functions and loops may have multiple exits.
  * For functions, these are return instructions.
@@ -214,8 +226,8 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AEGPO::Node& node);
 
 namespace std {
    template <>
-   struct hash<AEGPO::ID> {
-      std::size_t operator()(const AEGPO::ID& id) const {
+   struct hash<CFG::ID> {
+      std::size_t operator()(const CFG::ID& id) const {
          return hash_ordered_tuple(id.func, id.loop);
       }
    };
@@ -223,7 +235,7 @@ namespace std {
 
 
 template <typename OutputIt>
-void AEGPO::reverse_postorder(OutputIt out) const {
+void CFG::reverse_postorder(OutputIt out) const {
    std::unordered_set<NodeRef> done;
    std::vector<NodeRef> order;
    postorder_rec(done, order, entry);
@@ -231,13 +243,13 @@ void AEGPO::reverse_postorder(OutputIt out) const {
 }
 
 template <typename OutputIt>
-void AEGPO::postorder(OutputIt out) const {
+void CFG::postorder(OutputIt out) const {
    std::unordered_set<NodeRef> done;
    std::vector<NodeRef> order;
    postorder_rec(done, order, entry);
    std::copy(order.begin(), order.end(), out);
 }
 
-std::ostream& operator<<(std::ostream& os, const AEGPO::ID& id);
-std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Call& call);
-std::ostream& operator<<(std::ostream& os, const AEGPO::Node::Variant& v);
+std::ostream& operator<<(std::ostream& os, const CFG::ID& id);
+std::ostream& operator<<(std::ostream& os, const CFG::Node::Call& call);
+std::ostream& operator<<(std::ostream& os, const CFG::Node::Variant& v);
