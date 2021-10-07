@@ -197,6 +197,7 @@ void AEG::construct_addr_refs() {
                     } else {
                         auto& os = llvm::errs();
                         os << "Expected argument but got " << *V << "\n";
+                        os << "when looking at instruction " << *inst->I << "\n";
                         std::abort();
                     }
                 } else {

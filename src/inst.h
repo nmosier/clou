@@ -234,13 +234,14 @@ struct CallInst: MemoryInst {
     virtual Option may_write() const override { return Option::MAY; }
     virtual Option may_xsread() const override { return Option::MAY; }
     virtual Option may_xswrite() const override { return Option::MAY; }
+    
     // TODO: this might need more fine-grained control over adding assertions, since write -> xswrite, etc.
     
     virtual const llvm::Value *get_memory_operand() const override {
         return arg;
     }
     
-    CallInst(const llvm::Instruction *I, const llvm::Value *arg): MemoryInst(I), arg(arg) {}
+    CallInst(const llvm::Instruction *I, const llvm::Value *arg);
     
 };
 

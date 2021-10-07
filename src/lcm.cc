@@ -66,7 +66,7 @@ struct LCMPass : public llvm::FunctionPass {
             cfg_calls.construct(aegpo_unrolled);
             output(cfg_calls, "calls", F);
             
-            assert(cfg_calls == aegpo_unrolled);
+            // assert(cfg_calls == aegpo_unrolled);
 
 #if 1
             std::cerr << "outputting\n";

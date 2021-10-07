@@ -113,6 +113,54 @@ void AEGPO_Expanded::construct_rec(const AEGPO& in, const SpeculationInfo& spec,
     }
 }
 
+void AEGPO_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const AEGPO &in, std::unordered_map<NodeRef, RefMap> &maps, AEGPO::Node &node, NodeRef ref) {
+    using Key = Translations::Key;
+    using Map = RefMap;
+    enum ValueKind {
+        INST, ARG, OTHER, UNKNOWN
+    } kind;
+    if (llvm::isa<llvm::Instruction>(V)) {
+        kind = INST;
+    } else if (llvm::isa<llvm::Argument>(V)) {
+        kind = ARG;
+    } else if (llvm::isa<llvm::Constant>(V) || llvm::isa<llvm::BasicBlock>(V)) {
+        kind = OTHER;
+    } else {
+        kind = UNKNOWN;
+    }
+    
+    llvm::errs() << "resolving " << *I << " " << *V << "\n";
+    
+    switch (kind) {
+        case INST:
+        case ARG: {
+            std::vector<Key> sources;
+            in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
+            const Map& map = maps.at(ref);
+            for (const Key& source : sources) {
+                const auto it = map.find(source);
+                if (kind == INST) {
+                    if (!llvm::isa<llvm::PHINode>(I)) {
+                        assert(it != map.end());
+                    }
+                }
+                if (it != map.end()) {
+                    const NodeRefSet& refs = it->second;
+                    node.refs[V].insert(refs.begin(), refs.end());
+                }
+            }
+            break;
+        }
+            
+        case OTHER:
+            break;
+            
+        case UNKNOWN:
+            llvm::errs() << "value of unknown kind: " << *V << "\n";
+            std::abort();
+    }
+}
+
 void AEGPO_Expanded::resolve_refs(const AEGPO& in) {
     /* Approach
      * We want to bind all llvm::Argument's and llvm::Instruction's. We should leave other kinds of llvm::Value's alone.
@@ -136,69 +184,42 @@ void AEGPO_Expanded::resolve_refs(const AEGPO& in) {
         }
         
         const Node& node = lookup(ref);
+        
+        std::visit(util::overloaded {
+            [&] (const llvm::Instruction *I) {
+                map[Key {node.id->func, I}].insert(ref);
+            },
+            [&] (const Node::Call& call) {
+                map[Key {node.id->func, call.C}].insert(ref);
+            },
+            [] (Entry) {},
+            [] (Exit) {},
+        }, node.v);
+
+#if 0
         if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
             map[Key {node.id->func, *Ip}].insert(ref);
         }
+#endif
         
         maps[ref] = std::move(map);
-    }
-    
-    for (NodeRef ref : order) {
-        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&lookup(ref).v)) {
-            llvm::errs() << ref << " " << **Ip << "\n";
-        }
-    }
-    
+    }    
     
     /* Now resolve refs */
     for (const NodeRef ref : order) {
         Node& node = lookup(ref);
         node.refs.clear();
-        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
-            const auto *I = *Ip;
-            for (const llvm::Value *V : I->operand_values()) {
-                enum ValueKind {
-                    INST, ARG, OTHER, UNKNOWN
-                } kind;
-                if (llvm::isa<llvm::Instruction>(V)) {
-                    kind = INST;
-                } else if (llvm::isa<llvm::Argument>(V)) {
-                    kind = ARG;
-                } else if (llvm::isa<llvm::Constant>(V) || llvm::isa<llvm::BasicBlock>(V)) {
-                    kind = OTHER;
-                } else {
-                    kind = UNKNOWN;
+        std::visit(util::overloaded {
+            [&] (const llvm::Instruction *I) {
+                for (const llvm::Value *V : I->operand_values()) {
+                    resolve_single_ref(I, V, in, maps, node, ref);
                 }
-                
-                switch (kind) {
-                    case INST:
-                    case ARG: {
-                        std::vector<Key> sources;
-                        in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
-                        const Map& map = maps.at(ref);
-                        for (const Key& source : sources) {
-                            const auto it = map.find(source);
-                            if (kind == INST) {
-                                if (!llvm::isa<llvm::PHINode>(I)) {
-                                    assert(it != map.end());
-                                }
-                            }
-                            if (it != map.end()) {
-                                const NodeRefSet& refs = it->second;
-                                node.refs[V].insert(refs.begin(), refs.end());
-                            }
-                        }
-                        break;
-                    }
-                        
-                    case OTHER:
-                        break;
-                        
-                    case UNKNOWN:
-                        llvm::errs() << "value of unknown kind: " << *V << "\n";
-                        std::abort();
-                }
-            }
-        }
+            },
+            [&] (const Node::Call& call) {
+                resolve_single_ref(call.C, call.arg, in, maps, node, ref);
+            },
+            [&] (Entry) {},
+            [&] (Exit) {},
+        }, node.v);
     }
 }
