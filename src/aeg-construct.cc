@@ -874,7 +874,8 @@ void AEG::construct_ctrl() {
                 const auto& load_dep_node = lookup(load_dep_ref);
                 if (load_dep_node.may_read()) {
                     // find all memory accesses that the branch node dominates
-                    for (const NodeRef access_dom_ref : excl_doms.at(br_ref)) {
+                    // TODO: investigate whether this is expected or buggy
+                    for (const NodeRef access_dom_ref : excl_doms[br_ref]) {
                         const Node& access_dom_node = lookup(access_dom_ref);
                         if (access_dom_node.may_access()) {
                             // EMIT EDGE

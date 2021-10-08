@@ -148,9 +148,8 @@ void AEG::leakage_frx2(OutputIt out) const {
 }
 
 unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
+    z3::scope scope {solver};
     ProfilerStart("out/leakage.prof");
-    
-    solver.push();
     
     unsigned nleaks = 0;
     
@@ -159,12 +158,53 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
     leakage_rfx2(clauses_out);
     leakage_cox2(clauses_out);
     leakage_frx2(clauses_out);
+    
+#if 1
+    std::map<Leakage, unsigned> leakages;
+    
+    for (std::size_t i = 0; i < clauses.size(); ++i) {
+        z3::scope scope {solver};
+        const auto& clause = clauses.at(i);
+        solver.add(std::get<0>(clause), std::get<1>(clause).c_str());
+        const z3::check_result res = solver.check();
+        std::cerr << res << "\n";
+        if (res == z3::sat) {
+            const z3::eval eval {solver.get_model()};
+            
+            std::cerr << i << ": ";
+            for (const auto& clause : clauses) {
+                if (eval(std::get<0>(clause))) {
+                    std::cerr << std::get<1>(clause) << " ";
+                }
+            }
+            std::cerr << "\n";
+            
+            std::set<Leakage> new_leakages;
+            process_leakage(std::inserter(new_leakages, new_leakages.end()), eval);
+            
+            // output execution
+            std::stringstream dot;
+            dot << output_dir << "/leakage-" << i << ".dot";
+            
+            EdgeSet flag_edges;
+            for (const Leakage& lkg : new_leakages) {
+                flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
+                flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
+            }
+            output_execution(dot.str(), eval, flag_edges);
+            
+            std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
+        }
+    }
+    
+#else
     const z3::expr leakage = std::transform_reduce(clauses.begin(), clauses.end(), context.FALSE, util::logical_or<z3::expr>(), [] (const auto& t) -> z3::expr {
         return std::get<0>(t);
     });
     solver.add(leakage, "leakage");
     
     std::map<Leakage, unsigned> leakages;
+    
     
     for (unsigned i = 0; i < max; ++i) {
         const z3::check_result res = solver.check();
@@ -220,9 +260,9 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
             case z3::unknown: throw std::logic_error("unknown");
         }
     }
+#endif
     
 done:
-    solver.pop();
     
     std::stringstream path;
     path << output_dir << "/leakage.txt";
