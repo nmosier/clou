@@ -60,29 +60,26 @@ template <typename OutputIt>
 void AEG::leakage_rfx2(OutputIt out) const {
     if (util::contains(leakage_sources, LeakageSource::ADDR_DST)) {
         /* NOTE: This is actually an over-approximation, since addr-dst xswrite may not be sourced by an architetcural instruction.
-         *
          */
         for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
             std::stringstream ss;
             ss << "rfx-" << addr_dst;
             const Node& addr_dst_node = lookup(addr_dst);
+#if 0
             *out++ = std::make_tuple(addr_edge.exists && addr_dst_node.xswrite && addr_dst_node.trans, ss.str());
+#else
+            const z3::expr node_cond = addr_edge.exists && (addr_dst_node.xswrite && addr_dst_node.trans);
+            const z3::expr rfx_cond = util::any_of(exits.begin(), exits.end(), [&] (NodeRef exit) {
+                return rfx_exists(addr_dst, exit);
+            }, context.FALSE);
+            *out++ = std::make_tuple(node_cond && rfx_cond, ss.str());
+#endif
         });
     }
     
     if (util::contains(leakage_sources, LeakageSource::CTRL_DST)) {
         /* New kind of leakage to cover PHT10 -- branch condition leakage.
          */
-#if 0
-        for (NodeRef ref : node_range()) {
-            const Node& node = lookup(ref);
-            if (node.can_xswrite()) {
-                std::stringstream ss;
-                ss << "rfx-br-" << ref;
-                *out++ = std::make_tuple(node.xswrite && node.taint_trans, ss.str());
-            }
-        }
-#else
         // check for n0 -ADDR-> n1 -DEP-> n2 -CTRL-> n3.
         for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
             for_each_edge(Edge::CTRL, [&] (NodeRef ctrl_src, NodeRef ctrl_dst, const Edge& ctrl_edge) {
@@ -97,7 +94,6 @@ void AEG::leakage_rfx2(OutputIt out) const {
                 }
             });
         });
-#endif
     }
 }
 
