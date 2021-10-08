@@ -120,8 +120,8 @@ struct relation {
     }
     
     relation(const logic_type& logic = logic_type()): logic(logic) {} /*!< Construct empty relation using logic `logic`. */
-    relation(const relation& other) = default;
-    relation(relation&& other) = default;
+    // relation(const relation& other) = default;
+    // relation(relation&& other) = default;
 };
 
 /** Class for managing necessary information to construct fol::relation's from an ::AEG.
@@ -150,6 +150,8 @@ struct Context {
     
     relation_type<NodeRef> node_rel(Inst::Kind kind, ExecMode mode); /*!< Get the set of nodes of the given `kind` and execution `mode`. */
     relation_type<NodeRef> node_rel(ExecMode mode); /*!< Get the set of all nodes of the given execution `mode`. */
+    
+    relation_type<NodeRef> node_rel(z3::expr UHBNode::*pred, ExecMode mode);
     
     /** Get the set of nodes satisfying the condition (of type \a Bool ) when each node is applied to \p pred .
      * \tparam Pred predicate functor type equivalent to std::function<Bool (NodeRef, AEG::NodeRef)>
@@ -700,17 +702,6 @@ relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::edge_rel(UHBEdge::Kind kin
         if (logic.is_false(eval(aeg.exists_src(kind, src)))) { continue; }
         for (const NodeRef dst : aeg.node_range()) {
             if (logic.is_false(eval(aeg.exists_dst(kind, dst)))) { continue; }
-#if 0
-            if constexpr (std::is_same<Bool, bool>()) {
-                if (kind == UHBEdge::RFX && dst == 18) {
-                    const auto& src_node = aeg.lookup(src);
-                    const auto& dst_node = aeg.lookup(dst);
-                    if (eval(src_node.xsaccess() && dst_node.xsaccess() && src_node.same_xstate(dst_node))) {
-                        log_ << "making tuple (" << UHBEdge::kind_tostr(kind) << ", " << src << ", " << dst << "): " << eval.eval(aeg.dbg_intervening_xswrite(src, dst)) << ", xstates: " << eval.eval(src_node.xstate) << " " << eval.eval(dst_node.xstate) << "\n";
-                    }
-                }
-            }
-#endif
             rel.emplace(std::make_tuple(src, dst), eval(aeg.exists(kind, src, dst)));
         }
     }
@@ -740,6 +731,22 @@ relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(ExecMode mode) {
             case EXEC: return node.exec();
             default: std::abort();
         }
+    });
+}
+
+template <typename Bool, typename Eval>
+relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr UHBNode::*pred, ExecMode mode) {
+    return node_rel_if([&] (NodeRef, const AEG::Node& node) {
+        z3::context& ctx = node.arch.ctx();
+        z3::expr cond {ctx};
+        // TODO: unify this switch with identical above switch
+        switch (mode) {
+            case ARCH: cond = node.arch; break;
+            case TRANS: cond = node.trans; break;
+            case EXEC: cond = node.exec(); break;
+            default: std::abort();
+        }
+        return cond && node.*pred;
     });
 }
 

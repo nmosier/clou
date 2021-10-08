@@ -16,7 +16,7 @@ extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives
 
 enum class LeakageSource {
     ADDR_DST,
-    TAINT_TRANS,
+    CTRL_DST,
 };
 extern std::unordered_set<LeakageSource> leakage_sources;
 

@@ -544,4 +544,9 @@ std::unordered_set<Ts...>& operator-=(std::unordered_set<Ts...>& a, const std::u
     return a;
 }
 
+template <typename T, typename Container>
+bool contains(const Container& container, const T& x) {
+    return container.find(x) != container.end();
+}
+
 }

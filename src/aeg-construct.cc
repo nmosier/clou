@@ -67,6 +67,13 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
 #endif
     logv(2) << "Constructing comx\n";
     construct_comx();
+    logv(2) << "Constructing dependencies\n";
+    construct_dependencies();
+    logv(2) << "Constructing dominators\n";
+    construct_dominators();
+    logv(2) << "Constructing postdominators\n";
+    construct_postdominators();
+    
     logv(2) << "Constructing addr\n";
     construct_addr();
     logv(2) << "Constructing ctrl\n";
@@ -778,9 +785,10 @@ void AEG::construct_addr() {
 }
 
 
-AEG::DependencyMap AEG::get_dataflow() const {
+void AEG::construct_dependencies() {
     /* Compute map of noderefs to set of noderefs it depends on.
      * FORWARD pass
+     * A node depends on itself? No for now.
      */
     
     std::unordered_map<NodeRef, DependencyMap> ins, outs;
@@ -812,10 +820,10 @@ AEG::DependencyMap AEG::get_dataflow() const {
         res += out.second;
     }
     
-    return res;
+    dependencies = res;
 }
 
-AEG::DominatorMap AEG::get_dominators_aux(Direction dir) const {
+AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
     /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
      */
     std::unordered_map<NodeRef, NodeRefSet> ins, outs;
@@ -882,23 +890,19 @@ void AEG::construct_ctrl() {
      * Only add a control dependency if it's actually in a branch... hmm.
      */
     
-    const auto deps = get_dataflow();
-    
     /* Once we have the map of dependencies, how do we identify CTRL dependency?
      * For each branch, check the set of dependencies of the condition. Find loads.
      * The find memory accesses in the body of either branch, looking at
      *
      * Post-dominator. Control dependencies can only be from a dominator node to a node that has no intervening post-dominators.
      */
-    const auto doms = get_dominators();
-    const auto postdoms = get_postdominators();
     
     // for each dominator, find the set of nodes it properly dominates (i.e. they don't postdominate it)
     DominatorMap excl_doms;
-    for (const auto& dom_pair : doms) {
+    for (const auto& dom_pair : dominators) {
         NodeRef dominator = dom_pair.first;
         for (NodeRef dominee : dom_pair.second) {
-            const auto& postdom = postdoms.at(dominee);
+            const auto& postdom = postdominators.at(dominee);
             if (postdom.find(dominator) == postdom.end()) {
                 excl_doms[dominator].insert(dominee);
             }
@@ -906,12 +910,11 @@ void AEG::construct_ctrl() {
     }
     
     /* For each branch, find dependencies of conditions that are loads. Then in set of exclusive postdominators, find memory accesses.
-     *
      */
     for (const NodeRef br_ref : node_range()) {
         const auto& br_node = lookup(br_ref);
         if (const auto *BI = llvm::dyn_cast_or_null<llvm::BranchInst>(br_node.inst->get_inst())) {
-            for (const NodeRef load_dep_ref : deps.at(br_ref)) {
+            for (const NodeRef load_dep_ref : dependencies.at(br_ref)) {
                 const auto& load_dep_node = lookup(load_dep_ref);
                 if (load_dep_node.may_read()) {
                     // find all memory accesses that the branch node dominates

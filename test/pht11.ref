@@ -1,0 +1,1 @@
+RF (<ENTRY>; <EXIT>) (  %14 = call i32 @memcmp(i8* @temp, i8* %13, i64 1)   %13 = getelementptr inbounds i8, i8* getelementptr inbounds ([0 x i8], [0 x i8]* @array2, i64 0, i64 0), i64 %12; <EXIT>)

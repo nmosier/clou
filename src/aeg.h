@@ -96,12 +96,14 @@ private:
     
     // TODO: unify this, so that it just returns a NodeRefMap for in, out.
     using DependencyMap = NodeRefMap;
-    DependencyMap get_dataflow() const;
+    DependencyMap dependencies;
+    void construct_dependencies();
     
     using DominatorMap = NodeRefMap;
-    DominatorMap get_dominators_aux(Direction dir) const;
-    DominatorMap get_dominators() const { return get_dominators_aux(Direction::OUT); }
-    DominatorMap get_postdominators() const { return get_dominators_aux(Direction::IN); }
+    DominatorMap construct_dominators_shared(Direction dir) const;
+    DominatorMap dominators, postdominators;
+    void construct_dominators() { dominators = construct_dominators_shared(Direction::OUT); }
+    void construct_postdominators() { postdominators = construct_dominators_shared(Direction::IN); }
     
     template <typename OutputIt>
     void leakage_rfx2(OutputIt out) const;

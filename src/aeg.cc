@@ -716,7 +716,8 @@ z3::expr AEG::exists(Edge::Kind kind, NodeRef src, NodeRef dst) {
         case Edge::RFX: return rfx_exists(src, dst);
         case Edge::FRX: return frx_exists(src, dst);
             // case Edge::TFO: return tfo_exists(src, dst);
-        case Edge::ADDR: {
+        case Edge::ADDR:
+        case Edge::CTRL: {
             if (const Edge *edge = find_edge(src, dst, kind)) {
                 return edge->exists;
             } else {
@@ -740,6 +741,7 @@ z3::expr AEG::exists_src(Edge::Kind kind, NodeRef src) const {
         case Edge::COX: return node.exec() && node.xswrite;
         case Edge::FRX: return node.exec() && node.xsread;
         case Edge::ADDR: return node.exec() && node.read;
+        case Edge::CTRL: return node.exec() && node.read;
         default: std::abort();
     }
 }
@@ -755,7 +757,8 @@ z3::expr AEG::exists_dst(Edge::Kind kind, NodeRef dst) const {
         case Edge::RFX: return node.exec() && node.xsread;
         case Edge::COX: return node.exec() && node.xswrite;
         case Edge::FRX: return node.exec() && node.xswrite;
-        case Edge::ADDR: return node.exec() && node.inst->is_memory();
+        case Edge::ADDR: return node.exec() && node.access();
+        case Edge::CTRL: return node.exec() && node.access();
         default: std::abort();
     }
 }

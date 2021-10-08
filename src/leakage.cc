@@ -70,9 +70,10 @@ void AEG::leakage_rfx2(OutputIt out) const {
         });
     }
     
-    if (util::contains(leakage_sources, LeakageSource::TAINT_TRANS)) {
+    if (util::contains(leakage_sources, LeakageSource::CTRL_DST)) {
         /* New kind of leakage to cover PHT10 -- branch condition leakage.
          */
+#if 0
         for (NodeRef ref : node_range()) {
             const Node& node = lookup(ref);
             if (node.can_xswrite()) {
@@ -81,6 +82,22 @@ void AEG::leakage_rfx2(OutputIt out) const {
                 *out++ = std::make_tuple(node.xswrite && node.taint_trans, ss.str());
             }
         }
+#else
+        // check for n0 -ADDR-> n1 -DEP-> n2 -CTRL-> n3.
+        for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
+            for_each_edge(Edge::CTRL, [&] (NodeRef ctrl_src, NodeRef ctrl_dst, const Edge& ctrl_edge) {
+                // TODO: extract dependency query to be separate method
+                if (ctrl_src == addr_dst || util::contains(dependencies.at(ctrl_src), addr_dst)) {
+                    std::stringstream ss;
+                    ss << "rfx-br-" << addr_src << "-" << addr_dst << "-" << ctrl_src << "-" << ctrl_dst;
+                    const auto& ctrl_dst_node = lookup(ctrl_dst);
+                    if (ctrl_dst_node.can_xswrite()) {
+                        *out++ = std::make_tuple(addr_edge.exists && ctrl_edge.exists && ctrl_dst_node.trans && ctrl_dst_node.xswrite, ss.str());
+                    }
+                }
+            });
+        });
+#endif
     }
 }
 
@@ -265,214 +282,191 @@ unsigned AEG::leakage3(z3::solver& solver, unsigned max) {
                 solver.add(lkg.pred, ss.str().c_str());
             }
             
+            const auto before = leakages.size();
+            std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
+            const auto after = leakages.size();
+            std::cerr << "new leakages: " << after - before << "\n";
+            
+            ++i;
+        }
+    }
+    
+    std::stringstream path;
+    path << output_dir << "/leakage.txt";
+    std::ofstream ofs {path.str()};
+    for (const auto& pair : leakages) {
+        const Leakage& leakage = pair.first;
+        ofs << pair.second << " " << leakage.com_kind << " " << leakage.com << " " << leakage.comx << " " << leakage.desc;
+        ofs << " -- " << leakage.com_kind << " (" << po.lookup(leakage.com.first).v << "; " << po.lookup(leakage.com.second).v << ") (" << po.lookup(leakage.comx.first).v << "; " << po.lookup(leakage.comx.second).v << ")\n";
+        
+    }
+    
+    return 0;
+}
+
+
+
+
+
+template <typename OutputIt>
+OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
+    fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
+    const auto trans = fol_ctx.node_rel(ExecMode::TRANS);
+    const auto reads = fol_ctx.node_rel(&Node::read, ExecMode::ARCH);
+    const auto writes = fol_ctx.node_rel(&Node::write, ExecMode::ARCH);
+    const auto accesses = reads + writes;
+    const auto xswrites = fol_ctx.node_rel(&Node::xswrite, ExecMode::EXEC);
+    const auto xsreads = fol_ctx.node_rel(&Node::xsread, ExecMode::EXEC);
+    const auto entry = fol_ctx.node_rel(Inst::Kind::ENTRY, ExecMode::ARCH);
+    const auto exit = fol_ctx.node_rel(Inst::Kind::EXIT, ExecMode::ARCH);
+    const auto exec = fol_ctx.node_rel(ExecMode::EXEC);
+    
+    const auto rf = fol_ctx.edge_rel(Edge::RF);
+    const auto co = fol_ctx.edge_rel(Edge::CO);
+    const auto fr = fol_ctx.edge_rel(Edge::FR);
+    const auto rfx = fol_ctx.edge_rel(Edge::RFX);
+    const auto cox = fol_ctx.edge_rel(Edge::COX);
+    const auto frx = fol_ctx.edge_rel(Edge::FRX);
+    const auto same_addr = fol_ctx.same_addr();
+    const auto same_xstate = fol_ctx.same_xstate();
+    const auto addr = fol_ctx.edge_rel(Edge::ADDR);
+    const auto addr_dsts = fol::element<1>(addr);
+    const auto ctrl = fol_ctx.edge_rel(Edge::CTRL);
+    const auto ctrl_dsts = fol::element<1>(ctrl);
+    auto flags = fol_ctx.none<NodeRef>();
+    if (util::contains(leakage_sources, LeakageSource::ADDR_DST)) {
+        flags |= addr_dsts;
+    }
+    if (util::contains(leakage_sources, LeakageSource::CTRL_DST)) {
+        flags |= ctrl_dsts;
+    }
+    flags &= trans;
+    
+    /* rf/rfx leakage */
+    {
+        // find read nodes that are rfx successors to flagged xswrite nodes
+        // trace back architectural rfs from same xstate
+        const auto rfx_flagged = fol::restrict_element<0>(rfx, flags);
+        const auto same_xstate_flagged = fol::join(fol::element<0>(rfx_flagged), same_xstate);
+        const auto rf_flagged = fol::restrict_element<1>(rf, fol::element<1>(rfx_flagged));
+        const auto rf_leakage = fol::restrict_element<0>(rf_flagged, same_xstate_flagged);
+        const auto rf_leakage2 = fol_ctx.filter(fol::join2(rfx_flagged, ~rf_leakage), [&] (const auto& t) {
+            return lookup(std::get<0>(t)).same_xstate(lookup(std::get<2>(t)));
+        });
+        
+        for (const auto& x : rf_leakage2) {
+            const auto ref1 = std::get<0>(x.first);
+            const auto ref2 = std::get<1>(x.first);
+            const auto ref3 = std::get<2>(x.first);
+            z3::expr cond {context};
+            if (lookup(ref2).inst->is_exit()) {
+                // rfx implies rf
+                cond = z3::implies(rfx_exists(ref1, ref2), rf_exists(ref1, ref2));
+            } else {
+                // rf implies rfx
+                cond = z3::implies(rf_exists(ref3, ref2), rfx_exists(ref3, ref2));
+            }
+            
+            *out++ = {
+                .com_kind = Edge::RF,
+                .com = {ref3, ref2},
+                .comx_kind = Edge::RFX,
+                .comx = {ref1, ref2},
+                .desc = "rf without rfx",
+                .pred = cond,
+            };
+        }
+        
+        std::cerr << "rf leakage: " << rf_leakage2 << "\n";
+        
 #if 0
-            // assert different execution
-            {
-                // execution must differ in arch, trans, or xsaccess order.
-                z3::expr same = context.TRUE;
-                NodeRefVec xsorder;
-                for (NodeRef ref : node_range()) {
+        // also find rfx-branch type leakage
+        for (NodeRef ref : node_range()) {
+            const Node& node = lookup(ref);
+            if (node.trans && node.taint_trans) {
+                *out++ = {
+                    .com_kind = Edge::RF,
+                    .com = {ref}
+                };
+            }
+        }
+        
+        const auto tainted_trans = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
+            return node.trans && node.taint_trans;
+        });
+        const auto tainted_branch_cond = fol_ctx.node_rel_if([&] (NodeRef ref, const Node& node) {
+            if (const auto *I = node.inst.I) {
+                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(I)) {
+                    if (B->isConditional()) {
+                        return node.exec() && tainter->get_value(ref, B->getCondition());
+                    }
+                }
+            }
+            return context.FALSE;
+        });
+        tainted_trans & tainted_branch_cond;
+#endif
+    }
+    
+    // co
+    {
+        // silent stores
+        {
+            const auto silent_stores = writes - xswrites;
+            const auto impacted_cos = fol::restrict_element<0>(co, silent_stores) + fol::restrict_element<1>(co, silent_stores);
+            for (const auto& edge : impacted_cos) {
+                const NodeRef ref1 = std::get<0>(edge.first);
+                const NodeRef ref2 = std::get<1>(edge.first);
+                const auto cond = [&] (NodeRef ref) -> z3::expr {
                     const Node& node = lookup(ref);
-                    same = same && node.arch == eval(node.arch);
-                    same = same && node.trans == eval(node.trans);
-                    if (node.xsaccess_order && eval() {
-                        xsorder.push_back(<#const_reference __x#>)
-                    }
-                        }
-#endif
-                        
-                        const auto before = leakages.size();
-                        std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
-                        const auto after = leakages.size();
-                        std::cerr << "new leakages: " << after - before << "\n";
-                        
-                        ++i;
-                        }
-                        }
-                        
-                        std::stringstream path;
-                        path << output_dir << "/leakage.txt";
-                        std::ofstream ofs {path.str()};
-                        for (const auto& pair : leakages) {
-                        const Leakage& leakage = pair.first;
-                        ofs << pair.second << " " << leakage.com_kind << " " << leakage.com << " " << leakage.comx << " " << leakage.desc;
-                        ofs << " -- " << leakage.com_kind << " (" << po.lookup(leakage.com.first).v << "; " << po.lookup(leakage.com.second).v << ") (" << po.lookup(leakage.comx.first).v << "; " << po.lookup(leakage.comx.second).v << ")\n";
-                        
-                    }
-                        
-                        return 0;
-                        }
-                        
-                        
-                        
-                        
-                        
-                        template <typename OutputIt>
-                        OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
-                        fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
-                        const auto reads = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
-                            return node.read && node.arch;
-                        });
-                        const auto writes = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
-                            return node.write && node.arch;
-                        });
-                        const auto accesses = reads + writes;
-                        const auto xswrites = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xswrite; });
-                        const auto xsreads = fol_ctx.node_rel_if([] (NodeRef, const Node& node) { return node.exec() && node.xsread; });
-                        const auto entry = fol_ctx.node_rel(Inst::Kind::ENTRY, ExecMode::ARCH);
-                        const auto exit = fol_ctx.node_rel(Inst::Kind::EXIT, ExecMode::ARCH);
-                        const auto exec = fol_ctx.node_rel(ExecMode::EXEC);
-                        
-                        const auto rf = fol_ctx.edge_rel(Edge::RF);
-                        const auto co = fol_ctx.edge_rel(Edge::CO);
-                        const auto fr = fol_ctx.edge_rel(Edge::FR);
-                        const auto rfx = fol_ctx.edge_rel(Edge::RFX);
-                        const auto cox = fol_ctx.edge_rel(Edge::COX);
-                        const auto frx = fol_ctx.edge_rel(Edge::FRX);
-                        const auto same_addr = fol_ctx.same_addr();
-                        const auto same_xstate = fol_ctx.same_xstate();
-                        const auto addr = fol_ctx.edge_rel(Edge::ADDR);
-                        const auto addr_dsts = fol::element<1>(addr);
-                        const auto tainted_trans = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
-#if USE_TAINT
-                            return node.trans && node.taint_trans;
-#else
-                            return context.FALSE;
-#endif
-                        });
-                        auto flags = fol_ctx.none<NodeRef>();
-                        if (util::contains(leakage_sources, LeakageSource::ADDR_DST)) {
-                            flags |= addr_dsts;
-                        }
-                        if (util::contains(leakage_sources, LeakageSource::TAINT_TRANS)) {
-                            flags |= tainted_trans;
-                        }
-                        
-                        /* rf/rfx leakage */
-                        {
-                            // find read nodes that are rfx successors to flagged xswrite nodes
-                            // trace back architectural rfs from same xstate
-                            const auto rfx_flagged = fol::restrict_element<0>(rfx, flags);
-                            const auto same_xstate_flagged = fol::join(fol::element<0>(rfx_flagged), same_xstate);
-                            const auto rf_flagged = fol::restrict_element<1>(rf, fol::element<1>(rfx_flagged));
-                            const auto rf_leakage = fol::restrict_element<0>(rf_flagged, same_xstate_flagged);
-                            const auto rf_leakage2 = fol_ctx.filter(fol::join2(rfx_flagged, ~rf_leakage), [&] (const auto& t) {
-                                return lookup(std::get<0>(t)).same_xstate(lookup(std::get<2>(t)));
-                            });
-                            
-                            for (const auto& x : rf_leakage2) {
-                                const auto ref1 = std::get<0>(x.first);
-                                const auto ref2 = std::get<1>(x.first);
-                                const auto ref3 = std::get<2>(x.first);
-                                z3::expr cond {context};
-                                if (lookup(ref2).inst->is_exit()) {
-                                    // rfx implies rf
-                                    cond = z3::implies(rfx_exists(ref1, ref2), rf_exists(ref1, ref2));
-                                } else {
-                                    // rf implies rfx
-                                    cond = z3::implies(rf_exists(ref3, ref2), rfx_exists(ref3, ref2));
-                                }
-                                
-                                *out++ = {
-                                    .com_kind = Edge::RF,
-                                    .com = {ref3, ref2},
-                                    .comx_kind = Edge::RFX,
-                                    .comx = {ref1, ref2},
-                                    .desc = "rf without rfx",
-                                    .pred = cond,
-                                };
-                            }
-                            
-                            std::cerr << "rf leakage: " << rf_leakage2 << "\n";
-                            
-#if 0
-                            // also find rfx-branch type leakage
-                            for (NodeRef ref : node_range()) {
-                                const Node& node = lookup(ref);
-                                if (node.trans && node.taint_trans) {
-                                    *out++ = {
-                                        .com_kind = Edge::RF,
-                                        .com = {ref}
-                                    };
-                                }
-                            }
-                            
-                            const auto tainted_trans = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
-                                return node.trans && node.taint_trans;
-                            });
-                            const auto tainted_branch_cond = fol_ctx.node_rel_if([&] (NodeRef ref, const Node& node) {
-                                if (const auto *I = node.inst.I) {
-                                    if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(I)) {
-                                        if (B->isConditional()) {
-                                            return node.exec() && tainter->get_value(ref, B->getCondition());
-                                        }
-                                    }
-                                }
-                                return context.FALSE;
-                            });
-                            tainted_trans & tainted_branch_cond;
-#endif
-                        }
-                        
-                        // co
-                        {
-                            // silent stores
-                            {
-                                const auto silent_stores = writes - xswrites;
-                                const auto impacted_cos = fol::restrict_element<0>(co, silent_stores) + fol::restrict_element<1>(co, silent_stores);
-                                for (const auto& edge : impacted_cos) {
-                                    const NodeRef ref1 = std::get<0>(edge.first);
-                                    const NodeRef ref2 = std::get<1>(edge.first);
-                                    const auto cond = [&] (NodeRef ref) -> z3::expr {
-                                        const Node& node = lookup(ref);
-                                        return z3::implies(node.write && node.arch, node.xswrite);
-                                    };
-                                    *out++ = {
-                                        .com_kind = Edge::CO,
-                                        .com = {ref1, ref2},
-                                        .comx_kind = Edge::CO, // really should be 'none'
-                                        .comx = {0, 0},
-                                        .desc = "silent store",
-                                        .pred = cond(ref1) && cond(ref2),
-                                    };
-                                }
-                            }
-                            
-                            // transient
-                            {
-                                const auto co_u = co - fol::join(co, co); // unit co
-                                const auto cox_u = cox - fol::join(cox, cox); // unit cox
-                                const auto mismatched_co = co_u - (rfx & cox);
-                                const auto mismatched_co_rfx = mismatched_co - rfx;
-                                const auto mismatched_co_cox = mismatched_co - cox;
-                                const auto mismatched_co_rfx_dsts = fol::element<1>(mismatched_co_rfx);
-                                const auto rfx_flagged = fol::restrict_element<0>(rfx, flags);
-                                const auto cox_u_flagged = fol::restrict_element<0>(cox_u, flags);
-                                const auto co_rfx_triples = fol::join2(mismatched_co_rfx, ~rfx_flagged);
-                                const auto mismatched_co_cox_dsts = fol::element<1>(mismatched_co_cox);
-                                const auto co_cox_triples = fol::join2(mismatched_co_cox, ~cox_u_flagged);
-                                
-                                const auto f = [&] (const auto& co_comx_triples, Edge::Kind kind) {
-                                    for (const auto& triple : co_comx_triples) {
-                                        const NodeRef co_src = std::get<0>(triple.first);
-                                        const NodeRef dst = std::get<1>(triple.first);
-                                        const NodeRef comx_src = std::get<2>(triple.first);
-                                        const z3::expr cond = z3::implies(co_exists(co_src, dst), exists(kind, co_src, dst));
-                                        *out++ = {
-                                            .com_kind = Edge::CO,
-                                            .com = {co_src, dst},
-                                            .comx_kind = kind,
-                                            .comx = {comx_src, dst},
-                                            .desc = std::string("co without ") + util::to_string(kind),
-                                            .pred = cond,
-                                        };
-                                    }
-                                };
-                                
-                                f(co_rfx_triples, Edge::RFX);
-                                f(co_cox_triples, Edge::COX);
-                            }
-                        }
-                        
-                        return out;
-                    }
+                    return z3::implies(node.write && node.arch, node.xswrite);
+                };
+                *out++ = {
+                    .com_kind = Edge::CO,
+                    .com = {ref1, ref2},
+                    .comx_kind = Edge::CO, // really should be 'none'
+                    .comx = {0, 0},
+                    .desc = "silent store",
+                    .pred = cond(ref1) && cond(ref2),
+                };
+            }
+        }
+        
+        // transient
+        {
+            const auto co_u = co - fol::join(co, co); // unit co
+            const auto cox_u = cox - fol::join(cox, cox); // unit cox
+            const auto mismatched_co = co_u - (rfx & cox);
+            const auto mismatched_co_rfx = mismatched_co - rfx;
+            const auto mismatched_co_cox = mismatched_co - cox;
+            const auto mismatched_co_rfx_dsts = fol::element<1>(mismatched_co_rfx);
+            const auto rfx_flagged = fol::restrict_element<0>(rfx, flags);
+            const auto cox_u_flagged = fol::restrict_element<0>(cox_u, flags);
+            const auto co_rfx_triples = fol::join2(mismatched_co_rfx, ~rfx_flagged);
+            const auto mismatched_co_cox_dsts = fol::element<1>(mismatched_co_cox);
+            const auto co_cox_triples = fol::join2(mismatched_co_cox, ~cox_u_flagged);
+            
+            const auto f = [&] (const auto& co_comx_triples, Edge::Kind kind) {
+                for (const auto& triple : co_comx_triples) {
+                    const NodeRef co_src = std::get<0>(triple.first);
+                    const NodeRef dst = std::get<1>(triple.first);
+                    const NodeRef comx_src = std::get<2>(triple.first);
+                    const z3::expr cond = z3::implies(co_exists(co_src, dst), exists(kind, co_src, dst));
+                    *out++ = {
+                        .com_kind = Edge::CO,
+                        .com = {co_src, dst},
+                        .comx_kind = kind,
+                        .comx = {comx_src, dst},
+                        .desc = std::string("co without ") + util::to_string(kind),
+                        .pred = cond,
+                    };
+                }
+            };
+            
+            f(co_rfx_triples, Edge::RFX);
+            f(co_cox_triples, Edge::COX);
+        }
+    }
+    
+    return out;
+}

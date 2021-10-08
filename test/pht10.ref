@@ -1,0 +1,1 @@
+RF (<ENTRY>; <EXIT>) (  %17 = load i8, i8* getelementptr inbounds ([0 x i8], [0 x i8]* @array2, i64 0, i64 0), align 1; <EXIT>)

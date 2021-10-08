@@ -167,7 +167,7 @@ static int parse_args() {
                     if (s == "addr-dst") {
                         return LeakageSource::ADDR_DST;
                     } else if (s == "taint-trans") {
-                        return LeakageSource::TAINT_TRANS;
+                        return LeakageSource::CTRL_DST;
                     } else {
                         error("invalid leakage source '%s'", s.c_str());
                     }
