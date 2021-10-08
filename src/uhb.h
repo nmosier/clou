@@ -158,13 +158,10 @@ struct UHBNode {
     UHBConstraints constraints;
     
     z3::context& ctx() const { return arch.ctx(); }
-#if 0
-    z3::expr exec() const { return (arch || trans).simplify(); }
-    z3::expr xsaccess() const { return (xsread || xswrite).simplify(); }
-#else
+
     z3::expr exec() const { return arch || trans; }
     z3::expr xsaccess() const { return xsread || xswrite; }
-#endif
+    z3::expr access() const { return read || write; }
     
     bool can_xsaccess() const { return can_xsread() || can_xswrite(); }
     
@@ -237,7 +234,8 @@ X(FR)                                        \
 X(RFX)                                       \
 X(COX)                                       \
 X(FRX) \
-X(ADDR)
+X(ADDR) \
+X(CTRL)
     
 #define UHBEDGE_KIND_E(name) name,
     enum Kind {

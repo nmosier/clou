@@ -24,7 +24,7 @@ add_library(lcm MODULE
   dot.h
   graph.h
   hash.h
-  noderef.h
+  noderef.cc       noderef.h
   progress.h
   tarjan.h
   timer.h

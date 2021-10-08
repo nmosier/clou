@@ -90,7 +90,18 @@ private:
     void construct_mem();
     void construct_comx();
     void construct_addr();
+    void construct_ctrl();
     void construct_taint();
+    
+    
+    // TODO: unify this, so that it just returns a NodeRefMap for in, out.
+    using DependencyMap = NodeRefMap;
+    DependencyMap get_dataflow() const;
+    
+    using DominatorMap = NodeRefMap;
+    DominatorMap get_dominators_aux(Direction dir) const;
+    DominatorMap get_dominators() const { return get_dominators_aux(Direction::OUT); }
+    DominatorMap get_postdominators() const { return get_dominators_aux(Direction::IN); }
     
     template <typename OutputIt>
     void leakage_rfx2(OutputIt out) const;

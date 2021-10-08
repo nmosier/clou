@@ -523,3 +523,25 @@ std::ostream& operator<<(std::ostream& os, const std::variant<Ts...>& v) {
 
 
 #define todo() std::cerr << __FILE__ << ":" << __LINE__ << ": todo\n"; std::abort()
+
+
+
+namespace util {
+
+template <class Key, class T, class Hash, class KeyEqual, class Allocator, class Combine>
+std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& update_assign(std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& a, const std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& b, Combine combine) {
+    for (const auto& bp : b) {
+        combine(a[bp.first], bp.second);
+    }
+    return a;
+}
+
+template <class... Ts>
+std::unordered_set<Ts...>& operator-=(std::unordered_set<Ts...>& a, const std::unordered_set<Ts...>& b) {
+    for (const auto& x : b) {
+        a.erase(x);
+    }
+    return a;
+}
+
+}

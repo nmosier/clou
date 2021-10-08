@@ -69,6 +69,8 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_comx();
     logv(2) << "Constructing addr\n";
     construct_addr();
+    logv(2) << "Constructing ctrl\n";
+    construct_ctrl();
 #if 0
     logv(2) << "Constructing mem\n";
     construct_mem();
@@ -773,6 +775,159 @@ void AEG::construct_addr() {
             
         }
     }
+}
+
+
+AEG::DependencyMap AEG::get_dataflow() const {
+    /* Compute map of noderefs to set of noderefs it depends on.
+     * FORWARD pass
+     */
+    
+    std::unordered_map<NodeRef, DependencyMap> ins, outs;
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    for (const NodeRef dst : order) {
+        // collect inputs
+        NodeRefMap& in = ins[dst];
+        for (const NodeRef src : po.po.rev.at(dst)) {
+            in += outs.at(src);
+        }
+        
+        // transform to output
+        NodeRefMap& out = outs[dst] = in;
+        const auto& node = po.lookup(dst);
+        NodeRefSet& out_set = out[dst];
+        for (const auto& ref_pair : node.refs) {
+            for (const NodeRef ref_ref : ref_pair.second) {
+                out_set.insert(ref_ref);
+                const auto& ref_set = out.at(ref_ref);
+                out_set.insert(ref_set.begin(), ref_set.end());
+            }
+        }
+    }
+    
+    DependencyMap res;
+    for (const auto& out : outs) {
+        res += out.second;
+    }
+    
+    return res;
+}
+
+AEG::DominatorMap AEG::get_dominators_aux(Direction dir) const {
+    /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
+     */
+    std::unordered_map<NodeRef, NodeRefSet> ins, outs;
+    NodeRefVec order;
+    switch (dir) {
+        case Direction::IN:
+            po.postorder(std::back_inserter(order));
+            break;
+        case Direction::OUT:
+            po.reverse_postorder(std::back_inserter(order));
+            break;
+    }
+    
+    for (NodeRef ref : order) {
+        // in
+        const NodeRefSet *preds_;
+        switch (dir) {
+            case Direction::IN:
+                preds_ = &po.po.fwd.at(ref);
+                break;
+            case Direction::OUT:
+                preds_ = &po.po.rev.at(ref);
+                break;
+        }
+        const auto& preds = *preds_;
+        NodeRefSet& in = ins[ref];
+        for (auto it = preds.begin(); it != preds.end(); ++it) {
+            const NodeRefSet& pred_out = outs.at(*it);
+            if (it == preds.begin()) {
+                in = pred_out;
+            } else {
+                NodeRefSet intersect;
+                for (const NodeRef x : pred_out) {
+                    if (in.find(x) != in.end()) {
+                        intersect.insert(x);
+                    }
+                }
+                in = std::move(intersect);
+            }
+        }
+        
+        // out
+        NodeRefSet& out = outs[ref] = in;
+        out.insert(ref);
+    }
+    
+    // post-processing: compute dominator map
+    DominatorMap doms;
+    for (const auto& pair : outs) {
+        for (const NodeRef dom : pair.second) {
+            doms[dom].insert(pair.first);
+        }
+    }
+    return doms;
+}
+
+void AEG::construct_ctrl() {
+    /* Control dependencies are between loads of values used in computing
+     * a branch condition and loads/stores within the branch.
+     * While looking for leakage, we'll consider CTRL edges ending in a transiently executed instruction.
+     *
+     * At each program point, track the map of loads to the set of noderefs that depend on them.
+     *
+     * Only add a control dependency if it's actually in a branch... hmm.
+     */
+    
+    const auto deps = get_dataflow();
+    
+    /* Once we have the map of dependencies, how do we identify CTRL dependency?
+     * For each branch, check the set of dependencies of the condition. Find loads.
+     * The find memory accesses in the body of either branch, looking at
+     *
+     * Post-dominator. Control dependencies can only be from a dominator node to a node that has no intervening post-dominators.
+     */
+    const auto doms = get_dominators();
+    const auto postdoms = get_postdominators();
+    
+    // for each dominator, find the set of nodes it properly dominates (i.e. they don't postdominate it)
+    DominatorMap excl_doms;
+    for (const auto& dom_pair : doms) {
+        NodeRef dominator = dom_pair.first;
+        for (NodeRef dominee : dom_pair.second) {
+            const auto& postdom = postdoms.at(dominee);
+            if (postdom.find(dominator) == postdom.end()) {
+                excl_doms[dominator].insert(dominee);
+            }
+        }
+    }
+    
+    /* For each branch, find dependencies of conditions that are loads. Then in set of exclusive postdominators, find memory accesses.
+     *
+     */
+    for (const NodeRef br_ref : node_range()) {
+        const auto& br_node = lookup(br_ref);
+        if (const auto *BI = llvm::dyn_cast_or_null<llvm::BranchInst>(br_node.inst->get_inst())) {
+            for (const NodeRef load_dep_ref : deps.at(br_ref)) {
+                const auto& load_dep_node = lookup(load_dep_ref);
+                if (load_dep_node.may_read()) {
+                    // find all memory accesses that the branch node dominates
+                    for (const NodeRef access_dom_ref : excl_doms.at(br_ref)) {
+                        const Node& access_dom_node = lookup(access_dom_ref);
+                        if (access_dom_node.may_access()) {
+                            // EMIT EDGE
+                            add_unidir_edge(load_dep_ref, access_dom_ref, Edge {Edge::CTRL, (load_dep_node.exec() && load_dep_node.read) && (br_node.exec()) && (access_dom_node.exec() && access_dom_node.access())});
+                            std::cerr << "CTRL " << load_dep_ref << " " << access_dom_ref << "\n";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
 }
 
 
