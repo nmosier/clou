@@ -711,79 +711,35 @@ z3::expr AEG::co_exists(NodeRef src, NodeRef dst) {
 
 
 void AEG::construct_addr() {
-    /* addr dependencies can be between a read and a subsequent read/write
+    /* Address dependencies are from a load to a subsequent access.
+     * The address of the access should be dependent on the result of the load.
+     * This means that the address operand of the access instruction should be the load or list it as a dependency.
      */
-    
-    for (NodeRef dst : node_range()) {
-        const Node& dst_node = lookup(dst);
-        const CFG::Node& dst_po_node = po.lookup(dst);
-        if (const auto *inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get())) {
-            const llvm::Value *V = dst_node.get_memory_address_pair().first;
-            const auto refs_it = dst_po_node.refs.find(V);
-            if (refs_it != dst_po_node.refs.end()) {
-                const NodeRefSet& srcs = refs_it->second;
-                
-                struct Info {
-                    NodeRef ref;
-                    enum State {
-                        UNSEEN,
-                        SEEN,
-                    } state;
-                };
-                
-                std::vector<Info> todo;
-                std::transform(srcs.begin(), srcs.end(), std::back_inserter(todo), [] (NodeRef src) -> Info {
-                    return {src, Info::UNSEEN};
-                });
-                
-                while (!todo.empty()) {
-                    const Info in = todo.back();
-                    todo.pop_back();
-                    const Node& node = lookup(in.ref);
-                    const CFG::Node& po_node = po.lookup(in.ref);
-                    
-                    if (node.inst->kind() == Inst::Kind::LOAD) {
-                        if (in.state == Info::SEEN) {
-                            add_unidir_edge(in.ref, dst, Edge {Edge::ADDR, node.exec() && dst_node.exec()});
-                            break;
-                        }
-                    } else {
-                        switch (in.state) {
-                            case Info::UNSEEN:
-                                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(node.inst->get_inst())) {
-                                    for (const llvm::Value *V : GEP->indices()) {
-                                        const auto refs_it = po_node.refs.find(V);
-                                        if (refs_it != po_node.refs.end()) {
-                                            std::transform(refs_it->second.begin(), refs_it->second.end(), std::back_inserter(todo), [&] (NodeRef ref) -> Info {
-                                                return Info {ref, Info::SEEN};
-                                            });
-                                        }
-                                    }
-                                } else {
-                                    for (const auto& ref_pair : po_node.refs) {
-                                        std::transform(ref_pair.second.begin(), ref_pair.second.end(), std::back_inserter(todo), [] (NodeRef ref) -> Info {
-                                            return {ref, Info::UNSEEN};
-                                        });
-                                    }
-                                }
-                                break;
-                                
-                            case Info::SEEN:
-                                for (const auto& ref_pair : po_node.refs) {
-                                    std::transform(ref_pair.second.begin(), ref_pair.second.end(), std::back_inserter(todo), [] (NodeRef ref) -> Info {
-                                        return {ref, Info::SEEN};
-                                    });
-                                }
-                                break;
-                        }
-                    }
+    for (NodeRef access_ref : node_range()) {
+        const Node& access_node = lookup(access_ref);
+        if (!access_node.may_access()) { continue; }
+        const MemoryInst *access_inst = dynamic_cast<const MemoryInst *>(access_node.inst.get());
+        if (access_inst == nullptr) { continue; }
+        const llvm::Value *V = access_inst->get_memory_operand();
+        const auto& access_po_node = po.lookup(access_ref);
+        const auto addr_refs_it = access_po_node.refs.find(V);
+        if (addr_refs_it == access_po_node.refs.end()) { continue; }
+        const auto& addr_refs = addr_refs_it->second;
+        for (const NodeRef addr_ref : addr_refs) {
+            NodeRefSet candidate_srcs = dependencies.at(addr_ref);
+            candidate_srcs.insert(addr_ref);
+            for (NodeRef candidate_src : candidate_srcs) {
+                const Node& candidate_node = lookup(candidate_src);
+                if (candidate_node.may_read()) {
+                    add_unidir_edge(candidate_src, access_ref, Edge {
+                        Edge::ADDR,
+                        (access_node.exec() && access_node.access()) && (candidate_node.exec() && candidate_node.read)
+                    });
                 }
             }
-            
         }
     }
 }
-
 
 void AEG::construct_dependencies() {
     /* Compute map of noderefs to set of noderefs it depends on.
