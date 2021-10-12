@@ -76,6 +76,8 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     
     logv(2) << "Constructing addr\n";
     construct_addr();
+    logv(2) << "Constructing data\n";
+    construct_data();
     logv(2) << "Constructing ctrl\n";
     construct_ctrl();
 #if 0
@@ -435,7 +437,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 
                 const z3::expr arch1 = is_arch(*it1);
                 const z3::expr arch2 = is_arch(*it2);
-                const z3::expr precond = transient_aa ? context.TRUE : (arch1 && arch2);
+                const z3::expr precond = alias_mode.transient ? context.TRUE : (arch1 && arch2);
                                 
                 switch (alias_res) {
                     case llvm::NoAlias:
@@ -443,6 +445,9 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                         ++nos;
                         break;
                     case llvm::MayAlias:
+                        if (alias_mode.lax) {
+                            constraints(z3::implies(precond, it1->e != it2->e), "may-alias");
+                        }
                         ++mays;
                         break;
                     case llvm::MustAlias:
@@ -752,6 +757,38 @@ void AEG::construct_ctrl() {
         }
     }
     
+}
+
+
+
+void AEG::construct_data() {
+    /* DATA dependencies are syntactic dependencies from a load to a subsequent store, where the value operand of the store is computing using the value result of the load.
+     */
+    for (NodeRef store_ref : node_range()) {
+        if (store_ref == entry) { continue; }
+        const Node& store_node = lookup(store_ref);
+        if (!store_node.may_write()) { continue; }
+        const StoreInst *store_inst = dynamic_cast<const StoreInst *>(store_node.inst.get());
+        if (store_inst == nullptr) { continue; }
+        const llvm::Value *V = store_inst->get_value_operand();
+        const auto& store_po_node = po.lookup(store_ref);
+        const auto addr_refs_it = store_po_node.refs.find(V);
+        if (addr_refs_it == store_po_node.refs.end()) { continue; }
+        const auto& addr_refs = addr_refs_it->second;
+        for (const NodeRef addr_ref : addr_refs) {
+            NodeRefSet candidate_srcs = dependencies.at(addr_ref);
+            candidate_srcs.insert(addr_ref);
+            for (NodeRef candidate_src : candidate_srcs) {
+                const Node& candidate_node = lookup(candidate_src);
+                if (candidate_node.may_read()) {
+                    add_unidir_edge(candidate_src, store_ref, Edge {
+                        Edge::DATA,
+                        (store_node.exec() && store_node.write) && (candidate_node.exec() && candidate_node.read)
+                    });
+                }
+            }
+        }
+    }
 }
 
 void AEG::construct_taint() {

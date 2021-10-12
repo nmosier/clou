@@ -119,3 +119,7 @@ RegularInst::RegularInst(const llvm::Instruction *I): I(I) {
 CallInst::CallInst(const llvm::Instruction *I, const llvm::Value *arg): MemoryInst(I), arg(arg) {
     addr_refs = {arg};
 }
+
+void Inst::print(std::ostream& os) const {
+    os << kind();
+}

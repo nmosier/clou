@@ -15,12 +15,12 @@ extern unsigned num_jobs;
 extern unsigned rob_size;
 extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 extern std::optional<unsigned> max_transient_nodes;
-extern bool transient_aa;
 
 struct AliasMode {
     bool transient; /*!< enable alias analysis on transient instructions too (default: off) */
     bool lax; /*!< relax the alias analysis, converting llvm::MayAlias -> llvm::NoAlias. This is less complete but produces more intuitive results. */
 };
+extern AliasMode alias_mode;
 
 enum class LeakageSource {
     ADDR_DST,

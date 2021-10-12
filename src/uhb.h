@@ -235,7 +235,8 @@ X(RFX)                                       \
 X(COX)                                       \
 X(FRX) \
 X(ADDR) \
-X(CTRL)
+X(CTRL) \
+X(DATA)
     
 #define UHBEDGE_KIND_E(name) name,
     enum Kind {

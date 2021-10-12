@@ -89,6 +89,7 @@ private:
     void construct_mem();
     void construct_comx();
     void construct_addr();
+    void construct_data();
     void construct_ctrl();
     void construct_taint();
     

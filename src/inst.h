@@ -130,10 +130,7 @@ X(OTHER)
     static Inst *Create(const llvm::Instruction *I);
     static Inst *Create(const CFG::Node::Call& call);
     
-    virtual void print(std::ostream& os) const {
-        os << kind();
-    }
-    
+    virtual void print(std::ostream& os) const;
     virtual ~Inst() {}
 };
 
@@ -219,7 +216,19 @@ struct StoreInst: MemoryInst {
     virtual Option may_xswrite() const override { return Option::MUST; } // TODO: relax this to 'MAY' once we do silent stores
     
     virtual const llvm::Value *get_memory_operand() const override {
-        return I->getOperand(1);
+        if (const auto *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
+            return SI->getPointerOperand();
+        } else {
+            std::abort();
+        }
+    }
+    
+    const llvm::Value *get_value_operand() const {
+        if (const auto *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
+            return SI->getValueOperand();
+        } else {
+            std::abort();
+        }
     }
     
     StoreInst(const llvm::Instruction *I): MemoryInst(I) {}

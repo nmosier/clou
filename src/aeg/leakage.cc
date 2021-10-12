@@ -247,7 +247,19 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
         ss << output_dir << "/leakage.txt";
         std::ofstream ofs {ss.str()};
         for (const auto& leak : leaks) {
-            ofs << leak.store0 << " " << leak.store1 << " "<< leak.load2 << " " << leak.access3 << "\n";
+            ofs << leak.store0 << " " << leak.store1 << " " << leak.load2 << " " << leak.access3 << " --";
+            ofs << *lookup(leak.store0).inst << "; " << *lookup(leak.store1).inst << "; " << *lookup(leak.load2).inst << "; " << *lookup(leak.access3).inst
+                << "\n";
+        }
+        
+        // print out set of transmitters
+        std::unordered_set<const llvm::Instruction *> transmitters;
+        for (const auto& leak : leaks) {
+            transmitters.insert(lookup(leak.access3).inst->get_inst());
+        }
+        std::cerr << "transmitters:\n";
+        for (const auto transmitter : transmitters) {
+            llvm::errs() << *transmitter << "\n";
         }
         
         return 0;
@@ -505,6 +517,40 @@ OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
             if (store1 == entry) {
                 continue;
             }
+            
+            const Node& store1_node = lookup(store1);
+            
+            // find all possibilities for store0
+            {
+                
+                NodeRefVec store0_candidates0;
+                const auto partial_order = po.make_partial_order();
+                for (NodeRef ref : order) {
+                    if (ref == store1) { break; }
+                    const Node& node = lookup(ref);
+                    if (partial_order(ref, store1) && node.may_write()) {
+                        store0_candidates0.push_back(ref);
+                    }
+                }
+                
+                NodeRefVec store0_candidates1;
+                for (NodeRef ref : store0_candidates0) {
+                    const z3::scope scope {solver};
+                    const Node& node = lookup(ref);
+                    solver.add(node.same_addr(store1_node));
+                    if (solver.check() == z3::sat) {
+                        store0_candidates1.push_back(ref);
+                    }
+                }
+                
+                std::cerr << "store0 candidates: " << store0_candidates1.size() << "\n";
+                
+                z3::expr store0_bind = context.FALSE;
+                for (NodeRef store0_candidate : store0_candidates1) {
+                    store0_bind = store0_bind || rfx_exists(store0_candidate, load2);
+                }
+                solver.add(store0_bind);
+            }
 
             // forbid store1 -rfx-> load2
             {
@@ -539,7 +585,7 @@ OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
                         flag_edges.emplace(store0, store1, Edge::CO);
                         flag_edges.emplace(access3, exit, Edge::RFX);
                         std::stringstream ss;
-                        ss << output_dir << "/spectre-v4-s" << store0 << "-s" << store1 << "-l" << load2 << "-a" << access3 << ".dot";
+                        ss << output_dir << "/spectre-v4-s" << store0 << "-" << store1 << "-" << load2 << "-" << access3 << ".dot";
                         std::cerr << "spectre-v4: saving to: " << ss.str() << "\n";
                         output_execution(ss.str(), eval, flag_edges);
                         

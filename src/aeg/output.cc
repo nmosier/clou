@@ -151,6 +151,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
             {Edge::FRX, "purple"},
             {Edge::ADDR, "brown"},
             {Edge::CTRL, "purple"},
+            {Edge::DATA, "darkgreen"},
             {Edge::PO, "black"},
         };
         std::string color = colors.at(kind);

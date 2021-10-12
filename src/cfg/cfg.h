@@ -200,6 +200,9 @@ public:
     bool operator==(const CFG& other) const {
         return nodes == other.nodes && po == other.po && translations == other.translations;
     }
+    
+    struct partial_order;
+    partial_order make_partial_order() const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node);
@@ -253,3 +256,21 @@ void CFG::postorder(OutputIt out) const {
 std::ostream& operator<<(std::ostream& os, const CFG::ID& id);
 std::ostream& operator<<(std::ostream& os, const CFG::Node::Call& call);
 std::ostream& operator<<(std::ostream& os, const CFG::Node::Variant& v);
+
+// TODO: optimize. Perhaps use cache of nodes already visited
+struct CFG::partial_order {
+    const CFG& cfg;
+    
+    /** Return whether \p a is a parent of \p b. */
+    bool operator()(NodeRef a, NodeRef b) const {
+        for (const auto b_pred : cfg.po.rev.at(b)) {
+            if (a == b_pred) { return true; }
+            if ((*this)(a, b_pred)) { return true; }
+        }
+        return false;
+    }
+};
+
+inline CFG::partial_order CFG::make_partial_order() const {
+    return partial_order {.cfg = *this};
+}

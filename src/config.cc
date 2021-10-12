@@ -31,7 +31,10 @@ std::ofstream log_;
 std::unordered_set<LeakageSource> leakage_sources;
 LeakageClass leakage_class;
 std::optional<unsigned> max_transient_nodes;
-bool transient_aa = true;
+AliasMode alias_mode = {
+    .transient = false,
+    .lax = false,
+};
 
 // TODO: add automated way for describing default values
 
@@ -56,8 +59,8 @@ only examine given functions
                      leakage class (choices: "spectre-v1", "spectre-v4", "spectre-psf", "all")
 --max-transient <num>
                      set maximum number of transient nodes (default: no limit)
---transient-aa <bool>
-                     enable transient alias analysis (default: off)
+--aa <flag>[,<flag>...]
+                     set alias analysis flags. Accepted flags: "transient", "lax"
 )=";
     fprintf(f, s);
 }
@@ -109,7 +112,7 @@ static int parse_args() {
         LEAKAGE_SOURCES,
         LEAKAGE_CLASS,
         MAX_TRANSIENT,
-        TRANSIENT_AA,
+        AA_FLAGS,
     };
     
     struct option opts[] = {
@@ -126,7 +129,7 @@ static int parse_args() {
         {"leakage-sources", required_argument, nullptr, LEAKAGE_SOURCES},
         {"leakage-class", required_argument, nullptr, LEAKAGE_CLASS},
         {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
-        {"transient-aa", required_argument, nullptr, TRANSIENT_AA},
+        {"aa", optional_argument, nullptr, AA_FLAGS},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -220,9 +223,25 @@ static int parse_args() {
                 max_transient_nodes = std::stoul(optarg);
                 break;
                 
-            case TRANSIENT_AA:
-                transient_aa = parse_bool(optarg);
+            case AA_FLAGS: {
+                alias_mode = {
+                    .transient = false,
+                    .lax = false,
+                };
+                
+                std::vector<std::string> flags;
+                parse_list(optarg, std::back_inserter(flags), [] (const char *s) -> std::string { return s; });
+                for (const std::string& flag : flags) {
+                    if (flag == "transient") {
+                        alias_mode.transient = true;
+                    } else if (flag == "lax") {
+                        alias_mode.lax = true;
+                    } else {
+                        error("bad alias analysis flag '%s", suboptarg);
+                    }
+                }
                 break;
+            }
                 
             default:
                 usage();
