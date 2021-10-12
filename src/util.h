@@ -267,6 +267,24 @@ std::string to_string(InputIt begin, InputIt end, const std::string& sep = " ") 
     return ss.str();
 }
 
+namespace detail {
+
+inline std::string to_string_l_impl() {
+    return "";
+}
+
+template <typename T, typename... Ts>
+std::string to_string_l_impl(const T& x, Ts&&... xs) {
+    return to_string(x) + to_string_l_impl(std::forward<Ts>(xs)...);
+}
+
+}
+
+template <typename... Args>
+std::string to_string_l(Args&&... args) {
+    return detail::to_string_l_impl(std::forward<Args>(args)...);
+}
+
 template <typename T>
 struct creator {
     template <typename... Args>
@@ -547,6 +565,21 @@ std::unordered_set<Ts...>& operator-=(std::unordered_set<Ts...>& a, const std::u
 template <typename T, typename Container>
 bool contains(const Container& container, const T& x) {
     return container.find(x) != container.end();
+}
+
+namespace detail {
+
+template <typename Func>
+struct defer_impl {
+    Func func;
+    ~defer_impl() { func(); }
+};
+
+}
+
+template <typename Func>
+detail::defer_impl<Func> defer(Func func) {
+    return detail::defer_impl<Func> {.func = func};
 }
 
 }

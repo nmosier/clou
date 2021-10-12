@@ -78,7 +78,6 @@ private:
     void construct_trans();
     void construct_po();
     void construct_tfo();
-    void construct_tfo2();
     void construct_addr_defs();
     void construct_addr_refs();
     void construct_aliases(llvm::AliasAnalysis& AA);
@@ -105,31 +104,37 @@ private:
     void construct_dominators() { dominators = construct_dominators_shared(Direction::OUT); }
     void construct_postdominators() { postdominators = construct_dominators_shared(Direction::IN); }
     
+    struct LeakageClause {
+        z3::expr pred;
+        NodeRefSet nodes;
+        std::unordered_set<Edge::Kind> edges;
+        std::string name;
+    };
+    
     template <typename OutputIt>
-    void leakage_rfx2(OutputIt out) const;
+    void leakage_rfx(OutputIt out) const;
     template <typename OutputIt>
-    void leakage_cox2(OutputIt out) const;
+    void leakage_cox(OutputIt out) const;
     template <typename OutputIt>
-    void leakage_frx2(OutputIt out) const;
-    unsigned leakage2(z3::solver& solver, unsigned max);
-    unsigned leakage3(z3::solver& solver, unsigned max);
+    void leakage_frx(OutputIt out) const;
+    unsigned leakage(z3::solver& solver, unsigned max);
+    
+    struct Leakage_SpectreV4 {
+        NodeRef store0;
+        NodeRef store1;
+        NodeRef load2;
+        NodeRef access3;
+    };
+    template <typename OutputIt>
+    OutputIt leakage_spectre_v4(z3::solver& solver, OutputIt out);
+    
+    z3::expr leakage_get_same_solution(const LeakageClause& clause, const z3::eval& eval);
+    
+    template <typename OutputIt>
+    OutputIt process_leakage_SPECTRE_V4(OutputIt out, const z3::eval& eval);
     
     // TODO: this should be more general than hard-coding two com/comx edges, maybe?
-    struct Leakage {
-        Edge::Kind com_kind;
-        using Pair = std::pair<NodeRef, NodeRef>;
-        Pair com;
-        Edge::Kind comx_kind;
-        Pair comx;
-        std::string desc;
-        z3::expr pred;
-        
-        auto to_tuple() const { return std::make_tuple(com_kind, com, comx_kind, comx, desc); }
-
-        bool operator<(const Leakage& other) const {
-            return to_tuple() < other.to_tuple();
-        }
-    };
+    struct Leakage;
     
     template <typename OutputIt>
     OutputIt process_leakage(OutputIt out, const z3::eval& eval);
@@ -198,50 +203,20 @@ public:
         return get_nodes(out, std::unordered_set<Inst::Kind> {kind});
     }
     
-    template <typename OutputIt>
-    OutputIt get_writes(OutputIt out) const {
-#if 0
-        return get_nodes(out, Inst::write_set);
-#else
-        todo();
-#endif
-    }
-    
-    template <typename OutputIt>
-    OutputIt get_reads(OutputIt out) const {
-#if 0
-        return get_reads(out, Inst::read_set);
-#else
-        todo();
-#endif
-    }
-    
     z3::expr exists(Edge::Kind kind, NodeRef src, NodeRef dst);
     z3::expr exists_src(Edge::Kind kind, NodeRef src) const;
     z3::expr exists_dst(Edge::Kind kind, NodeRef dst) const;
-    
-private:
-    z3::expr com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Access dst_kind) const;
-public:
     z3::expr co_exists(NodeRef src, NodeRef dst);
     z3::expr rf_exists(NodeRef src, NodeRef dst);
     z3::expr fr_exists(NodeRef src, NodeRef dst);
-    
-private:
-    z3::expr comx_exists_precond(NodeRef src, NodeRef dst, XSAccessType src_kind, XSAccessType dst_kind) const;
-public:
     z3::expr rfx_exists(NodeRef src, NodeRef dst) const;
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr frx_exists(NodeRef src, NodeRef dst) const;
     
-    z3::expr dbg_intervening_xswrite(NodeRef src, NodeRef dst);
-    
-#if 0
-    template <typename T>
-    class Dataflow;
-#endif
-    
 private:
+    z3::expr com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Access dst_kind) const;
+    z3::expr comx_exists_precond(NodeRef src, NodeRef dst, XSAccessType src_kind, XSAccessType dst_kind) const;
+
     using ValueLoc = std::pair<CFG::ID, const llvm::Value *>;
     using ValueLocRel = std::unordered_map<std::pair<ValueLoc, ValueLoc>, llvm::AliasResult>;
     ValueLocRel alias_rel;
@@ -277,6 +252,25 @@ private:
     }
 };
 
+
+struct AEG::Leakage {
+    Edge::Kind com_kind;
+    using Pair = std::pair<NodeRef, NodeRef>;
+    Pair com;
+    Edge::Kind comx_kind;
+    Pair comx;
+    std::string desc;
+    z3::expr pred;
+    
+    auto to_tuple() const { return std::make_tuple(com_kind, com, comx_kind, comx, desc); }
+
+    bool operator<(const Leakage& other) const {
+        return to_tuple() < other.to_tuple();
+    }
+};
+
+
+
 template <typename Function>
 void AEG::for_each_edge(Edge::Kind kind, Function f) {
     graph.for_each_edge([&] (NodeRef src, NodeRef dst, Edge& edge) {
@@ -309,59 +303,6 @@ OutputIt AEG::get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kin
     return out;
 }
 
-#if 0
-template <typename T>
-class AEG::Dataflow {
-public:
-    using Map = std::unordered_map<NodeRef, T>;
-    struct Result {
-        Map in;
-        Map out;
-    };
-    
-    enum Direction {
-        FWD, REV
-    };
-    
-    Dataflow() {}
-    
-    template <typename Transfer, typename Meet>
-    Dataflow(const AEG& aeg, const T& top, Direction dir, Result& res, Transfer transfer, Meet meet) {
-        res = (*this)(aeg, top, dir, transfer, meet);
-    }
-    
-    template <typename Transfer, typename Meet>
-    Result operator()(const AEG& aeg, const T& top, Direction dir, Transfer transfer, Meet meet) const {
-        Result res;
-        
-        std::vector<NodeRef> order;
-        const AEGPO::Rel::Map *rel;
-        switch (dir) {
-            case Direction::FWD:
-                aeg.po.reverse_postorder(std::back_inserter(order));
-                rel = &aeg.po.po.rev;
-                break;
-            case Direction::REV:
-                aeg.po.postorder(std::back_inserter(order));
-                rel = &aeg.po.po.fwd;
-                break;
-        }
-        
-        for (NodeRef ref : order) {
-            T& in = res.in.emplace(ref, top).first->second;
-            for (NodeRef pred : rel->at(ref)) {
-                in = meet(in, res.out.at(pred));
-            }
-            res.out.emplace(ref, transfer(ref, in));
-        }
-        
-        return res;
-    }
-    
-private:
-};
-#endif
-
 template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f) {
     for (NodeRef ref : node_range()) {
         Node& node = lookup(ref);
@@ -379,3 +320,5 @@ template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f
         }
     }
 }
+
+

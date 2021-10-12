@@ -8,7 +8,7 @@
 
 #include "noderef.h"
 #include "uhb.h"
-#include "aeg.h"
+#include "aeg/aeg.h"
 #include "default_map.h"
 #include "util.h"
 #include "util/tuple.h"
@@ -152,6 +152,7 @@ struct Context {
     relation_type<NodeRef> node_rel(ExecMode mode); /*!< Get the set of all nodes of the given execution `mode`. */
     
     relation_type<NodeRef> node_rel(z3::expr UHBNode::*pred, ExecMode mode);
+    relation_type<NodeRef> node_rel(z3::expr (UHBNode::*pred)() const, ExecMode mode);
     
     /** Get the set of nodes satisfying the condition (of type \a Bool ) when each node is applied to \p pred .
      * \tparam Pred predicate functor type equivalent to std::function<Bool (NodeRef, AEG::NodeRef)>
@@ -208,6 +209,13 @@ struct Context {
     template <typename... Ts>
     relation_type<Ts...> none() const {
         return relation_type<Ts...> {logic};
+    }
+    
+    template <typename... Ts>
+    relation_type<Ts...> singleton(const std::tuple<Ts...>& t) const {
+        auto rel = none<Ts...>();
+        rel.emplace(t, logic.T);
+        return rel;
     }
     
     /** Construct a new context for \p AEG over the given boolean logic \p logic and using the evaluator \p eval to convert z3 formulae in \p aeg into values of `Bool` type.
@@ -337,13 +345,22 @@ auto operator~(const relation<Bool, Ts...>& a) {
 template <typename R1, typename R2>
 auto cartesian_product(const R1& a, const R2& b) {
     const auto example_out_tuple = std::tuple_cat(typename R1::Tuple {}, typename R2::Tuple {});
-    auto out = make_relation(example_out_tuple);
+    auto out = make_relation(example_out_tuple, a.logic);
     for (const auto& p1 : a) {
         for (const auto& p2 : b) {
             out.emplace(std::tuple_cat(p1.first, p2.first), p1.second && p2.second);
         }
     }
     return out;
+}
+
+template <typename Rel, typename... Rels>
+auto generalized_cartesian_product(const Rel& a, Rels&&... rest) {
+    if constexpr (sizeof...(rest) == 0) {
+        return a;
+    } else {
+        return cartesian_product(a, generalized_cartesian_product(std::forward<Rels>(rest)...));
+    }
 }
 
 /** Cartesian product of two relations. See cartesian_product(). */
@@ -401,7 +418,38 @@ relation<Bool, Ts...> restrict_element(const relation<Bool, Ts...>& a, const rel
     return res;
 }
 
+template <std::size_t begin_idx, std::size_t end_idx, typename Bool, typename T, typename... Ts>
+relation<Bool, Ts...> restrict_elements(const relation<Bool, Ts...>& a, const relation<Bool, T>& b) {
+    static_assert(end_idx <= sizeof...(Ts));
+    if constexpr (begin_idx == end_idx) {
+        return a;
+    } else {
+        return restrict_elements<begin_idx + 1, end_idx>(restrict_element<begin_idx>(a, b), b);
+    }
+}
 
+template <typename Bool, typename T, typename... Ts>
+relation<Bool, Ts...> restrict_elements(const relation<Bool, Ts...>& a, const relation<Bool, T>& b) {
+    return restrict_elements<0, sizeof...(Ts)>(a, b);
+}
+
+namespace detail {
+
+template <std::size_t I, typename Bool, typename T, typename... Ts>
+relation<Bool, Ts...> restrict_any_impl(const relation<Bool, Ts...>& a, const relation<Bool, T>& b) {
+    if constexpr (I == sizeof...(Ts)) {
+        return relation<Bool, Ts...> {a.logic};
+    } else {
+        return restrict_any_impl<I+1>(a, b) | restrict_element<I>(a, b);
+    }
+}
+
+}
+
+template <typename Bool, typename T, typename... Ts>
+relation<Bool, Ts...> restrict_any(const relation<Bool, Ts...>& a, const relation<Bool, T>& b) {
+    return detail::restrict_any_impl<0>(a, b);
+}
 
 // MARK: Predicates
 
@@ -750,9 +798,25 @@ relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr UHBNode::*pred, E
     });
 }
 
-template <typename Bool, typename T>
-T get_singleton(const relation<Bool, T>& a) {
-    assert(a.size() == 1);
+template <typename Bool, typename Eval>
+relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr (UHBNode::*pred)() const, ExecMode mode) {
+    return node_rel_if([&] (NodeRef, const AEG::Node& node) {
+        z3::context& ctx = node.arch.ctx();
+        z3::expr cond {ctx};
+        // TODO: unify this switch with identical above switch
+        switch (mode) {
+            case ARCH: cond = node.arch; break;
+            case TRANS: cond = node.trans; break;
+            case EXEC: cond = node.exec(); break;
+            default: std::abort();
+        }
+        return cond && (node.*pred)();
+    });
+}
+
+template <typename T>
+T get_singleton(const relation<bool, T>& a) {
+    assert(a.map.size() == 1);
     return std::get<0>(a.begin()->first);
 }
 
@@ -779,5 +843,54 @@ inline std::ostream& operator<<(std::ostream& os, const relation<Bool, Ts...>& r
     return os;
 }
 
+namespace detail {
+
+template <typename Bool, typename T>
+struct Singleton {
+    T value;
+    relation<Bool, T> rel;
+};
+
+template <typename Pred, typename Tuple, typename Rel>
+void set_comprehension_impl(Pred pred, const Tuple& tuple, Rel& rel) {
+    // get condition
+    auto cond = std::apply(pred, tuple);
+    
+    // transform back to regular tuple
+    const auto entry = tuples::transform(tuple, [&] (const auto& x) {
+        assert(x.map.size() == 1);
+        const auto it = x.begin();
+        cond = cond && it->second;
+        return std::get<0>(it->first);
+    });
+    
+    rel.emplace(entry, cond);
+}
+
+template <typename Pred, typename Tuple, typename Rel, typename Set, typename... Sets>
+void set_comprehension_impl(Pred pred, const Tuple& tuple, Rel& rel, const Set& bag, Sets&&... bags) {
+    for (const auto& pair : bag) {
+        auto singleton = make_relation(pair.first, rel.logic);
+        singleton.insert(pair);
+        const auto newtuple = std::tuple_cat(tuple, std::make_tuple(singleton));
+        set_comprehension_impl(pred, newtuple, rel, std::forward<Sets>(bags)...);
+    }
+}
+
+template <typename Pred, typename Set, typename... Sets>
+auto set_comprehension_impl0(Pred pred, const Set& set, Sets&&... sets) {
+    // TODO
+    const auto& logic = set.logic;
+    decltype(generalized_cartesian_product(set, std::forward<Sets>(sets)...)) rel {logic};
+    set_comprehension_impl(pred, std::make_tuple(), rel, set, std::forward<Sets>(sets)...);
+    return rel;
+}
+
+}
+
+template <typename Pred, typename... Sets>
+auto set_comprehension(Pred pred, Sets&&... sets) {
+    return detail::set_comprehension_impl0(pred, std::forward<Sets>(sets)...);
+}
 
 }

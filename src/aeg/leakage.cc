@@ -57,7 +57,7 @@
  */
 
 template <typename OutputIt>
-void AEG::leakage_rfx2(OutputIt out) const {
+void AEG::leakage_rfx(OutputIt out) const {
     if (util::contains(leakage_sources, LeakageSource::ADDR_DST)) {
         /* NOTE: This is actually an over-approximation, since addr-dst xswrite may not be sourced by an architetcural instruction.
          */
@@ -65,17 +65,65 @@ void AEG::leakage_rfx2(OutputIt out) const {
             std::stringstream ss;
             ss << "rfx-" << addr_dst;
             const Node& addr_dst_node = lookup(addr_dst);
-#if 0
-            *out++ = std::make_tuple(addr_edge.exists && addr_dst_node.xswrite && addr_dst_node.trans, ss.str());
-#else
             const z3::expr node_cond = addr_edge.exists && (addr_dst_node.xswrite && addr_dst_node.trans);
             const z3::expr rfx_cond = util::any_of(exits.begin(), exits.end(), [&] (NodeRef exit) {
                 return rfx_exists(addr_dst, exit);
             }, context.FALSE);
-            *out++ = std::make_tuple(node_cond && rfx_cond, ss.str());
-#endif
+            *out++ = LeakageClause {
+                .pred = node_cond && rfx_cond,
+                .name = ss.str(),
+                .nodes = {addr_dst},
+                .edges = {Edge::ADDR, Edge::RFX},
+            };
         });
     }
+    
+#if 1
+    switch (leakage_class) {
+        case LeakageClass::SPECTRE_V4: {
+            for_each_edge(Edge::ADDR, [&] (NodeRef addr_src, NodeRef addr_dst, const Edge& addr_edge) {
+                /*
+                 * Require at least 2 arch-prior arch stores; require addr_src be load; require addr_dst be xswrite
+                 */
+                const Node& addr_src_node = lookup(addr_src);
+                const Node& addr_dst_node = lookup(addr_dst);
+                NodeRefVec order;
+                po.reverse_postorder(std::back_inserter(order));
+                z3::expr_vector vec {addr_src_node.ctx()};
+                for (NodeRef ref : order) {
+                    if (ref == addr_src) { break; }
+                    const Node& node = lookup(ref);
+                    if (!node.may_write()) { continue; }
+                    z3::expr cond = node.arch && node.write && node.same_addr(addr_src_node) && node.same_xstate(addr_src_node);
+                    vec.push_back(cond);
+                }
+                
+                z3::expr exit_cond = context.FALSE;
+                for (NodeRef exit : exits) {
+                    exit_cond = exit_cond || rfx_exists(addr_dst, exit);
+                }
+                
+                std::stringstream ss;
+                ss << "spectrev4-rfx-" << addr_src << "-" << addr_dst;
+                *out++ = LeakageClause {
+                    .pred = addr_edge.exists && addr_src_node.read && addr_dst_node.xswrite && addr_src_node.trans && addr_dst_node.trans && z3::atleast(vec, 2) && exit_cond,
+                    .name = ss.str(),
+                    .nodes = {addr_src},
+                    .edges = {Edge::RFX},
+                };
+            });
+            break;
+        }
+            
+        case LeakageClass::SPECTRE_V1:
+            break; // TODO: need to move other stuff in here
+            
+        default:
+            todo();
+            
+            
+    }
+#endif
     
     if (util::contains(leakage_sources, LeakageSource::CTRL_DST)) {
         /* New kind of leakage to cover PHT10 -- branch condition leakage.
@@ -89,7 +137,12 @@ void AEG::leakage_rfx2(OutputIt out) const {
                     ss << "rfx-br-" << addr_src << "-" << addr_dst << "-" << ctrl_src << "-" << ctrl_dst;
                     const auto& ctrl_dst_node = lookup(ctrl_dst);
                     if (ctrl_dst_node.can_xswrite()) {
-                        *out++ = std::make_tuple(addr_edge.exists && ctrl_edge.exists && ctrl_dst_node.trans && ctrl_dst_node.xswrite, ss.str());
+                        *out++ = LeakageClause {
+                            .pred = addr_edge.exists && ctrl_edge.exists && ctrl_dst_node.trans && ctrl_dst_node.xswrite,
+                            .name = ss.str(),
+                            .nodes = {addr_src, addr_dst},
+                            .edges = {Edge::ADDR, Edge::CTRL, Edge::RFX},
+                        };
                     }
                 }
             });
@@ -98,7 +151,9 @@ void AEG::leakage_rfx2(OutputIt out) const {
 }
 
 template <typename OutputIt>
-void AEG::leakage_cox2(OutputIt out) const {
+void AEG::leakage_cox(OutputIt out) const {
+#if 0
+    // TODO: this is disabled for now, since the number of assertions it generates explodes.
     // silent store check
     for (NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
@@ -122,10 +177,11 @@ void AEG::leakage_cox2(OutputIt out) const {
             *out++ = std::make_tuple((Node::xsaccess_order_less(*this)(addr_dst, write) && (addr_dst_node.xswrite && addr_dst_node.trans) && (write_node.write && write_node.xswrite && write_node.exec())), ss.str());
         }
     });
+#endif
 }
 
 template <typename OutputIt>
-void AEG::leakage_frx2(OutputIt out) const {
+void AEG::leakage_frx(OutputIt out) const {
     
     /*
      frx leakage doesn't ever involve trans addr deps anyway. The only way frx leakage can arise is if A -fr-> B but B is not an xswrite, A is not an xsread, or B's xswrite happens before A's xsread.
@@ -136,7 +192,7 @@ void AEG::leakage_frx2(OutputIt out) const {
      */
     
     // NOTE: This is actually the same assertion as before, in leakage_cox2(). So omitting for now.
-#if 1
+#if 0
     for (NodeRef write : node_range()) {
         const Node& write_node = lookup(write);
         if (!write_node.may_write()) { continue; }
@@ -147,25 +203,125 @@ void AEG::leakage_frx2(OutputIt out) const {
 #endif
 }
 
-unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
+z3::expr AEG::leakage_get_same_solution(const LeakageClause& clause, const z3::eval& eval) {
+    fol::Context<bool, fol::ConEval> fol_ctx {fol::Logic<bool>(), fol::ConEval(eval), *this};
+    std::unordered_map<Edge::Kind, fol::relation<bool, NodeRef, NodeRef>> edge_rels;
+    
+    z3::expr same_sol = context.TRUE;
+    const auto add = [&] (const z3::expr& e) {
+        same_sol = same_sol && e;
+    };
+    
+    for (Edge::Kind kind : clause.edges) {
+        edge_rels.emplace(kind, fol_ctx.edge_rel(kind));
+    }
+    
+    // node constraints
+    for (NodeRef ref : clause.nodes) {
+        const Node& node = lookup(ref);
+        add(eval.equal(node.arch) && eval.equal(node.trans));
+    }
+    
+    // edge constraints
+    for (NodeRef node : clause.nodes) {
+        const auto node_rel = fol_ctx.singleton(std::make_tuple(node));
+        for (const auto& all_edges : edge_rels) {
+            const auto edge_kind = all_edges.first;
+            const auto edges = fol::restrict_any(all_edges.second, node_rel);
+            for (const auto& edge : edges) {
+                add(exists(edge_kind, std::get<0>(edge.first), std::get<1>(edge.first)));
+            }
+        }
+    }
+    
+    return same_sol;
+}
+
+unsigned AEG::leakage(z3::solver& solver, unsigned max) {
+    if (leakage_class == LeakageClass::SPECTRE_V4) {
+        std::vector<Leakage_SpectreV4> leaks;
+        leakage_spectre_v4(solver, std::back_inserter(leaks));
+        
+        // dump leakage
+        std::stringstream ss;
+        ss << output_dir << "/leakage.txt";
+        std::ofstream ofs {ss.str()};
+        for (const auto& leak : leaks) {
+            ofs << leak.store0 << " " << leak.store1 << " "<< leak.load2 << " " << leak.access3 << "\n";
+        }
+        
+        return 0;
+    }
+    
     z3::scope scope {solver};
     ProfilerStart("out/leakage.prof");
     
     unsigned nleaks = 0;
     
-    std::vector<std::tuple<z3::expr, std::string>> clauses;
+    std::vector<LeakageClause> clauses;
     const auto clauses_out = std::back_inserter(clauses);
-    leakage_rfx2(clauses_out);
-    leakage_cox2(clauses_out);
-    leakage_frx2(clauses_out);
+    using ClauseVec = std::vector<LeakageClause>;
+    ClauseVec rfx_clauses, cox_clauses, frx_clauses;
+    leakage_rfx(std::back_inserter(rfx_clauses));
+    leakage_cox(std::back_inserter(cox_clauses));
+    leakage_frx(std::back_inserter(frx_clauses));
+    std::copy(rfx_clauses.begin(), rfx_clauses.end(), clauses_out);
+    std::copy(cox_clauses.begin(), cox_clauses.end(), clauses_out);
+    std::copy(frx_clauses.begin(), frx_clauses.end(), clauses_out);
+
+    std::cerr << "rfx clauses: " << rfx_clauses.size() << "\n";
+    std::cerr << "cox clauses: " << cox_clauses.size() << "\n";
+    std::cerr << "frx clauses: " << frx_clauses.size() << "\n";
     
-#if 1
     std::map<Leakage, unsigned> leakages;
     
     for (std::size_t i = 0; i < clauses.size(); ++i) {
         z3::scope scope {solver};
         const auto& clause = clauses.at(i);
-        solver.add(std::get<0>(clause), std::get<1>(clause).c_str());
+        solver.add(clause.pred, clause.name.c_str());
+        
+#if 0
+        while (true) {
+            const z3::check_result res = solver.check();
+            std::cerr << res << "\n";
+            if (res == z3::unsat) {
+                break;
+            }
+            
+             const z3::eval eval {solver.get_model()};
+            {
+                std::cerr << i << ": ";
+                for (const auto& clause : clauses) {
+                    if (eval(clause.pred)) {
+                        std::cerr << clause.name << " ";
+                    }
+                }
+                std::cerr << "\n";
+                
+                std::set<Leakage> new_leakages;
+                process_leakage(std::inserter(new_leakages, new_leakages.end()), eval);
+                
+                // output execution
+                std::stringstream dot;
+                dot << output_dir << "/leakage-" << i << ".dot";
+                
+                EdgeSet flag_edges;
+                for (const Leakage& lkg : new_leakages) {
+                    flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
+                    flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
+                }
+                output_execution(dot.str(), eval, flag_edges);
+                
+                std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
+            }
+            
+            // generate distinct solutions for current clause
+            const z3::expr same_sol = leakage_get_same_solution(clause, eval);
+            solver.add(!same_sol);
+        }
+        
+#else
+        
         const z3::check_result res = solver.check();
         std::cerr << res << "\n";
         if (res == z3::sat) {
@@ -173,8 +329,8 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
             
             std::cerr << i << ": ";
             for (const auto& clause : clauses) {
-                if (eval(std::get<0>(clause))) {
-                    std::cerr << std::get<1>(clause) << " ";
+                if (eval(clause.pred)) {
+                    std::cerr << clause.name << " ";
                 }
             }
             std::cerr << "\n";
@@ -195,74 +351,10 @@ unsigned AEG::leakage2(z3::solver& solver, unsigned max) {
             
             std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
         }
-    }
-    
-#else
-    const z3::expr leakage = std::transform_reduce(clauses.begin(), clauses.end(), context.FALSE, util::logical_or<z3::expr>(), [] (const auto& t) -> z3::expr {
-        return std::get<0>(t);
-    });
-    solver.add(leakage, "leakage");
-    
-    std::map<Leakage, unsigned> leakages;
-    
-    
-    for (unsigned i = 0; i < max; ++i) {
-        const z3::check_result res = solver.check();
-        std::cerr << res << "\n";
-        switch (res) {
-            case z3::unsat:
-                std::cerr << solver.unsat_core() << "\n";
-                goto done;
-            case z3::sat: {
-                const z3::eval eval {solver.get_model()};
-                
-                std::cerr << i << ": ";
-                for (const auto& clause : clauses) {
-                    if (eval(std::get<0>(clause))) {
-                        std::cerr << std::get<1>(clause) << " ";
-                    }
-                }
-                std::cerr << "\n";
-                
-                log_ << "Leakage " << i << "\n";
-                std::set<Leakage> new_leakages;
-                process_leakage(std::inserter(new_leakages, new_leakages.end()), eval);
-                
-                // add constraints
-                std::stringstream dot;
-                dot << output_dir << "/leakage-" << i << ".dot";
-                
-                EdgeSet flag_edges;
-                for (const Leakage& lkg : new_leakages) {
-                    flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
-                    flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
-                }
-                output_execution(dot.str(), eval, flag_edges);
-                
-                for (const Leakage& lkg : new_leakages) {
-                    std::stringstream ss;
-                    ss << lkg.com_kind << "-" << lkg.com << "-" << lkg.comx << "-" << i;
-                    solver.add(lkg.pred, ss.str().c_str());
-                }
-                
-                const auto before = leakages.size();
-                std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
-                const auto after = leakages.size();
-                std::cerr << "new leakages: " << after - before << "\n";
-                
-                
-                // TODO: process concrete output to get all leakage
-                
-                ++nleaks;
-                
-                break;
-            }
-            case z3::unknown: throw std::logic_error("unknown");
-        }
-    }
 #endif
-    
-done:
+        
+        
+    }
     
     std::stringstream path;
     path << output_dir << "/leakage.txt";
@@ -279,73 +371,198 @@ done:
 }
 
 
-unsigned AEG::leakage3(z3::solver& solver, unsigned max) {
-    const z3::scope scope {solver};
+#if 1
+
+template <typename OutputIt>
+OutputIt AEG::process_leakage_SPECTRE_V4(OutputIt out, const z3::eval& eval) {
+    // Spectre-v4 leakage
+    /*
+     Need (in TFO order):
+     - Architecturally executed stores, S0 and S1, in that order
+     - Transiently executed loads L0, L1.
+     L0 reads from S0 and has µarch side-effects before S1.
+     SameAddr({L0, S0, S1}).
+     There exists an address dependency from L0 to L1.
+     Program EXIT rfx’s L1.
+     */
     
-    std::vector<std::tuple<z3::expr, std::string>> clauses;
-    const auto clauses_out = std::back_inserter(clauses);
-    leakage_rfx2(clauses_out);
-    leakage_cox2(clauses_out);
-    leakage_frx2(clauses_out);
+    fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
+    const auto trans_xsaccesses = fol_ctx.node_rel(&Node::xsaccess, ExecMode::TRANS);
+    const auto trans_xswrites = fol_ctx.node_rel(&Node::xswrite, ExecMode::TRANS);
+    const auto arch_writes = fol_ctx.node_rel(&Node::write, ExecMode::ARCH);
+    const auto trans_loads = fol_ctx.node_rel(&Node::read, ExecMode::TRANS);
+    const auto same_addr = fol_ctx.same_addr();
+    const auto same_xstate = fol_ctx.same_xstate();
+    const auto addr = fol_ctx.edge_rel(Edge::ADDR);
+    const auto arch_exit = fol_ctx.node_rel(Inst::EXIT, ExecMode::ARCH);
+    const auto rfx = fol_ctx.edge_rel(Edge::RFX);
     
-    std::map<Leakage, unsigned> leakages;
-    
-    
-    unsigned i = 0;
-    for (const auto& clause : clauses) {
-        const z3::scope scope {solver};
-        solver.add(std::get<0>(clause), std::get<1>(clause).c_str());
-        z3::check_result res;
-        while ((res = solver.check()) == z3::sat) {
-            const z3::eval eval {solver.get_model()};
-            assert(eval(std::get<0>(clause)));
-            std::set<Leakage> new_leakages;
-            process_leakage(std::inserter(new_leakages, new_leakages.end()), eval);
-            
-            // add constraints
-            std::stringstream dot;
-            dot << output_dir << "/leakage-" << i << ".dot";
-            EdgeSet flag_edges;
-            for (const Leakage& lkg : new_leakages) {
-                flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
-                flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
-            }
-            output_execution(dot.str(), eval, flag_edges);
-            
-            for (const Leakage& lkg : new_leakages) {
-                std::stringstream ss;
-                ss << lkg.com_kind << "-" << lkg.com << "-" << lkg.comx << "-" << i;
-                solver.add(lkg.pred, ss.str().c_str());
-            }
-            
-            const auto before = leakages.size();
-            std::transform(new_leakages.begin(), new_leakages.end(), std::inserter(leakages, leakages.end()), [i] (const auto& x) { return std::make_pair(x, i); });
-            const auto after = leakages.size();
-            std::cerr << "new leakages: " << after - before << "\n";
-            
-            ++i;
-        }
-    }
-    
-    std::stringstream path;
-    path << output_dir << "/leakage.txt";
-    std::ofstream ofs {path.str()};
-    for (const auto& pair : leakages) {
-        const Leakage& leakage = pair.first;
-        ofs << pair.second << " " << leakage.com_kind << " " << leakage.com << " " << leakage.comx << " " << leakage.desc;
-        ofs << " -- " << leakage.com_kind << " (" << po.lookup(leakage.com.first).v << "; " << po.lookup(leakage.com.second).v << ") (" << po.lookup(leakage.comx.first).v << "; " << po.lookup(leakage.comx.second).v << ")\n";
+    // set comprehension would work better. But how to do it efficiently?
+    // Could provide interface for answering subqueries.
+    const auto f = [&] (const auto& store0, const auto& store1, const auto& load2, const auto& access3, const auto& exit4) {
         
+        bool cond = true;
+        const auto add = [&] (bool val) {
+            cond = cond && val;
+        };
+        
+        // same-address checks:
+        add(fol::some(same_addr & (store0 * store1)));
+        add(fol::some(same_addr & (store1 * load2)));
+        
+        // address dependency:
+        add(fol::some(addr & (load2 * access3)));
+        
+        // rfx
+        add(fol::some(rfx & (store0 * load2)));
+        add(fol::some(rfx & (access3 * exit4)));
+        
+        return cond;
+    };
+    
+    const auto spectre_v4 = fol::set_comprehension(f, arch_writes, arch_writes, trans_loads, trans_xsaccesses, arch_exit);
+    std::cerr << "found spectrev4 " << spectre_v4.map.size() << "\n";
+        
+    for (const auto& pair : spectre_v4) {
+        std::cerr << "spectre v4: " << pair.first << "\n";
     }
     
-    return 0;
+    
+
+    // todo();
+    
+    return out;
 }
 
+// TODO: remove this.
+template
+util::null_output_iterator AEG::process_leakage_SPECTRE_V4<util::null_output_iterator>(util::null_output_iterator, const z3::eval&);
 
-
+#endif
 
 
 template <typename OutputIt>
+OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
+    const z3::scope scope {solver};
+    z3::context& ctx = solver.ctx();
+    
+    // create mem array (used to find possible most-recent architectural writes)
+    std::unordered_map<NodeRef, z3::expr> mems;
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    {
+        z3::expr mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<unsigned>(entry)));
+        for (const NodeRef ref : order) {
+            mems.emplace(ref, mem);
+            if (ref == entry) { continue; }
+            const Node& node = lookup(ref);
+            if (!node.may_write()) { continue; }
+            mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<unsigned>(ref)), node.arch);
+        }
+    }
+    
+    for_each_edge(Edge::ADDR, [&] (const NodeRef load2, const NodeRef access3, const Edge& addr_edge) {
+        const z3::scope scope {solver};
+        
+        std::cerr << "spectre-v4: addr edge: " << load2 << " " << access3 << "\n";
+        
+        const Node& load2_node = lookup(load2);
+        const Node& access3_node = lookup(access3);
+        if (!(load2_node.may_read() && access3_node.can_xswrite())) { return; }
+       
+        {
+            z3::expr arch_pred = context.FALSE;
+            for (const NodeRef pred : po.po.rev.at(load2)) {
+                arch_pred = arch_pred || lookup(pred).arch;
+            }
+            solver.add(arch_pred, "arch_pred");
+        }
+
+        solver.add(load2_node.trans && load2_node.read, "load2_node");
+        solver.add(access3_node.trans && access3_node.xswrite, "access3_node");
+        solver.add(addr_edge.exists, "addr_edge");
+        
+        // exit node constraints
+        {
+            z3::expr rfx_exit = context.FALSE;
+            for (const NodeRef exit : exits) {
+                rfx_exit = rfx_exit || rfx_exists(access3, exit) && lookup(exit).arch;
+            }
+            solver.add(rfx_exit, "access3-rfx->exit");
+        }
+        
+        const z3::expr store1_sym = mems.at(load2)[load2_node.get_memory_address()];
+        while (solver.check() == z3::sat) {
+            const z3::eval eval {solver.get_model()};
+            const NodeRef store1 = static_cast<unsigned>(eval(store1_sym));
+            // TODO: add constraint about store0 to ensure it happens before store1.
+            
+            std::cerr << "spectre-v4: store1: " << store1 << "\n";
+            const auto defer = util::defer([&] {
+                solver.add(store1_sym != eval(store1_sym).e, util::to_string_l("store1 != ", store1).c_str());
+            });
+            
+            if (store1 == entry) {
+                continue;
+            }
+
+            // forbid store1 -rfx-> load2
+            {
+                const z3::scope scope {solver};
+                solver.add(!rfx_exists(store1, load2), util::to_string_l("forbid ", store1, "-rfx->", load2).c_str());
+                
+                while (solver.check() == z3::sat) {
+                    const z3::eval eval {solver.get_model()};
+                    
+                    // LEAKAGE FOUND!
+                    // find store0.
+                    fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
+                    const auto rfx = fol_ctx.edge_rel(Edge::RFX);
+                    const auto exits = fol_ctx.node_rel(Inst::EXIT, ExecMode::ARCH);
+                    const auto load2_rel = fol_ctx.singleton(std::make_tuple(load2));
+                    const auto store0_rel = fol::join(rfx, load2_rel);
+                    const auto access3_rel = fol_ctx.singleton(std::make_tuple(access3));
+                    const NodeRef store0 = fol::get_singleton(store0_rel);
+                    const auto exit_rel = fol::join(access3_rel, rfx) & exits;
+                    const NodeRef exit = fol::get_singleton(exit_rel);
+                    const auto defer = util::defer([&] {
+                        solver.add(!rfx_exists(store0, load2));
+                    });
+
+                    std::cerr << "spectre-v4: store0: " << store0 << "\n";
+
+                    if (std::find(order.begin(), order.end(), store0) < std::find(order.begin(), order.end(), store1)) {
+                        
+                        
+                        EdgeSet flag_edges;
+                        flag_edges.emplace(store0, load2, Edge::RFX);
+                        flag_edges.emplace(store0, store1, Edge::CO);
+                        flag_edges.emplace(access3, exit, Edge::RFX);
+                        std::stringstream ss;
+                        ss << output_dir << "/spectre-v4-s" << store0 << "-s" << store1 << "-l" << load2 << "-a" << access3 << ".dot";
+                        std::cerr << "spectre-v4: saving to: " << ss.str() << "\n";
+                        output_execution(ss.str(), eval, flag_edges);
+                        
+                        *out++ = Leakage_SpectreV4 {
+                            .store0 =  store0,
+                            .store1 =  store1,
+                            .load2  =  load2,
+                            .access3 = access3,
+                        };
+                        
+                    }
+                }
+            }
+        }
+    });
+    
+    return out;
+}
+
+template <typename OutputIt>
 OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
+    process_leakage_SPECTRE_V4(out, eval);
+    
     fol::Context<bool, fol::ConEval> fol_ctx(fol::Logic<bool>(), fol::ConEval(eval), *this);
     const auto trans = fol_ctx.node_rel(ExecMode::TRANS);
     const auto reads = fol_ctx.node_rel(&Node::read, ExecMode::ARCH);
@@ -414,34 +631,6 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
         }
         
         std::cerr << "rf leakage: " << rf_leakage2 << "\n";
-        
-#if 0
-        // also find rfx-branch type leakage
-        for (NodeRef ref : node_range()) {
-            const Node& node = lookup(ref);
-            if (node.trans && node.taint_trans) {
-                *out++ = {
-                    .com_kind = Edge::RF,
-                    .com = {ref}
-                };
-            }
-        }
-        
-        const auto tainted_trans = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) {
-            return node.trans && node.taint_trans;
-        });
-        const auto tainted_branch_cond = fol_ctx.node_rel_if([&] (NodeRef ref, const Node& node) {
-            if (const auto *I = node.inst.I) {
-                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(I)) {
-                    if (B->isConditional()) {
-                        return node.exec() && tainter->get_value(ref, B->getCondition());
-                    }
-                }
-            }
-            return context.FALSE;
-        });
-        tainted_trans & tainted_branch_cond;
-#endif
     }
     
     // co

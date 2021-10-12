@@ -66,6 +66,7 @@ inline bool to_bool(const z3::expr& e) {
 struct concrete_value {
     z3::expr e;
     explicit operator bool() const { return z3::to_bool(e); }
+    explicit operator unsigned() const { return e.get_numeral_uint(); }
 };
 
 inline z3::expr operator==(const concrete_value& a, const z3::expr& b) {
@@ -82,6 +83,9 @@ struct eval {
     concrete_value operator()(const z3::expr& val) const {
         return {model.eval(val, true)};
     }
+    z3::expr equal(const z3::expr& e) const {
+        return e == model.eval(e, true);
+    }
 };
 
 inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3::expr& v, const z3::expr& c) {
@@ -97,6 +101,32 @@ struct scope {
         solver.pop();
     }
 };
+
+#if 0
+template <typename Bool>
+struct constraints {
+    std::vector<expr> exprs;
+    
+    constraints(context& ctx) {
+        exprs.push_back(ctx.bool_val(true));
+    }
+    
+    context& ctx() const { return exprs.front().ctx(); }
+    
+    void add(const expr& e) {
+        exprs.push_back(e);
+    }
+    
+    z3::expr get() const {
+        auto it = exprs.begin();
+        expr acc = *it++;
+        for (; it != exprs.end(); ++it) {
+            acc = acc && *it;
+        }
+        return acc;
+    }
+};
+#endif
 
 }
 

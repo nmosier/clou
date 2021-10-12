@@ -15,7 +15,7 @@
 #include "lcm.h"
 #include "addr.h"
 #include "config.h"
-#include "aeg.h"
+#include "aeg/aeg.h"
 #include "cfg/expanded.h"
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"

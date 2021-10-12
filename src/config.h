@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_set>
 #include <fstream>
+#include <optional>
 
 struct SpeculationPrimitive;
 
@@ -13,12 +14,27 @@ extern unsigned spec_depth;
 extern unsigned num_jobs;
 extern unsigned rob_size;
 extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
+extern std::optional<unsigned> max_transient_nodes;
+extern bool transient_aa;
+
+struct AliasMode {
+    bool transient; /*!< enable alias analysis on transient instructions too (default: off) */
+    bool lax; /*!< relax the alias analysis, converting llvm::MayAlias -> llvm::NoAlias. This is less complete but produces more intuitive results. */
+};
 
 enum class LeakageSource {
     ADDR_DST,
     CTRL_DST,
 };
 extern std::unordered_set<LeakageSource> leakage_sources;
+
+enum class LeakageClass {
+    SPECTRE_V1,
+    SPECTRE_V4,
+    SPECTRE_PSF,
+    ALL,
+};
+extern LeakageClass leakage_class;
 
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;

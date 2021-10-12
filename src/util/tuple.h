@@ -44,4 +44,23 @@ auto make_repeated(const T& element) {
     }
 }
 
+namespace detail {
+
+template <typename std::size_t I, typename Func, typename... Ts>
+auto transform_impl(const std::tuple<Ts...>& tuple, Func func) {
+    if constexpr (I == sizeof...(Ts)) {
+        return std::make_tuple();
+    } else {
+        return std::tuple_cat(std::make_tuple(func(std::get<I>(tuple))),
+                              transform_impl<I+1>(tuple, func));
+    }
+}
+
+}
+
+template <typename Func, typename... Ts>
+auto transform(const std::tuple<Ts...>& tuple, Func func) {
+    return detail::transform_impl<0>(tuple, func);
+}
+
 }

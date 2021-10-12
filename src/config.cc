@@ -29,7 +29,9 @@ unsigned rob_size = 10;
 std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 std::ofstream log_;
 std::unordered_set<LeakageSource> leakage_sources;
-
+LeakageClass leakage_class;
+std::optional<unsigned> max_transient_nodes;
+bool transient_aa = true;
 
 // TODO: add automated way for describing default values
 
@@ -50,6 +52,12 @@ only examine given functions
                      use comma-separated speculation primitives (possibilities: "branch", "addr")
 --leakage-sources <source>[,<source>...]
                      use comman-separated leakage sources (possibilities: "addr-dst", "taint-trans")
+--leakage-class <class>
+                     leakage class (choices: "spectre-v1", "spectre-v4", "spectre-psf", "all")
+--max-transient <num>
+                     set maximum number of transient nodes (default: no limit)
+--transient-aa <bool>
+                     enable transient alias analysis (default: off)
 )=";
     fprintf(f, s);
 }
@@ -64,9 +72,21 @@ template <typename OutputIt, typename Handler>
 static OutputIt parse_list(char *s, OutputIt out, Handler handler) {
     char *tok;
     while ((tok = strsep(&s, ","))) {
-        *out++ = handler(tok);
+        if (*tok != '\0') {
+            *out++ = handler(tok);
+        }
     }
     return out;
+}
+
+static bool parse_bool(const std::string& s) {
+    const std::unordered_set<std::string> yes = {"yes", "y", "on"};
+    const std::unordered_set<std::string> no = {"no", "n", "off"};
+    std::string lower;
+    std::transform(s.begin(), s.end(), std::back_inserter(lower), tolower);
+    if (yes.find(lower) != yes.end()) { return true; }
+    if (no.find(lower) != no.end()) { return false; }
+    error("invalid boolean flag '%s'", s.c_str());
 }
 
 static int parse_args() {
@@ -87,6 +107,9 @@ static int parse_args() {
     enum Option {
         SPECULATION_PRIMITIVES = 256,
         LEAKAGE_SOURCES,
+        LEAKAGE_CLASS,
+        MAX_TRANSIENT,
+        TRANSIENT_AA,
     };
     
     struct option opts[] = {
@@ -101,6 +124,9 @@ static int parse_args() {
         {"jobs", required_argument, nullptr, 'j'},
         {"speculation-primitives", required_argument, nullptr, SPECULATION_PRIMITIVES},
         {"leakage-sources", required_argument, nullptr, LEAKAGE_SOURCES},
+        {"leakage-class", required_argument, nullptr, LEAKAGE_CLASS},
+        {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
+        {"transient-aa", required_argument, nullptr, TRANSIENT_AA},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -148,7 +174,6 @@ static int parse_args() {
                 
             case SPECULATION_PRIMITIVES: {
                 speculation_primitives.clear();
-                std::cerr << "here\n";
                 parse_list(optarg, std::back_inserter(speculation_primitives), [] (const std::string& s) -> std::unique_ptr<SpeculationPrimitive>{
                     if (s == "branch") {
                         return std::make_unique<BranchPrimitive>();
@@ -175,6 +200,29 @@ static int parse_args() {
                 break;
             }
                 
+            case LEAKAGE_CLASS: {
+                const std::string s = optarg;
+                if (s == "spectre-v1") {
+                    leakage_class = LeakageClass::SPECTRE_V1;
+                } else if (s == "spectre-v4") {
+                    leakage_class = LeakageClass::SPECTRE_V4;
+                } else if (s == "spectre-psf") {
+                    leakage_class = LeakageClass::SPECTRE_PSF;
+                } else if (s == "all") {
+                    leakage_class = LeakageClass::ALL;
+                } else {
+                    error("invalid leakage class '%s'", s.c_str());
+                }
+                break;
+            }
+                
+            case MAX_TRANSIENT:
+                max_transient_nodes = std::stoul(optarg);
+                break;
+                
+            case TRANSIENT_AA:
+                transient_aa = parse_bool(optarg);
+                break;
                 
             default:
                 usage();

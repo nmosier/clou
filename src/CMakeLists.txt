@@ -3,19 +3,16 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -pedantic)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(cfg)
+add_subdirectory(aeg)
 add_subdirectory(util)
 
 add_library(lcm MODULE
   lcm.cc           lcm.h
   addr.cc          addr.h
   config.cc        config.h
-  aeg.cc           aeg.h	   
   inst.cc          inst.h   
   uhb.cc           uhb.h
-  aeg-util.cc      
-  aeg-construct.cc 
   fol.h
-  leakage.cc
   taint.h
   taint_bv.cc      taint_bv.h
   shm.cc           shm.h
@@ -32,6 +29,7 @@ add_library(lcm MODULE
   xmacro.h
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
+  $<TARGET_OBJECTS:aeg_objs>
   )
 
 target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)
@@ -41,7 +39,7 @@ if(APPLE)
 endif()
 
 
-if(0)
+if(1)
 add_library(alias MODULE
   alias-main.cc
   )
