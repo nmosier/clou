@@ -37,6 +37,6 @@ foreach(STL_SRC ${STL_SRCS})
     -T ${STL_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo -d20 --speculation-primitive=addr --leakage-source= --leakage-class=spectre-v4 --max-transient=20 --aa=transient -fcase.* ${STL_ARGS}"
+    -A "-Epo -d20 --speculation-primitive=addr --spectre-v4=max-traceback=0 --max-transient=20 --aa=transient -fcase.* ${STL_ARGS}"
     )
 endforeach()

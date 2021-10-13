@@ -102,31 +102,23 @@ struct scope {
     }
 };
 
-#if 0
-template <typename Bool>
-struct constraints {
-    std::vector<expr> exprs;
-    
-    constraints(context& ctx) {
-        exprs.push_back(ctx.bool_val(true));
+
+/** Enumerate all the possible values of the given expression \p expr under the current constraints in \p solver.
+ * \param solver The solver to use
+ * \param expr The expression to enumerate possible values of
+ * \param out Output iterator accepting the possible values with type z3::expr
+ */
+template <typename OutputIt>
+OutputIt enumerate(z3::solver& solver, const z3::expr& expr, OutputIt out) {
+    const z3::scope scope {solver};
+    while (solver.check() == z3::sat) {
+        const z3::eval eval {solver.get_model()};
+        *out++ = eval(expr).e;
+        solver.add(expr != eval(expr).e);
     }
-    
-    context& ctx() const { return exprs.front().ctx(); }
-    
-    void add(const expr& e) {
-        exprs.push_back(e);
-    }
-    
-    z3::expr get() const {
-        auto it = exprs.begin();
-        expr acc = *it++;
-        for (; it != exprs.end(); ++it) {
-            acc = acc && *it;
-        }
-        return acc;
-    }
-};
-#endif
+    return out;
+}
+
 
 }
 
@@ -144,4 +136,3 @@ struct hash<z3::expr> {
 };
 
 }
-

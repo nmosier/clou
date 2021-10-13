@@ -74,6 +74,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     logv(2) << "Constructing postdominators\n";
     construct_postdominators();
     
+    // syntactic memory dependencies
     logv(2) << "Constructing addr\n";
     construct_addr();
     logv(2) << "Constructing data\n";

@@ -1,0 +1,1 @@
+ENTRY; STORE   store i8* getelementptr inbounds ([16 x i8], [16 x i8]* @publicarray, i64 0, i64 0), i8** @case5_ptr, align 8; LOAD   %9 = load i8*, i8** @case5_ptr, align 8; LOAD   %19 = load i8, i8* %18, align 1

@@ -36,6 +36,12 @@ enum class LeakageClass {
 };
 extern LeakageClass leakage_class;
 
+struct SpectreV4Mode {
+    unsigned max_traceback; /// max number of instructions 
+    unsigned stb_size; /// store buffer size
+};
+extern SpectreV4Mode spectre_v4_mode;
+
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;
 

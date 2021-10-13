@@ -128,7 +128,19 @@ private:
     };
     template <typename OutputIt>
     OutputIt leakage_spectre_v4(z3::solver& solver, OutputIt out);
+
+    template <typename OutputIt>
+    OutputIt leakage_spectre_v4_2(z3::solver& solver, OutputIt out);
     
+    template <typename OutputIt>
+    void leakage_spectre_v4_2_load2(z3::solver& solver, const std::unordered_map<NodeRef, z3::expr>& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth = 0);
+    
+    template <typename OutputIt>
+    void leakage_spectre_v4_2_store1(z3::solver& solver, const std::unordered_map<NodeRef, z3::expr>& mems, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
+    
+    template <typename OutputIt>
+    void leakage_spectre_v4_2_store0(z3::solver& solver, const std::unordered_map<NodeRef, z3::expr>& mem, NodeRef store0, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
+
     z3::expr leakage_get_same_solution(const LeakageClause& clause, const z3::eval& eval);
     
     template <typename OutputIt>

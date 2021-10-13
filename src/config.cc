@@ -35,6 +35,9 @@ AliasMode alias_mode = {
     .transient = false,
     .lax = false,
 };
+SpectreV4Mode spectre_v4_mode = {
+    .max_traceback = 1,
+};
 
 // TODO: add automated way for describing default values
 
@@ -61,6 +64,10 @@ only examine given functions
                      set maximum number of transient nodes (default: no limit)
 --aa <flag>[,<flag>...]
                      set alias analysis flags. Accepted flags: "transient", "lax"
+--spectre-v4 <subopts>
+                     set Spectre-v4 options. Suboptions:
+    max-traceback=<uint>  maximum traceback of addr edges via rf + {addr, data} edges
+    stb-size=<uint>       store buffer size
 )=";
     fprintf(f, s);
 }
@@ -113,6 +120,7 @@ static int parse_args() {
         LEAKAGE_CLASS,
         MAX_TRANSIENT,
         AA_FLAGS,
+        SPECTRE_V4,
     };
     
     struct option opts[] = {
@@ -130,6 +138,7 @@ static int parse_args() {
         {"leakage-class", required_argument, nullptr, LEAKAGE_CLASS},
         {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
         {"aa", optional_argument, nullptr, AA_FLAGS},
+        {"spectre-v4", optional_argument, nullptr, SPECTRE_V4},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -240,6 +249,52 @@ static int parse_args() {
                         error("bad alias analysis flag '%s", suboptarg);
                     }
                 }
+                break;
+            }
+                
+            case SPECTRE_V4: {
+                leakage_sources.clear();
+                leakage_class = LeakageClass::SPECTRE_V4;
+                
+                enum Key {
+                    MAX_TRACEBACK,
+                    STB_SIZE,
+                    COUNT
+                };
+
+                const char *keylist[COUNT + 1] = {
+                    [MAX_TRACEBACK] = "max-traceback",
+                    [STB_SIZE] = "stb-size",
+                    [COUNT] = nullptr
+                };
+                
+                bool args[COUNT] = {
+                    [MAX_TRACEBACK] = true,
+                    [STB_SIZE] = true,
+                };
+                
+                char *value;
+                int idx;
+                while ((idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
+                    if (args[idx] && value == nullptr) {
+                        error("spectre-v4: suboption '%s' missing value", suboptarg);
+                    }
+                    switch (idx) {
+                        case MAX_TRACEBACK:
+                            spectre_v4_mode.max_traceback = std::stoul(value);
+                            break;
+                            
+                        case STB_SIZE:
+                            spectre_v4_mode.stb_size = std::stoul(value);
+                            break;  
+
+                        default: std::abort();
+                    }
+                }
+                if (suboptarg != nullptr) {
+                    error("spectre-v4: invalid suboption '%s'", suboptarg);
+                }
+                
                 break;
             }
                 
