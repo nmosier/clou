@@ -6,7 +6,7 @@
 #include "util.h"
 #include "spec-prim.h"
 
-void CFG_Expanded::construct(const CFG& in, const SpeculationInfo& spec) {
+void CFG_Expanded::construct2(const CFG& in, const SpeculationInfo& spec) {
     // create entry
     NodeRef in_src = in.entry;
     NodeRef src = add_node(in.lookup(in_src));
@@ -28,6 +28,8 @@ void CFG_Expanded::construct(const CFG& in, const SpeculationInfo& spec) {
         construct_rec(in, spec, task, map, std::front_inserter(queue));
         queue.pop_back();
     }
+    std::cerr << __FUNCTION__ << ": nodes: " << size() << "\n";
+
     
     /* set exit */
     for (NodeRef ref = 0; ref < size(); ++ref) {
@@ -113,6 +115,81 @@ void CFG_Expanded::construct_rec(const CFG& in, const SpeculationInfo& spec, con
     }
 }
 
+/* Need a functoin that returns forks.
+ * Need a transition function from a node, its fork, to outgoing forks.
+ * Need to determine when to merge two nodes... basically returning whether to (1) create new node or (2) merge with existing node
+ */
+
+
+
+template <typename Expand>
+void CFG_Expanded::construct(const CFG& in, Expand& expand) {
+    using Fork = typename Expand::Fork;
+    
+    /* create entry */
+    entry = add_node(in.lookup(in.entry));
+    expansions[in.entry].insert(entry);
+    
+    using task_type = Task2<Fork>;
+    std::deque<task_type> queue;
+    for (NodeRef in_dst : in.po.fwd.at(in.entry)) {
+        queue.push_back(task_type {
+            .in_dst = in_dst,
+            .src    = entry,
+            .fork  = expand.init(),
+        });
+    }
+    
+    while (!queue.empty()) {
+        const task_type task = std::move(queue.back());
+        queue.pop_back();
+        
+        bool newnode;
+        
+        const NodeRef end_ref = size();
+        const NodeRef dst = expand.merge(task.fork, task.in_dst, end_ref);
+        if (dst == end_ref) {
+            // create new node
+            const NodeRef dst_tmp = add_node(in.lookup(task.in_dst));
+            assert(dst == dst_tmp);
+            newnode = true;
+        } else {
+            newnode = false;
+        }
+        
+        po.insert(task.src, dst);
+        
+        if (newnode) {
+            for (NodeRef succ : in.po.fwd.at(task.in_dst)) {
+                std::vector<Fork> new_forks;
+                expand.transition(task.fork, task.in_dst, succ, std::back_inserter(new_forks));
+                for (const Fork& new_fork : new_forks) {
+                    queue.push_front(task_type {
+                        .src = dst,
+                        .in_dst = succ,
+                        .fork = new_fork,
+                    });
+                }
+            }
+            
+            expansions[task.in_dst].insert(dst);
+        }
+    }
+    
+    std::cerr << __FUNCTION__ << ": nodes: " << size() << "\n";
+    
+    /* set exit */
+    for (NodeRef ref = 0; ref < size(); ++ref) {
+        if (std::holds_alternative<Exit>(lookup(ref).v)) {
+            exits.insert(ref);
+        }
+    }
+    
+    /* remaining tasks */
+    resolve_refs(in);
+}
+
+
 void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::unordered_map<NodeRef, RefMap> &maps, CFG::Node &node, NodeRef ref) {
     using Key = Translations::Key;
     using Map = RefMap;
@@ -160,6 +237,9 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
             std::abort();
     }
 }
+
+template void CFG_Expanded::construct(const CFG& in, Expand_SpectreV1& expand);
+template void CFG_Expanded::construct(const CFG& in, Expand_SpectreV4& expand);
 
 void CFG_Expanded::resolve_refs(const CFG& in) {
     /* Approach

@@ -20,6 +20,9 @@
 #include "hash.h"
 #include "noderef.h"
 
+
+
+
 /* How to determine if you can use AA results to check whether A aliases B:
  * - Must be the case that A.func_id == B.func_id
  * - Must be the case that A.loop_id is a prefix of B.loop_id or vice versa.
@@ -82,6 +85,8 @@ public:
        bool operator==(const Node& other) const {
            return v == other.v && id == other.id && refs == other.refs;
        }
+       
+       bool may_read() const;
    };
    using Rel = binrel<NodeRef>;
    Rel po;
@@ -274,3 +279,7 @@ struct CFG::partial_order {
 inline CFG::partial_order CFG::make_partial_order() const {
     return partial_order {.cfg = *this};
 }
+
+
+
+

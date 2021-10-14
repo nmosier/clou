@@ -35,6 +35,8 @@ AliasMode alias_mode = {
     .transient = false,
     .lax = false,
 };
+SpectreV1Mode spectre_v1_mode = {
+};
 SpectreV4Mode spectre_v4_mode = {
     .max_traceback = 1,
 };
@@ -64,6 +66,8 @@ only examine given functions
                      set maximum number of transient nodes (default: no limit)
 --aa <flag>[,<flag>...]
                      set alias analysis flags. Accepted flags: "transient", "lax"
+--spectre-v1 <subopts>
+                     set Spectre-v1 options. Suboptions: (none)
 --spectre-v4 <subopts>
                      set Spectre-v4 options. Suboptions:
     max-traceback=<uint>  maximum traceback of addr edges via rf + {addr, data} edges
@@ -120,6 +124,7 @@ static int parse_args() {
         LEAKAGE_CLASS,
         MAX_TRANSIENT,
         AA_FLAGS,
+        SPECTRE_V1,
         SPECTRE_V4,
     };
     
@@ -138,6 +143,7 @@ static int parse_args() {
         {"leakage-class", required_argument, nullptr, LEAKAGE_CLASS},
         {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
         {"aa", optional_argument, nullptr, AA_FLAGS},
+        {"spectre-v1", optional_argument, nullptr, SPECTRE_V1},
         {"spectre-v4", optional_argument, nullptr, SPECTRE_V4},
         {nullptr, 0, nullptr, 0}
     };
@@ -252,6 +258,60 @@ static int parse_args() {
                 break;
             }
                 
+            case SPECTRE_V1: {
+                leakage_sources.clear();
+
+                enum Key {
+                    MODE,
+                    COUNT
+                };
+                
+                const char *keylist[COUNT + 1] = {
+                    [MODE] = "mode",
+                    [COUNT] = nullptr
+                };
+                
+                bool args[COUNT] = {
+                    [MODE] = true,
+                };
+                
+                char *value;
+                int idx;
+                while ((idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
+                    if (args[idx] && value == nullptr) {
+                        error("spectre-v1: suboption '%s' missing value", suboptarg);
+                    }
+                    switch (idx) {
+                        case MODE: {
+                            static const std::unordered_map<std::string, SpectreV1Mode::Mode> map {
+                                {"classic", SpectreV1Mode::CLASSIC},
+                                {"branch-predicate", SpectreV1Mode::BRANCH_PREDICATE},
+                            };
+                            spectre_v1_mode.mode = map.at(value);
+                            break;
+                        }
+                            
+                        default: std::abort();
+                    }
+                }
+                    
+                // TODO: shouldn't need to configure this
+                switch (spectre_v1_mode.mode) {
+                    case SpectreV1Mode::CLASSIC:
+                        leakage_sources = {LeakageSource::ADDR_DST};
+                        break;
+                    case SpectreV1Mode::BRANCH_PREDICATE:
+                        leakage_sources = {LeakageSource::CTRL_DST};
+                        break;
+                    default: std::abort();
+                }
+                
+                leakage_class = LeakageClass::SPECTRE_V1;
+                
+                break;
+            }
+                
+                
             case SPECTRE_V4: {
                 leakage_sources.clear();
                 leakage_class = LeakageClass::SPECTRE_V4;
@@ -286,7 +346,7 @@ static int parse_args() {
                             
                         case STB_SIZE:
                             spectre_v4_mode.stb_size = std::stoul(value);
-                            break;  
+                            break;
 
                         default: std::abort();
                     }

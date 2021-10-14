@@ -36,8 +36,16 @@ enum class LeakageClass {
 };
 extern LeakageClass leakage_class;
 
+struct SpectreV1Mode {
+    enum Mode {
+        CLASSIC,
+        BRANCH_PREDICATE,
+    } mode;
+};
+extern SpectreV1Mode spectre_v1_mode;
+
 struct SpectreV4Mode {
-    unsigned max_traceback; /// max number of instructions 
+    unsigned max_traceback; /// max number of instructions
     unsigned stb_size; /// store buffer size
 };
 extern SpectreV4Mode spectre_v4_mode;

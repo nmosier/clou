@@ -16,7 +16,7 @@ foreach(PHT_SRC ${PHT_SRCS})
     -T ${PHT_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo,tfo,addr,rf,co,rfx,cox -d20 --speculation-primitives=branch -fvictim_function_.* ${PHT_ARGS}"
+    -A "-Epo,tfo,addr,rf,co,rfx,cox -d20 --speculation-primitives=branch -fvictim_function_.* --spectre-v1=mode=classic ${PHT_ARGS}"
     )
 endforeach()
 

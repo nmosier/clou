@@ -196,3 +196,22 @@ std::ostream& operator<<(std::ostream& os, const CFG::Node::Variant& v) {
     }, v);
     return os;
 }
+
+bool CFG::Node::may_read() const {
+    return std::visit(util::overloaded {
+        [&] (Entry) { return false; },
+        [&] (Exit) { return true; },
+        [&] (const llvm::Instruction *I) {
+            // TODO: more cases
+            if (llvm::isa<llvm::LoadInst>(I)) {
+                return true;
+            } else {
+                return false;
+            }
+        },
+        [&] (const Call& call) {
+            assert(call.arg->getType()->isPointerTy());
+            return true;
+        },
+    }, v);
+}

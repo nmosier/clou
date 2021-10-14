@@ -82,8 +82,21 @@ struct LCMPass : public llvm::FunctionPass {
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
             CFG_Expanded aegpo_expanded {spec_depth};
             {
-                Profiler profiler {format_graph_path("out/%s.prof", F)};
-                aegpo_expanded.construct(cfg_calls, spec_info);
+                switch (leakage_class) {
+                    case LeakageClass::SPECTRE_V1: {
+                        Expand_SpectreV1 expand_spectre_v1 {cfg_calls, spec_depth};
+                        aegpo_expanded.construct(cfg_calls, expand_spectre_v1);
+                        break;
+                    }
+                        
+                    case LeakageClass::SPECTRE_V4: {
+                        Expand_SpectreV4 expand_spectre_v4 {cfg_calls, spec_depth};
+                        aegpo_expanded.construct(cfg_calls, expand_spectre_v4);
+                        break;
+                    }
+                        
+                    default: std::abort();
+                }
             }
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
             << aegpo_expanded.size() << " (expanded)\n";
