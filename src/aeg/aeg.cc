@@ -14,6 +14,7 @@
 #include "fork_work_queue.h"
 #include "shm.h"
 #include "taint_bv.h"
+#include "cfg/expanded.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints
@@ -301,4 +302,17 @@ NodeRef AEG::add_node(Node&& node) {
     nodes.push_back(std::move(node));
     graph.add_node(ref);
     return ref;
+}
+
+unsigned AEG::num_specs() const {
+    return po.num_specs;
+}
+
+template <typename OutputIt>
+OutputIt AEG::get_path(const z3::eval& eval, OutputIt out) const {
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    return std::copy_if(order.begin(), order.end(), out, [&] (NodeRef ref) -> bool {
+        return static_cast<bool>(eval(lookup(ref).arch));
+    });
 }

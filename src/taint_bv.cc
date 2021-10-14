@@ -1,4 +1,5 @@
 #include "taint_bv.h"
+#include "cfg/expanded.h"
 
 void Taint_Array::run() {
 #if USE_TAINT

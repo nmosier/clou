@@ -14,6 +14,15 @@ struct SpeculationInfo;
 
 class CFG_Expanded: public CFG {
 public:
+    struct Exec {
+        Option arch, trans;
+        
+        bool operator==(const Exec& other) const {
+            return arch == other.arch && trans == other.trans;
+        }
+    };
+    std::unordered_map<NodeRef, Exec> execs;
+    
     explicit CFG_Expanded(unsigned num_specs): CFG(num_specs) {}
     
     template <typename Expand>
@@ -48,6 +57,22 @@ struct Expand_Basic {
     /** Basic fork record, which only tracks speculation depth. */
     struct Fork {
         unsigned spec_depth;
+        
+        virtual Option can_arch() const {
+            return Option::MAY;
+        }
+        
+        virtual Option can_trans(unsigned num_specs) const {
+            if (spec_depth <= num_specs) {
+                return Option::MAY;
+            } else {
+                return Option::NO;
+            }
+        }
+        
+        Fork(unsigned spec_depth): spec_depth(spec_depth) {}
+        
+        virtual ~Fork() {}
     };
     
     /** Transition function. Given a current fork and in noderef, output list of successor forks to process.
@@ -55,13 +80,13 @@ struct Expand_Basic {
     template <typename OutputIt>
     OutputIt transition(const Fork& fork_src, NodeRef in_src, NodeRef in_dst, OutputIt out) const {
         const unsigned new_spec_depth = std::min(fork_src.spec_depth, num_specs) + 1;
-        *out++ = Fork {new_spec_depth};
+        *out++ = Fork(new_spec_depth);
         return out;
     }
     
     /** Returns initial fork, which is non-speculative. */
     Fork init() const {
-        return Fork {.spec_depth = num_specs + 1};
+        return Fork(num_specs + 1);
     }
 };
 
@@ -108,6 +133,22 @@ struct Expand_SpectreV4: Expand_Basic {
         bool consistent(unsigned num_specs) const {
             if (always_speculative && spec_depth > num_specs) { return false; }
             return true;
+        }
+        
+        virtual Option can_arch() const override {
+            if (always_speculative) {
+                return Option::NO;
+            } else {
+                return Option::MAY;
+            }
+        }
+        
+        virtual Option can_trans(unsigned num_specs) const override {
+            if (always_speculative) {
+                return Option::MAY;
+            } else {
+                return Option::NO;
+            }
         }
     };
     

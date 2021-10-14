@@ -8,6 +8,7 @@
 #include "hash.h"
 #include "util/llvm.h"
 #include "fol.h"
+#include "cfg/expanded.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
  * Any rfx edges, it's leakage, as long as the tail of the rfx edge is a READ.

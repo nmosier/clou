@@ -1,4 +1,5 @@
 #include "aeg.h"
+#include "cfg/expanded.h"
 
 z3::expr AEG::exists(Edge::Kind kind, NodeRef src, NodeRef dst) {
     switch (kind) {

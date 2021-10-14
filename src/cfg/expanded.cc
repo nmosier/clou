@@ -12,6 +12,10 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
     /* create entry */
     entry = add_node(in.lookup(in.entry));
     expansions[in.entry].insert(entry);
+    execs.emplace(entry, Exec {
+        .arch = Option::MUST,
+        .trans = Option::NO,
+    });
     
     using task_type = Task<Fork>;
     std::deque<task_type> queue;
@@ -39,6 +43,13 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
         } else {
             newnode = false;
         }
+        
+        const Exec exec = {
+            .arch = task.fork.can_arch(),
+            .trans = task.fork.can_trans(num_specs),
+        };
+        const auto res = execs.emplace(dst, exec);
+        assert(res.first->second == exec);
         
         po.insert(task.src, dst);
         

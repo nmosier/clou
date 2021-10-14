@@ -1,6 +1,7 @@
 #include "uhb.h"
 #include "config.h"
 #include "aeg/aeg.h"
+#include "cfg/expanded.h"
 
 unsigned constraint_counter = 0;
 

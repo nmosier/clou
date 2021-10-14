@@ -11,7 +11,6 @@
 #include <z3++.h>
 
 #include "util/z3.h"
-#include "cfg/cfg.h"
 #include "graph.h"
 #include "util.h"
 #include "uhb.h"
@@ -20,10 +19,11 @@
 #include "taint.h"
 
 class Taint_Array;
+class CFG_Expanded;
 
 class AEG {
 public:
-    const CFG& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
+    const CFG_Expanded& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
     UHBContext context; /*!<  The context for AEG construction. */
 
     using Node = UHBNode;
@@ -44,7 +44,7 @@ public:
     const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
     Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
     
-    explicit AEG(const CFG& po): po(po), context(), constraints() {}
+    explicit AEG(const CFG_Expanded& po): po(po), context(), constraints() {}
     
     void dump_graph(std::ostream& os) const;
     void dump_graph(const std::string& path) const;
@@ -70,7 +70,7 @@ private:
     std::vector<Node> nodes;
     unsigned nedges = 0;
     
-    unsigned num_specs() const { return po.num_specs; }
+    unsigned num_specs() const;
     
     void construct_nodes();
     void construct_exec();
@@ -238,6 +238,8 @@ private:
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     
     // SPECULATION QUERIES
+    // TODO: remove
+#if 0
     bool can_introduce_trans(NodeRef ref) const {
         return po.po.fwd.at(ref).size() > 1;
     }
@@ -250,19 +252,14 @@ private:
             return std::nullopt;
         }
     }
+#endif
 
     friend class Taint;
     friend class Taint_Array;
     std::unique_ptr<Taint> tainter;
     
     template <typename OutputIt>
-    OutputIt get_path(const z3::eval& eval, OutputIt out) const {
-        NodeRefVec order;
-        po.reverse_postorder(std::back_inserter(order));
-        return std::copy_if(order.begin(), order.end(), out, [&] (NodeRef ref) -> bool {
-            return static_cast<bool>(eval(lookup(ref).arch));
-        });
-    }
+    OutputIt get_path(const z3::eval& eval, OutputIt out) const;
 };
 
 

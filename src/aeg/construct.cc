@@ -4,6 +4,7 @@
 #include "util/z3.h"
 #include "taint.h"
 #include "taint_bv.h"
+#include "cfg/expanded.h"
 
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
@@ -121,6 +122,23 @@ void AEG::construct_nodes() {
     NodeRefVec order;
     po.reverse_postorder(std::back_inserter(order));
     {
+#if 1
+        for (NodeRef ref : order) {
+            Node& node = lookup(ref);
+            
+            const auto& exec = po.execs.at(ref);
+            const auto apply_exec = [&] (Option opt, const char *name) -> z3::expr {
+                switch (opt) {
+                    case Option::MUST: return context.TRUE;
+                    case Option::MAY: return context.make_bool(name);
+                    case Option::NO: return context.FALSE;
+                }
+            };
+            
+            node.arch = apply_exec(exec.arch, "arch");
+            node.trans = apply_exec(exec.trans, "trans");
+        }
+#else
         // TODO: rewrite as function?
         for (NodeRef ref : order) {
             const auto& preds = po.po.rev.at(ref);
@@ -137,6 +155,7 @@ void AEG::construct_nodes() {
                 }
             }
         }
+#endif
     }
     
     // initialize `trans_depth`
@@ -356,9 +375,9 @@ void AEG::construct_tfo() {
         for (const NodeRef dst : po.po.fwd.at(src)) {
             // add optional edge
             const Node& dst_node = lookup(dst);
-            const z3::expr exists = add_optional_edge(src, dst, Edge {Edge::TFO,
-                (src_node.arch && dst_node.trans && can_introduce_trans(src)) ||
-                (src_node.trans && dst_node.trans)
+            const z3::expr exists = add_optional_edge(src, dst, Edge {
+                Edge::TFO,
+                (src_node.arch && dst_node.exec()) || (src_node.trans && dst_node.trans)
             }, "tfo");
             ++nedges;
             tfos.push_back(exists);
@@ -792,6 +811,7 @@ void AEG::construct_data() {
     }
 }
 
+#if 0
 void AEG::construct_taint() {
     logv(2) << "Constructing taint\n";
     tainter = std::make_unique<Taint_Array>(*this);
@@ -821,6 +841,7 @@ void AEG::construct_taint() {
         }
     }
 }
+#endif
 
 void AEG::construct_com() {
     // initialize read, write

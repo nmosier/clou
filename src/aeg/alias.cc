@@ -1,4 +1,5 @@
 #include "aeg.h"
+#include "cfg/expanded.h"
 
 llvm::AliasResult AEG::check_alias(NodeRef ref1, NodeRef ref2) const {
     const Node& node1 = lookup(ref1);
