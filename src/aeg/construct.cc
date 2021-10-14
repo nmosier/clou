@@ -121,7 +121,7 @@ void AEG::construct_nodes() {
     NodeRefVec order;
     po.reverse_postorder(std::back_inserter(order));
     {
-        // TODO: rewrite as functoin?
+        // TODO: rewrite as function?
         for (NodeRef ref : order) {
             const auto& preds = po.po.rev.at(ref);
             Node& node = lookup(ref);

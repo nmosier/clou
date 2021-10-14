@@ -7,7 +7,6 @@
 #include "cfg/cfg.h"
 #include "binrel.h"
 #include "config.h"
-#include "spec-prim.h" // for class Fork
 
 class CFG_Unrolled;
 class CFG_Calls;
@@ -98,7 +97,8 @@ struct Expand_SpectreV1: Expand_Basic {
 
 /** Spectre-V4 expansion primitive. This expands non-speculative loads into a speculative and non-speculative version. */
 struct Expand_SpectreV4: Expand_Basic {
-    std::unordered_map<NodeRef, NodeRef> public_map;
+    using Map = std::unordered_map<NodeRef, NodeRef>;
+    Map nonspeculative_map, speculative_map;
     
     struct Fork: Expand_Basic::Fork {
         bool always_speculative;

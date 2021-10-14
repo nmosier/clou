@@ -4,7 +4,6 @@
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
 #include "util.h"
-#include "spec-prim.h" 
 
 template <typename Expand>
 void CFG_Expanded::construct(const CFG& in, Expand& expand) {
@@ -195,10 +194,12 @@ NodeRef Expand_SpectreV1::merge(const Fork& fork, NodeRef in_ref, NodeRef out_re
 }
 
 NodeRef Expand_SpectreV4::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
+    Map *map;
     if (fork.always_speculative) {
-        return out_ref;
+        map = &speculative_map;
     } else {
-        const auto res = public_map.emplace(in_ref, out_ref);
-        return res.first->second;
+        map = &nonspeculative_map;
     }
+    const auto res = map->emplace(in_ref, out_ref);
+    return res.first->second;
 }

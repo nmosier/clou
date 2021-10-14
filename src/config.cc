@@ -8,7 +8,6 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include "config.h"
-#include "spec-prim.h"
 
 /* TODO
  * [ ] Handle function names
@@ -26,7 +25,6 @@ std::unordered_set<unsigned> include_edges;
 unsigned spec_depth = 2;
 unsigned num_jobs = 1;
 unsigned rob_size = 10;
-std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 std::ofstream log_;
 std::unordered_set<LeakageSource> leakage_sources;
 LeakageClass leakage_class;
@@ -39,11 +37,14 @@ SpectreV1Mode spectre_v1_mode = {
 };
 SpectreV4Mode spectre_v4_mode = {
     .max_traceback = 1,
+    .stb_size = 0,
 };
 
 // TODO: add automated way for describing default values
 
-static void usage(FILE *f = stderr) {
+namespace {
+
+void usage(FILE *f = stderr) {
     const char *s = R"=(usage: [option...]
 Options:
 --help, -h           show help
@@ -76,14 +77,13 @@ only examine given functions
     fprintf(f, s);
 }
 
-static void initialize() {
-    speculation_primitives.push_back(std::make_unique<BranchPrimitive>());
+void initialize() {
     leakage_sources = {LeakageSource::ADDR_DST};
     log_.open("log");
 }
 
 template <typename OutputIt, typename Handler>
-static OutputIt parse_list(char *s, OutputIt out, Handler handler) {
+OutputIt parse_list(char *s, OutputIt out, Handler handler) {
     char *tok;
     while ((tok = strsep(&s, ","))) {
         if (*tok != '\0') {
@@ -93,7 +93,7 @@ static OutputIt parse_list(char *s, OutputIt out, Handler handler) {
     return out;
 }
 
-static bool parse_bool(const std::string& s) {
+bool parse_bool(const std::string& s) {
     const std::unordered_set<std::string> yes = {"yes", "y", "on"};
     const std::unordered_set<std::string> no = {"no", "n", "off"};
     std::string lower;
@@ -103,7 +103,7 @@ static bool parse_bool(const std::string& s) {
     error("invalid boolean flag '%s'", s.c_str());
 }
 
-static int parse_args() {
+int parse_args() {
     if (char *line = getenv("LCM_ARGS")) {
         while (char *s = strsep(&line, " ")) {
             if (*s) {
@@ -140,7 +140,6 @@ static int parse_args() {
         {"jobs", required_argument, nullptr, 'j'},
         {"speculation-primitives", required_argument, nullptr, SPECULATION_PRIMITIVES},
         {"leakage-sources", required_argument, nullptr, LEAKAGE_SOURCES},
-        {"leakage-class", required_argument, nullptr, LEAKAGE_CLASS},
         {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
         {"aa", optional_argument, nullptr, AA_FLAGS},
         {"spectre-v1", optional_argument, nullptr, SPECTRE_V1},
@@ -189,20 +188,6 @@ static int parse_args() {
             case 'j':
                 num_jobs = std::stoul(optarg);
                 break;
-                
-            case SPECULATION_PRIMITIVES: {
-                speculation_primitives.clear();
-                parse_list(optarg, std::back_inserter(speculation_primitives), [] (const std::string& s) -> std::unique_ptr<SpeculationPrimitive>{
-                    if (s == "branch") {
-                        return std::make_unique<BranchPrimitive>();
-                    } else if (s == "addr") {
-                        return std::make_unique<AddrSpecPrimitive>();
-                    } else {
-                        error("invalid speculation primitive '%s'", s.c_str());
-                    }
-                });
-                break;
-            }
                 
             case LEAKAGE_SOURCES: {
                 leakage_sources.clear();
@@ -367,4 +352,6 @@ static int parse_args() {
     return 0;
 }
 
-static const int parse_args_force = parse_args();
+const int parse_args_force = parse_args();
+
+}

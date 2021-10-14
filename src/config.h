@@ -59,7 +59,6 @@ extern bool include_expr_in_constraint_name;
 constexpr bool simplify_before_checking_for_false_constraints = false;
 constexpr bool simplify_before_checking_for_impossible_edges = false;
 constexpr bool should_name_constraints = true;
-#define USE_TAINT 0
 
 #include "uhb.h"
 extern std::unordered_set<unsigned> include_edges;

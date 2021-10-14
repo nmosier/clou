@@ -20,7 +20,6 @@
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
 #include "profiler.h"
-#include "spec-prim.h"
 
 using llvm::errs;
 
@@ -66,18 +65,8 @@ struct LCMPass : public llvm::FunctionPass {
             cfg_calls.construct(aegpo_unrolled);
             output(cfg_calls, "calls", F);
             
-            // assert(cfg_calls == aegpo_unrolled);
-
-#if 1
             std::cerr << "outputting\n";
             output(aegpo_unrolled, "aegpo", F);
-#endif
-            
-            logv(1) << "Collecting speculation info\n";
-            SpeculationInfo spec_info {cfg_calls};
-            for (const auto& primitive : speculation_primitives) {
-                spec_info.add(*primitive);
-            }
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
             CFG_Expanded aegpo_expanded {spec_depth};
@@ -100,9 +89,7 @@ struct LCMPass : public llvm::FunctionPass {
             }
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
             << aegpo_expanded.size() << " (expanded)\n";
-#if 1
             output(aegpo_expanded, "aegpoexp", F);
-#endif
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
             ProfilerStart(format_graph_path("out/%s.prof", F).c_str());

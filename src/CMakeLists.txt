@@ -16,7 +16,6 @@ add_library(lcm MODULE
   taint.h
   taint_bv.cc      taint_bv.h
   shm.cc           shm.h
-  spec-prim.cc     spec-prim.h
   binrel.h
   dot.h
   graph.h

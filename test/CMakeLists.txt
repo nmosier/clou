@@ -16,7 +16,7 @@ foreach(PHT_SRC ${PHT_SRCS})
     -T ${PHT_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo,tfo,addr,rf,co,rfx,cox -d20 --speculation-primitives=branch -fvictim_function_.* --spectre-v1=mode=classic ${PHT_ARGS}"
+    -A "-Epo,tfo,addr,rf,co,rfx,cox -d20 -fvictim_function_.* --spectre-v1=mode=classic ${PHT_ARGS}"
     )
 endforeach()
 
@@ -37,6 +37,6 @@ foreach(STL_SRC ${STL_SRCS})
     -T ${STL_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo -d20 --speculation-primitive=addr --spectre-v4=max-traceback=0 --max-transient=20 --aa=transient -fcase.* ${STL_ARGS}"
+    -A "-Epo -d20 --spectre-v4=max-traceback=0 --max-transient=20 --aa=transient -fcase.* ${STL_ARGS}"
     )
 endforeach()
