@@ -19,3 +19,9 @@ void case_13(uint32_t idx) {  // SECURE
   /* Access overwritten secret */
   temp &= publicarray2[to_leak * 512];  
 }
+
+/* sourced store:    ENTRY
+ * bypassed store:   store i32 %8
+ * speculative load: %9
+ * transmitter:      %11
+ */

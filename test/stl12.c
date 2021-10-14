@@ -19,3 +19,8 @@ void case_12(uint32_t idx) {
   temp &= publicarray2[publicarray[ridx] * 512];  
 }
 
+/* sourced store:    ENTRY
+ * bypassed store:   store i32 %5
+ * speculative load: %6
+ * transmitter: %14
+ */

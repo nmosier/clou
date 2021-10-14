@@ -1,0 +1,1 @@
+ENTRY; STORE   store i32 %8, i32* %3, align 4; LOAD   %9 = load i32, i32* %3, align 4; LOAD   %11 = load i8, i8* %10, align 1

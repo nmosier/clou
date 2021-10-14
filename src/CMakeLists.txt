@@ -4,6 +4,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(cfg)
 add_subdirectory(aeg)
+add_subdirectory(leakage)
 add_subdirectory(util)
 
 add_library(lcm MODULE
@@ -29,6 +30,7 @@ add_library(lcm MODULE
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>
+  $<TARGET_OBJECTS:leakage_objs>
   )
 
 target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)

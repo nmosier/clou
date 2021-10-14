@@ -14,3 +14,10 @@ void case_6(uint32_t idx) {
   uint8_t toleak = (case6_array[case6_idx])[ridx];
   temp &= publicarray2[toleak * 512];
 }
+
+/* 
+ * <ENTRY> -- sourced store
+ * store i32 1, ... -- bypassed store
+ * %9  -- speculative load
+ * %22 -- transmitter
+ */

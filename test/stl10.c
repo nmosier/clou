@@ -16,3 +16,9 @@ void case_10(uint32_t idx) {
   /* Access overwritten secret */
   temp &= publicarray2[publicarray[fidx] * 512];  
 }
+
+/* sourced store:    ENTRY
+ * bypassed store:   store i32 %5...
+ * speculative load: %6
+ * transmitter:      %14
+ */

@@ -137,18 +137,15 @@ private:
     };
     
     template <typename OutputIt>
-    void leakage_spectre_v4_2_load2(z3::solver& solver, const MemsPair& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth = 0);
+    void leakage_spectre_v4_load2(z3::solver& solver, const MemsPair& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth = 0);
     
     template <typename OutputIt>
-    void leakage_spectre_v4_2_store1(z3::solver& solver, const MemsPair& mems, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
+    void leakage_spectre_v4_store1(z3::solver& solver, const MemsPair& mems, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
     
     template <typename OutputIt>
-    void leakage_spectre_v4_2_store0(z3::solver& solver, const MemsPair& mem, NodeRef store0, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
+    void leakage_spectre_v4_store0(z3::solver& solver, const MemsPair& mem, NodeRef store0, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
 
     z3::expr leakage_get_same_solution(const LeakageClause& clause, const z3::eval& eval);
-    
-    template <typename OutputIt>
-    OutputIt process_leakage_SPECTRE_V4(OutputIt out, const z3::eval& eval);
     
     // TODO: this should be more general than hard-coding two com/comx edges, maybe?
     struct Leakage;
@@ -334,5 +331,4 @@ template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f
         }
     }
 }
-
 

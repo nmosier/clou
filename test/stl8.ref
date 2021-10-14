@@ -1,0 +1,1 @@
+ENTRY; STORE   store i32 0, i32* @case8_mult, align 4; LOAD   %5 = load i32, i32* @case8_mult, align 4; LOAD   %15 = load i8, i8* %14, align 1
