@@ -17,28 +17,14 @@ class CFG_Expanded: public CFG {
 public:
     explicit CFG_Expanded(unsigned num_specs): CFG(num_specs) {}
     
-    // TODO: erase
-    void construct2(const CFG& in, const SpeculationInfo& spec);
-    
     template <typename Expand>
     void construct(const CFG& in, Expand& expand);
-    
-    void construct_spectre_v1(const CFG& in);
-    void construct_spectre_v4(const CFG& in);
     
 private:
     using NodeMap = std::unordered_map<NodeRef, NodeRef>;
     
-    struct Task {
-        NodeRef in_src;
-        NodeRef in_dst;
-        NodeRef src;
-        unsigned spec_depth;
-        std::vector<Fork> forks;
-    };
-    
     template <typename Fork>
-    struct Task2 {
+    struct Task {
         NodeRef in_dst;
         NodeRef src;
         Fork fork;
@@ -47,36 +33,20 @@ private:
     // DEBUG: expansion map
     std::unordered_map<NodeRef, NodeRefSet> expansions;
     
-    // TODO: remove
-    template <typename OutputIt>
-    void construct_rec(const CFG& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out);
-    
-    
     using RefMap = std::unordered_map<Translations::Key, NodeRefSet, Translations::Key::Hash>;
     void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::unordered_map<NodeRef, RefMap> &maps, CFG::Node &node, NodeRef ref);
     
     void resolve_refs(const CFG& in);
 };
 
-
-// TODO: move to its own class?
-template <typename Fork>
-struct Expand {
-    using fork_type = Fork;
-    
-    template <typename OutputIt>
-    OutputIt transition(const Fork& fork, NodeRef ref, OutputIt out);
-    
-    std::optional<NodeRef> merge(const Fork& fork, NodeRef ref);
-};
-
+/** Basic no-op expansion primitive. This simply increments the speculation depth along the path and outputs a new fork in a 1-1 correspondence to the original CFG. */
 struct Expand_Basic {
-    const CFG& cfg;
-    unsigned num_specs;
-    
-    
+    const CFG& cfg; /// input CFG
+    unsigned num_specs; /// max speculation depth
+
     Expand_Basic(const CFG& cfg, unsigned num_specs): cfg(cfg), num_specs(num_specs) {}
     
+    /** Basic fork record, which only tracks speculation depth. */
     struct Fork {
         unsigned spec_depth;
     };
@@ -90,13 +60,14 @@ struct Expand_Basic {
         return out;
     }
     
+    /** Returns initial fork, which is non-speculative. */
     Fork init() const {
         return Fork {.spec_depth = num_specs + 1};
     }
-    
-    // virtual NodeRef merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) = 0;
 };
 
+
+/** Spectre-V1 expansion primitive. This is similar to the Expand_Basic primitive, but it resets speculation depth after all branches. */
 struct Expand_SpectreV1: Expand_Basic {
     using Fork = Expand_Basic::Fork;
     
@@ -118,23 +89,14 @@ struct Expand_SpectreV1: Expand_Basic {
         return std::copy(forks_dst.begin(), forks_dst.end(), out);
     }
 
-    
-    NodeRef merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
-        if (fork.spec_depth <= num_specs) {
-            // private
-            return out_ref;
-        } else {
-            // public
-            // NOTE: This will insert node if missing and tell caller to instantiate a fresh one.
-            const auto res = public_map.emplace(in_ref, out_ref);
-            return res.first->second;
-        }
-    }
+    NodeRef merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref);
     
     template <typename... Args>
     Expand_SpectreV1(Args&&... args): Expand_Basic(std::forward<Args>(args)...) {}
 };
 
+
+/** Spectre-V4 expansion primitive. This expands non-speculative loads into a speculative and non-speculative version. */
 struct Expand_SpectreV4: Expand_Basic {
     std::unordered_map<NodeRef, NodeRef> public_map;
     
@@ -176,14 +138,7 @@ struct Expand_SpectreV4: Expand_Basic {
         return out;
     }
     
-    NodeRef merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
-        if (fork.always_speculative) {
-            return out_ref;
-        } else {
-            const auto res = public_map.emplace(in_ref, out_ref);
-            return res.first->second;
-        }
-    }
+    NodeRef merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref);
     
     Fork init() const {
         return Fork {Expand_Basic::init(), false};

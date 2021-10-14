@@ -4,123 +4,7 @@
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
 #include "util.h"
-#include "spec-prim.h"
-
-void CFG_Expanded::construct2(const CFG& in, const SpeculationInfo& spec) {
-    // create entry
-    NodeRef in_src = in.entry;
-    NodeRef src = add_node(in.lookup(in_src));
-    entry = src;
-    NodeMap map {{in_src, src}};
-    
-    std::deque<Task> queue;
-    for (NodeRef in_dst : in.po.fwd.at(in_src)) {
-        queue.push_back(Task {
-            .in_src = in_src,
-            .in_dst = in_dst,
-            .src = src,
-            .spec_depth = num_specs,
-            .forks = {{.always_speculative = false}},
-        }); // since ENTRY will never be speculatively executed
-    }
-    while (!queue.empty()) {
-        const Task& task = queue.back();
-        construct_rec(in, spec, task, map, std::front_inserter(queue));
-        queue.pop_back();
-    }
-    std::cerr << __FUNCTION__ << ": nodes: " << size() << "\n";
-
-    
-    /* set exit */
-    for (NodeRef ref = 0; ref < size(); ++ref) {
-        if (std::holds_alternative<Exit>(lookup(ref).v)) {
-            exits.insert(ref);
-        }
-    }
-    assert(!exits.empty());
-    
-    // DEBUG: print added nodes
-    for (const auto& pair : expansions) {
-        if (pair.second.size() > 1) {
-            logv(4) << "expanded node " << pair.second.size() << " times: " << in.lookup(pair.first) << "\n";
-        }
-    }
-    
-    // remaining tasks
-    resolve_refs(in);
-}
-
-/* NOTE: spec_depth is the depth of in_src.
- *
- */
-template <typename OutputIt>
-void CFG_Expanded::construct_rec(const CFG& in, const SpeculationInfo& spec, const Task& task, NodeMap& map, OutputIt out) {
-
-    /* check whether to merge or duplicate node */
-    const unsigned spec_depth = task.spec_depth + 1;
-    
-    for (const Fork& fork : task.forks) {
-        bool newnode;
-        NodeRef dst;
-        
-        if (spec_depth <= num_specs) {
-            /* create private node */
-            std::cerr << "private " << task.in_dst << "\n";
-            dst = add_node(in.lookup(task.in_dst));
-            newnode = true;
-        } else if (fork.always_speculative) {
-            // this fork is dead, so just continue
-            continue;
-        } else {
-            /* merge with or create public node */
-            const auto it = map.find(task.in_dst);
-            if (it == map.end()) {
-                // create
-                dst = add_node(in.lookup(task.in_dst));
-                map.emplace(task.in_dst, dst);
-                newnode = true;
-            } else {
-                dst = it->second;
-                newnode = false;
-            }
-        }
-        
-        po.insert(task.src, dst);
-        
-        if (newnode) {
-            const NodeRef next_in_src = task.in_dst;
-            for (NodeRef next_in_dst : in.po.fwd.at(next_in_src)) {
-                unsigned new_spec_depth;
-                std::vector<Fork> forks;
-                const auto it = spec.primitive_tfos.find(std::make_tuple(next_in_src, next_in_dst));
-                if (fork.always_speculative || it == spec.primitive_tfos.end()) {
-                    new_spec_depth = spec_depth;
-                    forks.push_back({.always_speculative = fork.always_speculative});
-                } else {
-                    new_spec_depth = 0;
-                    forks = it->second.forks;
-                }
-                
-                *out++ = Task {
-                    .in_src = next_in_src,
-                    .in_dst = next_in_dst,
-                    .src = dst,
-                    .spec_depth = new_spec_depth,
-                    .forks = forks,
-                };
-            }
-            expansions[task.in_dst].insert(dst);
-        }
-        
-    }
-}
-
-/* Need a functoin that returns forks.
- * Need a transition function from a node, its fork, to outgoing forks.
- * Need to determine when to merge two nodes... basically returning whether to (1) create new node or (2) merge with existing node
- */
-
-
+#include "spec-prim.h" 
 
 template <typename Expand>
 void CFG_Expanded::construct(const CFG& in, Expand& expand) {
@@ -130,7 +14,7 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
     entry = add_node(in.lookup(in.entry));
     expansions[in.entry].insert(entry);
     
-    using task_type = Task2<Fork>;
+    using task_type = Task<Fork>;
     std::deque<task_type> queue;
     for (NodeRef in_dst : in.po.fwd.at(in.entry)) {
         queue.push_back(task_type {
@@ -295,5 +179,26 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
             [&] (Entry) {},
             [&] (Exit) {},
         }, node.v);
+    }
+}
+
+NodeRef Expand_SpectreV1::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
+    if (fork.spec_depth <= num_specs) {
+        // private
+        return out_ref;
+    } else {
+        // public
+        // NOTE: This will insert node if missing and tell caller to instantiate a fresh one.
+        const auto res = public_map.emplace(in_ref, out_ref);
+        return res.first->second;
+    }
+}
+
+NodeRef Expand_SpectreV4::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
+    if (fork.always_speculative) {
+        return out_ref;
+    } else {
+        const auto res = public_map.emplace(in_ref, out_ref);
+        return res.first->second;
     }
 }
