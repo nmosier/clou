@@ -241,7 +241,7 @@ z3::expr AEG::leakage_get_same_solution(const LeakageClause& clause, const z3::e
 unsigned AEG::leakage(z3::solver& solver, unsigned max) {
     if (leakage_class == LeakageClass::SPECTRE_V4) {
         std::vector<Leakage_SpectreV4> leaks;
-        leakage_spectre_v4_2(solver, std::back_inserter(leaks));
+        leakage_spectre_v4(solver, std::back_inserter(leaks));
         // leakage_spectre_v4(solver, std::back_inserter(leaks));
         
         // dump leakage
@@ -455,24 +455,33 @@ util::null_output_iterator AEG::process_leakage_SPECTRE_V4<util::null_output_ite
 #endif
 
 template <typename OutputIt>
-OutputIt AEG::leakage_spectre_v4_2(z3::solver& solver, OutputIt out) {
+OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
     const z3::scope scope {solver};
     z3::context& ctx = solver.ctx();
     
-    // create mem array (used to find possible most-recent architectural writes)
-    std::unordered_map<NodeRef, z3::expr> mems;
     NodeRefVec order;
     po.reverse_postorder(std::back_inserter(order));
-    {
+    
+    // create mem array (used to find possible most-recent architectural writes)
+    using Mems = std::unordered_map<NodeRef, z3::expr>;
+    
+    const auto get_mems = [&] (z3::expr Node::*pred) -> Mems {
+        Mems mems;
         z3::expr mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<unsigned>(entry)));
         for (const NodeRef ref : order) {
             mems.emplace(ref, mem);
             if (ref == entry) { continue; }
             const Node& node = lookup(ref);
             if (!node.may_write()) { continue; }
-            mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<unsigned>(ref)), node.arch);
+            mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<unsigned>(ref)), node.*pred);
         }
-    }
+        return mems;
+    };
+    
+    const MemsPair mems = {
+        .arch = get_mems(&Node::arch),
+        .trans = get_mems(&Node::trans),
+    };
     
     for_each_edge(Edge::ADDR, [&] (const NodeRef addr_src, const NodeRef access3, const Edge& addr_edge) {
         const z3::scope scope {solver};
@@ -498,7 +507,7 @@ OutputIt AEG::leakage_spectre_v4_2(z3::solver& solver, OutputIt out) {
 }
 
 template <typename OutputIt>
-void AEG::leakage_spectre_v4_2_load2(z3::solver& solver, const std::unordered_map<NodeRef, z3::expr>& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth) {
+void AEG::leakage_spectre_v4_2_load2(z3::solver& solver, const MemsPair& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth) {
     std::cerr << __FUNCTION__ << ": load2=" << load2 << " access3=" << access3 << " depth=" << traceback_depth << "\n";
     
     if (traceback_depth > spectre_v4_mode.max_traceback) { return; }
@@ -509,14 +518,17 @@ void AEG::leakage_spectre_v4_2_load2(z3::solver& solver, const std::unordered_ma
     // require load2 trans
     solver.add(lookup(load2).trans, util::to_string_l("load2{", load2, ".trans").c_str());
     
-    // enumerate store1
-    const z3::expr store1_sym = mems.at(load2)[load2_node.get_memory_address()];
-    std::vector<z3::expr> store1_candidates_z3;
-    z3::enumerate(solver, store1_sym, std::back_inserter(store1_candidates_z3));
-    NodeRefVec store1_candidates;
-    std::transform(store1_candidates_z3.begin(), store1_candidates_z3.end(), std::back_inserter(store1_candidates), [] (const z3::expr& x) -> NodeRef { return x.get_numeral_uint64(); });
+    const auto get_store1_candidates = [&] (const Mems& mems, z3::expr& store1_sym) -> std::vector<z3::expr> {
+        store1_sym = mems.at(load2)[load2_node.get_memory_address()];
+        std::vector<z3::expr> store1_candidates;
+        z3::enumerate(solver, store1_sym, std::back_inserter(store1_candidates));
+        return store1_candidates;
+    };
     
+    // enumerate store1
     {
+        z3::expr store1_arch_sym {context.context};
+        const auto store1_arch_candidates = get_store1_candidates(mems.arch, store1_arch_sym);
         const z3::scope scope {solver};
         
         // ensure load is the first speculated instruction
@@ -524,32 +536,40 @@ void AEG::leakage_spectre_v4_2_load2(z3::solver& solver, const std::unordered_ma
         for (const auto& pred : tfo) {
             solver.add(z3::implies(pred.second, lookup(pred.first).arch), util::to_string_l("pred-arch-", pred.first).c_str());
         }
-    
+        
         // recurse on all bindings for store1 candidates
-        std::cerr << __FUNCTION__ << ": store1: " << store1_candidates.size() << " candidates\n";
-        for (const NodeRef store1 : store1_candidates) {
+        std::cerr << __FUNCTION__ << ": store1: " << store1_arch_candidates.size() << " candidates\n";
+        for (const z3::expr& store1_arch_con : store1_arch_candidates) {
             const z3::scope scope {solver};
-            solver.add(solver.ctx().int_val((uint64_t) store1) == store1_sym, "store1"); // bind store1
+            const NodeRef store1 = store1_arch_con.get_numeral_uint64();
+            solver.add(store1_arch_con == store1_arch_sym, "store1-arch"); // bind store1
             leakage_spectre_v4_2_store1(solver, mems, store1, load2, access3, out);
         }
     }
     
     // trace back
-    for (const NodeRef store1 : store1_candidates) {
-        for (Edge::Kind kind : std::array<Edge::Kind, 2> {Edge::ADDR, Edge::DATA}) {
-            std::vector<std::pair<NodeRef, z3::expr>> nodes;
-            get_nodes(Direction::IN, store1, std::back_inserter(nodes), kind);
-            for (const auto& node : nodes) {
-                const z3::scope scope {solver};
-                solver.add(node.second, util::to_string_l("trace-back-", load2, "-", node.first).c_str());
-                leakage_spectre_v4_2_load2(solver, mems, node.first, access3, out, traceback_depth + 1);
+    {
+        z3::expr store1_trans_sym {context.context};
+        const auto store1_trans_candidates = get_store1_candidates(mems.trans, store1_trans_sym);
+        for (const z3::expr& store1_trans_con : store1_trans_candidates) {
+            const z3::scope scope {solver};
+            const NodeRef store1 = store1_trans_con.get_numeral_uint64();
+            solver.add(store1_trans_con == store1_trans_sym, util::to_string_l("store1-trans-", store1).c_str());
+            for (Edge::Kind kind : std::array<Edge::Kind, 2> {Edge::ADDR, Edge::DATA}) {
+                std::vector<std::pair<NodeRef, z3::expr>> nodes;
+                get_nodes(Direction::IN, store1, std::back_inserter(nodes), kind);
+                for (const auto& node : nodes) {
+                    const z3::scope scope {solver};
+                    solver.add(node.second, util::to_string_l("trace-back-", load2, "-", node.first).c_str());
+                    leakage_spectre_v4_2_load2(solver, mems, node.first, access3, out, traceback_depth + 1);
+                }
             }
         }
     }
 }
 
 template <typename OutputIt>
-void AEG::leakage_spectre_v4_2_store1(z3::solver& solver, const std::unordered_map<NodeRef, z3::expr>& mems, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out) {
+void AEG::leakage_spectre_v4_2_store1(z3::solver& solver, const MemsPair& mems, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out) {
     std::cerr << __FUNCTION__ << ": store1=" << store1 << " load2=" << load2 << " access3=" << access3 << "\n";
     
     const z3::scope scope {solver};
@@ -587,7 +607,7 @@ void AEG::leakage_spectre_v4_2_store1(z3::solver& solver, const std::unordered_m
 }
 
 template <typename OutputIt>
-void AEG::leakage_spectre_v4_2_store0(z3::solver& solver, const std::unordered_map<NodeRef, z3::expr>& mem, NodeRef store0, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out) {
+void AEG::leakage_spectre_v4_2_store0(z3::solver& solver, const MemsPair& mem, NodeRef store0, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out) {
     std::cerr << __FUNCTION__ << ": store0=" << store0 << " store1=" << store1 << " load2=" << load2 << " access3=" << access3 << "\n";
     
     const z3::scope scope {solver};
@@ -625,7 +645,7 @@ void AEG::leakage_spectre_v4_2_store0(z3::solver& solver, const std::unordered_m
     };
 }
 
-
+#if 0
 template <typename OutputIt>
 OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
     const z3::scope scope {solver};
@@ -777,6 +797,7 @@ OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
     
     return out;
 }
+#endif
 
 template <typename OutputIt>
 OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {

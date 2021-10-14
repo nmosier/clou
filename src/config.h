@@ -29,6 +29,7 @@ enum class LeakageSource {
 extern std::unordered_set<LeakageSource> leakage_sources;
 
 enum class LeakageClass {
+    INVALID,
     SPECTRE_V1,
     SPECTRE_V4,
     SPECTRE_PSF,

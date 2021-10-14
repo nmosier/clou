@@ -27,13 +27,14 @@ unsigned num_jobs = 1;
 unsigned rob_size = 10;
 std::ofstream log_;
 std::unordered_set<LeakageSource> leakage_sources;
-LeakageClass leakage_class;
+LeakageClass leakage_class = LeakageClass::INVALID;
 std::optional<unsigned> max_transient_nodes;
 AliasMode alias_mode = {
     .transient = false,
     .lax = false,
 };
 SpectreV1Mode spectre_v1_mode = {
+    .mode = SpectreV1Mode::CLASSIC,
 };
 SpectreV4Mode spectre_v4_mode = {
     .max_traceback = 1,
@@ -56,19 +57,17 @@ only examine given functions
 --expr, -e           include expression string in constraint name (for debugging)
 --edges, -E          include edges in execution graph output
 --depth, -d <n>      speculation depth
---rob, -r <n>        reorder buffer (ROB) size
 --speculation-primitives <primitive>[,<primitive>...]
                      use comma-separated speculation primitives (possibilities: "branch", "addr")
 --leakage-sources <source>[,<source>...]
                      use comman-separated leakage sources (possibilities: "addr-dst", "taint-trans")
---leakage-class <class>
-                     leakage class (choices: "spectre-v1", "spectre-v4", "spectre-psf", "all")
 --max-transient <num>
                      set maximum number of transient nodes (default: no limit)
 --aa <flag>[,<flag>...]
                      set alias analysis flags. Accepted flags: "transient", "lax"
 --spectre-v1 <subopts>
-                     set Spectre-v1 options. Suboptions: (none)
+                     set Spectre-v1 options. Suboptions:
+    mode={classic|branch-predicate}
 --spectre-v4 <subopts>
                      set Spectre-v4 options. Suboptions:
     max-traceback=<uint>  maximum traceback of addr edges via rf + {addr, data} edges
@@ -80,6 +79,14 @@ only examine given functions
 void initialize() {
     leakage_sources = {LeakageSource::ADDR_DST};
     log_.open("log");
+}
+
+void check_config() {
+    if (leakage_class == LeakageClass::INVALID) {
+        error("missing leakage class option (--spectre-v1, --spectre-v4, etc.)");
+    }
+    
+    std::cerr << "max-traceback=" << spectre_v4_mode.max_traceback << "\n";
 }
 
 template <typename OutputIt, typename Handler>
@@ -121,7 +128,6 @@ int parse_args() {
     enum Option {
         SPECULATION_PRIMITIVES = 256,
         LEAKAGE_SOURCES,
-        LEAKAGE_CLASS,
         MAX_TRANSIENT,
         AA_FLAGS,
         SPECTRE_V1,
@@ -203,22 +209,6 @@ int parse_args() {
                 break;
             }
                 
-            case LEAKAGE_CLASS: {
-                const std::string s = optarg;
-                if (s == "spectre-v1") {
-                    leakage_class = LeakageClass::SPECTRE_V1;
-                } else if (s == "spectre-v4") {
-                    leakage_class = LeakageClass::SPECTRE_V4;
-                } else if (s == "spectre-psf") {
-                    leakage_class = LeakageClass::SPECTRE_PSF;
-                } else if (s == "all") {
-                    leakage_class = LeakageClass::ALL;
-                } else {
-                    error("invalid leakage class '%s'", s.c_str());
-                }
-                break;
-            }
-                
             case MAX_TRANSIENT:
                 max_transient_nodes = std::stoul(optarg);
                 break;
@@ -242,7 +232,7 @@ int parse_args() {
                 }
                 break;
             }
-                
+            
             case SPECTRE_V1: {
                 leakage_sources.clear();
 
@@ -348,6 +338,10 @@ int parse_args() {
                 exit(1);
         }
     }
+    
+    
+    // check
+    check_config();
     
     return 0;
 }

@@ -20,7 +20,7 @@ extern char prog[];
 
 template <typename... Args>
 void log(const char *fmt, Args&&... args) {
-    llvm::errs() << llvm::format(fmt, std::forward<Args>(args)...);
+    llvm::errs() << llvm::format(fmt, std::forward<Args>(args)...) << "\n";
 }
 
 template <typename... Args>
