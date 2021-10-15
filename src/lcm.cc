@@ -13,7 +13,6 @@
 
 #include "util.h"
 #include "lcm.h"
-#include "addr.h"
 #include "config.h"
 #include "aeg/aeg.h"
 #include "cfg/expanded.h"

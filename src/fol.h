@@ -12,6 +12,8 @@
 #include "default_map.h"
 #include "util.h"
 #include "util/tuple.h"
+#include "util/output.h"
+#include "util/algorithm.h"
 
 /** First-order relational logic library
  */
@@ -462,41 +464,11 @@ Bool some(const relation<Bool, Ts...>& a) {
     }, a.logic.F);
 }
 
-/** Compute whether this relation has exactly one element.
- * \return \f$ \left| a \right| = 1 \f$ */
-template <typename Bool, typename... Ts>
-Bool one(const relation<Bool, Ts...>& a) {
-    if constexpr (std::is_same<Bool, z3::expr>()) {
-        z3::expr_vector vec {a.logic.T.ctx()};
-        for (const auto& pair : a) {
-            vec.push_back(pair.second);
-        }
-        return z3::exactly(vec, 1);
-    } else {
-        return util::one_of(a.begin(), a.end(), [] (const auto& p) -> Bool { return p.second; }, a.logic.T, a.logic.F);
-    }
-}
-
 /** Compute whether this relation is empty.
  * \return \f$ a = \emptyset \f$ */
 template <typename Bool, typename... Ts>
 Bool no(const relation<Bool, Ts...>& a) {
     return !some(a);
-}
-
-/** Compute whether this relation has one or zero elements.
- * \return \f$ \left| a \right| \leq 1 \f$ */
-template <typename Bool, typename... Ts>
-Bool lone(const relation<Bool, Ts...>& rel) {
-    if constexpr (std::is_same<Bool, z3::expr>()) {
-        z3::expr_vector vec {rel.logic.T.ctx()};
-        for (const auto& pair : rel) {
-            vec.push_back(pair.second);
-        }
-        return z3::atmost(vec, 1);
-    } else {
-        return util::lone_of(rel.begin(), rel.end(), [] (const auto& p) -> Bool { return p.second; }, rel.logic.T, rel.logic.F);
-    }
 }
 
 /** Compute whether \p a is a subset of \p b
@@ -692,22 +664,6 @@ Bool for_some(const relation<Bool, Ts...>& rel, const for_func<Bool, Ts...>& f) 
     return util::any_of(rel.begin(), rel.end(), [&] (const auto& pair) {
         return pair.second && f(pair.first);
     }, rel.logic.F);
-}
-
-template <typename Bool, typename... Ts>
-Bool for_one(const relation<Bool, Ts...>& rel, const for_func<Bool, Ts...>& f) {
-    const auto& L = rel.logic;
-    return util::one_of(rel.begin(), rel.end(), [&] (const auto& pair) {
-        return pair.second && f(pair.first);
-    }, L.T, L.F);
-}
-
-template <typename Bool, typename... Ts>
-Bool for_lone(const relation<Bool, Ts...>& rel, const for_func<Bool, Ts...>& f) {
-    const auto& L = rel.logic;
-    return util::lone_of(rel.begin(), rel.end(), [&] (const auto& pair) {
-        return pair.second && f(pair.first);
-    }, L.T, L.F);
 }
 
 template <typename Bool, typename... Ts>

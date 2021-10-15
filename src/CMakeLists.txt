@@ -9,7 +9,6 @@ add_subdirectory(util)
 
 add_library(lcm MODULE
   lcm.cc           lcm.h
-  addr.cc          addr.h
   config.cc        config.h
   inst.cc          inst.h   
   uhb.cc           uhb.h

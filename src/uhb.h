@@ -5,13 +5,14 @@
 #include <utility>
 #include <vector>
 #include <variant>
+#include <numeric>
 
 #include <z3++.h>
 
-#include "util.h"
 #include "inst.h"
 #include "config.h"
 #include "noderef.h"
+#include "util/functional.h"
 
 class AEG;
 

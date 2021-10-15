@@ -11,6 +11,8 @@
 #include "cfg/expanded.h"
 #include "leakage/spectre-v1.h"
 #include "leakage/spectre-v4.h"
+#include "util/output.h"
+#include "util/iterator.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
  * Any rfx edges, it's leakage, as long as the tail of the rfx edge is a READ.

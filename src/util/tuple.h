@@ -63,4 +63,22 @@ auto transform(const std::tuple<Ts...>& tuple, Func func) {
     return detail::transform_impl<0>(tuple, func);
 }
 
+
+namespace detail {
+
+template <std::size_t I, typename Func, typename... Ts>
+void for_each_impl(const std::tuple<Ts...>& tuple, Func func) {
+    if constexpr (I < sizeof...(Ts)) {
+        func(std::get<I>(tuple));
+        for_each_impl<I+1>(tuple, func);
+    }
+}
+
+}
+
+template <typename Func, typename... Ts>
+void for_each(const std::tuple<Ts...>& tuple, Func func) {
+    return detail::for_each_impl<0>(tuple, func);
+}
+
 }

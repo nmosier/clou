@@ -5,6 +5,7 @@
 #include "taint.h"
 #include "taint_bv.h"
 #include "cfg/expanded.h"
+#include "util/algorithm.h"
 
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes

@@ -15,6 +15,7 @@
 #include "shm.h"
 #include "taint_bv.h"
 #include "cfg/expanded.h"
+#include "util/iterator.h"
 
 /* TODO
  * [ ] Don't use seen when generating tfo constraints

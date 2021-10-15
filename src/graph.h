@@ -6,6 +6,7 @@
 
 #include "util.h"
 #include "tarjan.h"
+#include "lcm.h"
 
 template <typename Node, typename Edge, typename NodeHash = std::hash<Node>,
           typename EdgeHash = std::hash<Edge>>

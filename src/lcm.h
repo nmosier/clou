@@ -26,6 +26,18 @@ enum class Option {
     MUST, MAY, NO
 };
 
+enum class Direction {
+    IN, OUT
+};
+
+inline std::ostream& operator<<(std::ostream& os, Direction dir) {
+    switch (dir) {
+        case Direction::IN: return os << "IN";
+        case Direction::OUT: return os << "OUT";
+        default: return os << "(invalid)";
+    }
+}
+
 namespace std {
    template <>
    struct hash<Entry> {
