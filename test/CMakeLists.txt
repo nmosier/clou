@@ -2,6 +2,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/test.sh ${CMAKE_CURRENT_BINARY_DIR}/t
 
 file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c)
 
+
 foreach(PHT_SRC ${PHT_SRCS})
   get_filename_component(PHT_NAME ${PHT_SRC} NAME_WLE)
   set(PHT_ARGFILE ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.args)
@@ -21,9 +22,11 @@ foreach(PHT_SRC ${PHT_SRCS})
 endforeach()
 
 
-file(GLOB STL_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/stl*.c)
+# file(GLOB STL_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/stl*.c)
 
-foreach(STL_SRC ${STL_SRCS})
+set(STLS 1 2 3 4 5 6 7 8 9 9_bis 10 11 12 13)
+foreach(STL ${STLS})
+  set(STL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/stl${STL}.c)
   get_filename_component(STL_NAME ${STL_SRC} NAME_WLE)
   set(STL_ARGFILE ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.args)
   unset(STL_ARGS)
@@ -37,6 +40,6 @@ foreach(STL_SRC ${STL_SRCS})
     -T ${STL_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo -d20 --spectre-v4=max-traceback=2 --max-transient=25 --aa=transient -fcase_[[:digit:]]* ${STL_ARGS}"
+    -A "-Epo -d20 --spectre-v4=max-traceback=2 --max-transient=25 --aa=transient -fcase_${STL} ${STL_ARGS}"
     )
 endforeach()
