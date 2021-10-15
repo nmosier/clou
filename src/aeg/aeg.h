@@ -94,6 +94,9 @@ private:
     void construct_taint();
     
     
+    using EdgeSet = std::set<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
+    
+    
     // TODO: unify this, so that it just returns a NodeRefMap for in, out.
     using DependencyMap = NodeRefMap;
     DependencyMap dependencies;
@@ -120,21 +123,32 @@ private:
     void leakage_frx(OutputIt out) const;
     unsigned leakage(z3::solver& solver, unsigned max);
     
+    using Mems = std::unordered_map<NodeRef, z3::expr>;
+    struct MemsPair {
+        Mems arch;
+        Mems trans;
+    };
+    
+    struct Leakage_SpectreV1_Classic {
+        NodeRef secret0;
+        NodeRef transmitter1;
+    };
+    
+    template <typename OutputIt>
+    OutputIt leakage_spectre_v1(z3::solver& solver, OutputIt out);
+    
+    template <typename OutputIt>
+    void leakage_spectre_v1_secret0(z3::solver& solver, const Mems& mems, NodeRef secret0, NodeRef transmitter1, OutputIt& out, unsigned traceback_depth, EdgeSet flag_edges);
+    
     struct Leakage_SpectreV4 {
         NodeRef store0;
         NodeRef store1;
         NodeRef load2;
         NodeRef access3;
     };
-
+    
     template <typename OutputIt>
     OutputIt leakage_spectre_v4(z3::solver& solver, OutputIt out);
-    
-    using Mems = std::unordered_map<NodeRef, z3::expr>;
-    struct MemsPair {
-        Mems arch;
-        Mems trans;
-    };
     
     template <typename OutputIt>
     void leakage_spectre_v4_load2(z3::solver& solver, const MemsPair& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth = 0);
@@ -180,7 +194,6 @@ private:
     
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
-    using EdgeSet = std::set<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
     void output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet& flag_edges = EdgeSet());
     void output_execution(const std::string& path, const z3::eval& eval, const EdgeSet& flag_edges = EdgeSet());
     
@@ -238,29 +251,16 @@ private:
     llvm::AliasResult check_alias(NodeRef ref1, NodeRef ref2) const;
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     
-    // SPECULATION QUERIES
-    // TODO: remove
-#if 0
-    bool can_introduce_trans(NodeRef ref) const {
-        return po.po.fwd.at(ref).size() > 1;
-    }
-    
-    std::optional<NodeRef> can_trans(NodeRef ref) const {
-        const auto& preds = po.po.rev.at(ref);
-        if (preds.size() == 1) {
-            return *preds.begin();
-        } else {
-            return std::nullopt;
-        }
-    }
-#endif
-
     friend class Taint;
     friend class Taint_Array;
     std::unique_ptr<Taint> tainter;
     
     template <typename OutputIt>
     OutputIt get_path(const z3::eval& eval, OutputIt out) const;
+    
+private:
+    Mems get_mems(z3::expr Node::*pred);
+    Mems get_exec_mems();
 };
 
 

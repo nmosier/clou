@@ -1,30 +1,13 @@
+#pragma once
+
 #include "aeg/aeg.h"
 #include "cfg/expanded.h"
 
 template <typename OutputIt>
 OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
     const z3::scope scope {solver};
-    z3::context& ctx = solver.ctx();
-    
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
     
     // create mem array (used to find possible most-recent architectural writes)
-    using Mems = std::unordered_map<NodeRef, z3::expr>;
-    
-    const auto get_mems = [&] (z3::expr Node::*pred) -> Mems {
-        Mems mems;
-        z3::expr mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<unsigned>(entry)));
-        for (const NodeRef ref : order) {
-            mems.emplace(ref, mem);
-            if (ref == entry) { continue; }
-            const Node& node = lookup(ref);
-            if (!node.may_write()) { continue; }
-            mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<unsigned>(ref)), node.*pred);
-        }
-        return mems;
-    };
-    
     const MemsPair mems = {
         .arch = get_mems(&Node::arch),
         .trans = get_mems(&Node::trans),
@@ -57,13 +40,13 @@ template <typename OutputIt>
 void AEG::leakage_spectre_v4_load2(z3::solver& solver, const MemsPair& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth) {
     std::cerr << __FUNCTION__ << ": load2=" << load2 << " access3=" << access3 << " depth=" << traceback_depth << "\n";
     
-    if (traceback_depth > spectre_v4_mode.max_traceback) { return; }
+    if (traceback_depth > max_traceback) { return; }
     
     const z3::scope scope {solver};
     const Node& load2_node = lookup(load2);
     
     // require load2 trans
-    solver.add(lookup(load2).trans, util::to_string_l("load2{", load2, ".trans").c_str());
+    solver.add(lookup(load2).trans, util::to_string("load2{", load2, ".trans").c_str());
     
     const auto get_store1_candidates = [&] (const Mems& mems, z3::expr& store1_sym) -> std::vector<z3::expr> {
         store1_sym = mems.at(load2)[load2_node.get_memory_address()];
@@ -81,7 +64,7 @@ void AEG::leakage_spectre_v4_load2(z3::solver& solver, const MemsPair& mems, Nod
         // ensure load is the first speculated instruction
         const auto tfo = get_nodes(Direction::IN, load2, Edge::TFO);
         for (const auto& pred : tfo) {
-            solver.add(z3::implies(pred.second, lookup(pred.first).arch), util::to_string_l("pred-arch-", pred.first).c_str());
+            solver.add(z3::implies(pred.second, lookup(pred.first).arch), util::to_string("pred-arch-", pred.first).c_str());
         }
         
         // recurse on all bindings for store1 candidates
@@ -101,13 +84,13 @@ void AEG::leakage_spectre_v4_load2(z3::solver& solver, const MemsPair& mems, Nod
         for (const z3::expr& store1_trans_con : store1_trans_candidates) {
             const z3::scope scope {solver};
             const NodeRef store1 = store1_trans_con.get_numeral_uint64();
-            solver.add(store1_trans_con == store1_trans_sym, util::to_string_l("store1-trans-", store1).c_str());
+            solver.add(store1_trans_con == store1_trans_sym, util::to_string("store1-trans-", store1).c_str());
             for (Edge::Kind kind : std::array<Edge::Kind, 2> {Edge::ADDR, Edge::DATA}) {
                 std::vector<std::pair<NodeRef, z3::expr>> nodes;
                 get_nodes(Direction::IN, store1, std::back_inserter(nodes), kind);
                 for (const auto& node : nodes) {
                     const z3::scope scope {solver};
-                    solver.add(node.second, util::to_string_l("trace-back-", load2, "-", node.first).c_str());
+                    solver.add(node.second, util::to_string("trace-back-", load2, "-", node.first).c_str());
                     leakage_spectre_v4_load2(solver, mems, node.first, access3, out, traceback_depth + 1);
                 }
             }

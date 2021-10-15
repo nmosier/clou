@@ -40,6 +40,6 @@ foreach(STL ${STLS})
     -T ${STL_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo -d20 --spectre-v4=max-traceback=2 --max-transient=25 --aa=transient -fcase_${STL} ${STL_ARGS}"
+    -A "-Epo -d20 --spectre-v4 --traceback=2 --max-transient=25 --aa=transient -fcase_${STL} ${STL_ARGS}"
     )
 endforeach()

@@ -248,41 +248,11 @@ private:
 template <typename T>
 using RangeContainer = llvm::iterator_range<RangeIterator<T>>;
 
-template <typename T>
-std::string to_string(const T& x) {
+template <typename... Ts>
+std::string to_string(Ts&&... xs) {
     std::stringstream ss;
-    ss << x;
+    (ss << ... << xs);
     return ss.str();
-}
-
-template <typename InputIt>
-std::string to_string(InputIt begin, InputIt end, const std::string& sep = " ") {
-    std::stringstream ss;
-    for (InputIt it = begin; it != end; ++it) {
-        if (it != begin) {
-            ss << sep;
-        }
-        ss << *it;
-    }
-    return ss.str();
-}
-
-namespace detail {
-
-inline std::string to_string_l_impl() {
-    return "";
-}
-
-template <typename T, typename... Ts>
-std::string to_string_l_impl(const T& x, Ts&&... xs) {
-    return to_string(x) + to_string_l_impl(std::forward<Ts>(xs)...);
-}
-
-}
-
-template <typename... Args>
-std::string to_string_l(Args&&... args) {
-    return detail::to_string_l_impl(std::forward<Args>(args)...);
 }
 
 template <typename T>

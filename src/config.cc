@@ -25,6 +25,7 @@ std::unordered_set<unsigned> include_edges;
 unsigned spec_depth = 2;
 unsigned num_jobs = 1;
 unsigned rob_size = 10;
+unsigned max_traceback = 1;
 std::ofstream log_;
 std::unordered_set<LeakageSource> leakage_sources;
 LeakageClass leakage_class = LeakageClass::INVALID;
@@ -37,7 +38,6 @@ SpectreV1Mode spectre_v1_mode = {
     .mode = SpectreV1Mode::CLASSIC,
 };
 SpectreV4Mode spectre_v4_mode = {
-    .max_traceback = 1,
     .stb_size = 0,
 };
 
@@ -70,8 +70,8 @@ only examine given functions
     mode={classic|branch-predicate}
 --spectre-v4 <subopts>
                      set Spectre-v4 options. Suboptions:
-    max-traceback=<uint>  maximum traceback of addr edges via rf + {addr, data} edges
     stb-size=<uint>       store buffer size
+--traceback <uint>   set max traceback via rf * (addr + data) edges.
 )=";
     fprintf(f, s);
 }
@@ -85,8 +85,6 @@ void check_config() {
     if (leakage_class == LeakageClass::INVALID) {
         error("missing leakage class option (--spectre-v1, --spectre-v4, etc.)");
     }
-    
-    std::cerr << "max-traceback=" << spectre_v4_mode.max_traceback << "\n";
 }
 
 template <typename OutputIt, typename Handler>
@@ -132,6 +130,7 @@ int parse_args() {
         AA_FLAGS,
         SPECTRE_V1,
         SPECTRE_V4,
+        TRACEBACK,
     };
     
     struct option opts[] = {
@@ -150,6 +149,7 @@ int parse_args() {
         {"aa", optional_argument, nullptr, AA_FLAGS},
         {"spectre-v1", optional_argument, nullptr, SPECTRE_V1},
         {"spectre-v4", optional_argument, nullptr, SPECTRE_V4},
+        {"traceback", required_argument, nullptr, TRACEBACK},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -292,19 +292,16 @@ int parse_args() {
                 leakage_class = LeakageClass::SPECTRE_V4;
                 
                 enum Key {
-                    MAX_TRACEBACK,
                     STB_SIZE,
                     COUNT
                 };
 
                 const char *keylist[COUNT + 1] = {
-                    [MAX_TRACEBACK] = "max-traceback",
                     [STB_SIZE] = "stb-size",
                     [COUNT] = nullptr
                 };
                 
                 bool args[COUNT] = {
-                    [MAX_TRACEBACK] = true,
                     [STB_SIZE] = true,
                 };
                 
@@ -315,10 +312,6 @@ int parse_args() {
                         error("spectre-v4: suboption '%s' missing value", suboptarg);
                     }
                     switch (idx) {
-                        case MAX_TRACEBACK:
-                            spectre_v4_mode.max_traceback = std::stoul(value);
-                            break;
-                            
                         case STB_SIZE:
                             spectre_v4_mode.stb_size = std::stoul(value);
                             break;
@@ -330,6 +323,12 @@ int parse_args() {
                     error("spectre-v4: invalid suboption '%s'", suboptarg);
                 }
                 
+                break;
+            }
+                
+                
+            case TRACEBACK: {
+                max_traceback = std::stoul(optarg);
                 break;
             }
                 

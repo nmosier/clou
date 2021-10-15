@@ -15,6 +15,7 @@ extern unsigned num_jobs;
 extern unsigned rob_size;
 extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 extern std::optional<unsigned> max_transient_nodes;
+extern unsigned max_traceback;
 
 struct AliasMode {
     bool transient; /*!< enable alias analysis on transient instructions too (default: off) */
@@ -46,7 +47,6 @@ struct SpectreV1Mode {
 extern SpectreV1Mode spectre_v1_mode;
 
 struct SpectreV4Mode {
-    unsigned max_traceback; /// max number of instructions
     unsigned stb_size; /// store buffer size
 };
 extern SpectreV4Mode spectre_v4_mode;

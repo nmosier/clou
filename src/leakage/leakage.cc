@@ -9,6 +9,7 @@
 #include "util/llvm.h"
 #include "fol.h"
 #include "cfg/expanded.h"
+#include "leakage/spectre-v1.h"
 #include "leakage/spectre-v4.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
@@ -240,32 +241,60 @@ z3::expr AEG::leakage_get_same_solution(const LeakageClause& clause, const z3::e
 }
 
 unsigned AEG::leakage(z3::solver& solver, unsigned max) {
-    if (leakage_class == LeakageClass::SPECTRE_V4) {
-        std::vector<Leakage_SpectreV4> leaks;
-        leakage_spectre_v4(solver, std::back_inserter(leaks));
-        // leakage_spectre_v4(solver, std::back_inserter(leaks));
-        
-        // dump leakage
-        std::stringstream ss;
-        ss << output_dir << "/leakage.txt";
-        std::ofstream ofs {ss.str()};
-        for (const auto& leak : leaks) {
-            ofs << leak.store0 << " " << leak.store1 << " " << leak.load2 << " " << leak.access3 << " --";
-            ofs << *lookup(leak.store0).inst << "; " << *lookup(leak.store1).inst << "; " << *lookup(leak.load2).inst << "; " << *lookup(leak.access3).inst
+    std::ofstream leakage_ofs {util::to_string(output_dir, "/leakage.txt")};
+    
+    switch (leakage_class) {
+        case LeakageClass::SPECTRE_V4: {
+            std::vector<Leakage_SpectreV4> leaks;
+            leakage_spectre_v4(solver, std::back_inserter(leaks));
+            // leakage_spectre_v4(solver, std::back_inserter(leaks));
+            
+            // dump leakage
+            for (const auto& leak : leaks) {
+                leakage_ofs << leak.store0 << " " << leak.store1 << " " << leak.load2 << " " << leak.access3 << " --";
+                leakage_ofs << *lookup(leak.store0).inst << "; " << *lookup(leak.store1).inst << "; " << *lookup(leak.load2).inst << "; " << *lookup(leak.access3).inst
                 << "\n";
+            }
+            
+            // print out set of transmitters
+            std::unordered_set<const llvm::Instruction *> transmitters;
+            for (const auto& leak : leaks) {
+                transmitters.insert(lookup(leak.access3).inst->get_inst());
+            }
+            std::cerr << "transmitters:\n";
+            for (const auto transmitter : transmitters) {
+                llvm::errs() << *transmitter << "\n";
+            }
+            
+            return 0;
         }
-        
-        // print out set of transmitters
-        std::unordered_set<const llvm::Instruction *> transmitters;
-        for (const auto& leak : leaks) {
-            transmitters.insert(lookup(leak.access3).inst->get_inst());
+          
+#if 0
+        case LeakageClass::SPECTRE_V1: {
+            std::vector<Leakage_SpectreV1_Classic> leaks;
+            leakage_spectre_v1(solver, std::back_inserter(leaks));
+            
+            // dump leakage
+            for (const auto& leak : leaks) {
+                leakage_ofs << leak.secret0 << " " << leak.transmitter1 << " --"
+                << *lookup(leak.secret0).inst << "; " << *lookup(leak.transmitter1).inst << "\n";
+            }
+            
+            // print set of transmitters
+            std::unordered_set<const llvm::Instruction *> transmitters;
+            for (const auto& leak : leaks) {
+                transmitters.insert(lookup(leak.transmitter1).inst->get_inst());
+            }
+            std::cerr << "transmitters:\n";
+            for (const auto transmitter : transmitters) {
+                llvm::errs() << *transmitter << "\n";
+            }
+            
+            return 0;
         }
-        std::cerr << "transmitters:\n";
-        for (const auto transmitter : transmitters) {
-            llvm::errs() << *transmitter << "\n";
-        }
-        
-        return 0;
+#endif
+            
+        default: break;
     }
     
     z3::scope scope {solver};
