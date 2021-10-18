@@ -24,3 +24,35 @@ std::ostream& llvm_to_cxx_os(std::ostream& os, const T& x) {
 inline std::ostream& operator<<(std::ostream& os, const llvm::Instruction& I) {
    return llvm_to_cxx_os(os, I);
 }
+
+
+#if 0
+namespace detail {
+
+template <typename InputIt>
+
+template <typename Container>
+llvm::raw_ostream& print_container_impl(llvm::raw_ostream& os, const Container& container)
+
+}
+
+
+template <typename T>
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const std::unordered_set<T>& set) {
+    os << "{";
+    for (auto it = set.begin(); it != set.end(); ++it) {
+        if (it != set.begin()) {
+            os << ", ";
+        }
+        os << *it;
+    }
+    os << "}";
+    return os;
+}
+
+template <typename T>
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const std::vector<T>& vec) {
+    os << "{";
+    for (auto it = vec.begin(); )
+}
+#endif

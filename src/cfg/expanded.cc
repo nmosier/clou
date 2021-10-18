@@ -4,6 +4,7 @@
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
 #include "util.h"
+#include "util/output.h"
 
 template <typename Expand>
 void CFG_Expanded::construct(const CFG& in, Expand& expand) {
@@ -107,6 +108,7 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
         case ARG: {
             std::vector<Key> sources;
             in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
+            
             const Map& map = maps.at(ref);
             for (const Key& source : sources) {
                 const auto it = map.find(source);

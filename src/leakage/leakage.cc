@@ -271,21 +271,20 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
             return 0;
         }
           
-#if 0
+#if 1
         case LeakageClass::SPECTRE_V1: {
             std::vector<Leakage_SpectreV1_Classic> leaks;
             leakage_spectre_v1(solver, std::back_inserter(leaks));
             
             // dump leakage
             for (const auto& leak : leaks) {
-                leakage_ofs << leak.secret0 << " " << leak.transmitter1 << " --"
-                << *lookup(leak.secret0).inst << "; " << *lookup(leak.transmitter1).inst << "\n";
+                leakage_ofs << leak.load0 << " " << leak.load1 << " " << leak.transmitter2 << "--" << *lookup(leak.load0).inst << "; " << *lookup(leak.load1).inst << "; " << *lookup(leak.transmitter2).inst << "\n";
             }
             
             // print set of transmitters
             std::unordered_set<const llvm::Instruction *> transmitters;
             for (const auto& leak : leaks) {
-                transmitters.insert(lookup(leak.transmitter1).inst->get_inst());
+                transmitters.insert(lookup(leak.transmitter2).inst->get_inst());
             }
             std::cerr << "transmitters:\n";
             for (const auto transmitter : transmitters) {

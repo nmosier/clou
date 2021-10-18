@@ -19,11 +19,13 @@
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
 #include "profiler.h"
+#include "util/llvm.h"
+#include "util/output.h"
 
 using llvm::errs;
 
 template <typename Graph>
-void output(const Graph& graph, const std::string& name, const llvm::Function& F) {
+void output_(const Graph& graph, const std::string& name, const llvm::Function& F) {
     if (!output_dir.empty()) {
         graph.dump_graph(format_graph_path(output_dir + "/" + name + "-%s.dot", F));
     }
@@ -62,10 +64,10 @@ struct LCMPass : public llvm::FunctionPass {
             
             CFG_Calls cfg_calls {spec_depth};
             cfg_calls.construct(aegpo_unrolled);
-            output(cfg_calls, "calls", F);
+            output_(cfg_calls, "calls", F);
             
             std::cerr << "outputting\n";
-            output(aegpo_unrolled, "aegpo", F);
+            output_(aegpo_unrolled, "aegpo", F);
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
             CFG_Expanded aegpo_expanded {spec_depth};
@@ -88,7 +90,21 @@ struct LCMPass : public llvm::FunctionPass {
             }
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
             << aegpo_expanded.size() << " (expanded)\n";
-            output(aegpo_expanded, "aegpoexp", F);
+            output_(aegpo_expanded, "aegpoexp", F);
+            
+#if 1
+            // DEBUG: show refs
+            for (NodeRef ref = 0; ref < aegpo_expanded.size(); ++ref) {
+                using namespace output;
+                const auto& node = aegpo_expanded.lookup(ref);
+                llvm::errs() << ref << ": " << node << ": {\n";
+                for (const auto& pair : node.refs) {
+                    llvm::errs() << "  " << *pair.first << ": " << pair.second << ",\n";
+                }
+                std::cerr << "}\n";
+            }
+#endif
+            
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
             ProfilerStart(format_graph_path("out/%s.prof", F).c_str());

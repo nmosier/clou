@@ -60,12 +60,17 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
         assert(F->arg_size() == C->arg_size());
         auto FA_it = F->arg_begin();
         auto CA_it = C->arg_begin();
+#if 0
         const Translations::Key trans_key {callee_id, &*FA_it};
         Translations::Value trans_value {callee_id};
+#endif
         for (; FA_it != F->arg_end(); ++FA_it, ++CA_it) {
             const Translations::Key key {callee_id, &*FA_it};
             const Translations::Value value {caller_id, {*CA_it}};
-            translations.map.emplace(trans_key, trans_value);
+            translations.map.emplace(key, value);
+            
+            // DEBUG
+            llvm::errs() << "adding parameter translation: key = " << key << ", value = " << value << "\n";
         }
     }
     

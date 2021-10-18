@@ -205,4 +205,23 @@ detail::defer_impl<Func> defer(Func func) {
     return detail::defer_impl<Func> {.func = func};
 }
 
+
+template <typename Container>
+class push_scope {
+public:
+    push_scope(Container& container, const typename Container::value_type& x): container(container) {
+        container.push_back(x);
+    }
+    ~push_scope() {
+        container.pop_back();
+    }
+private:
+    Container& container;
+};
+
+template <typename Container>
+push_scope<Container> push(Container& container, const typename Container::value_type& x) {
+    return push_scope<Container>(container, x);
+}
+
 }

@@ -818,6 +818,9 @@ void AEG::construct_data() {
                         Edge::DATA,
                         (store_node.exec() && store_node.write) && (candidate_node.exec() && candidate_node.read)
                     });
+                    
+                    // DEBUG
+                    llvm::errs() << "DATA dep: " << candidate_src << " " << store_ref << "\n";
                 }
             }
         }

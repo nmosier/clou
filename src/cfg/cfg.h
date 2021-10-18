@@ -19,7 +19,7 @@
 #include "lcm.h"
 #include "hash.h"
 #include "noderef.h"
-
+#include "util/output.h"
 
 
 
@@ -283,3 +283,14 @@ inline CFG::partial_order CFG::make_partial_order() const {
 
 
 
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Key& key) {
+    os << "{.id = " << key.id << ", V = " << *key.V << "}";
+    return os;
+}
+
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Value& value) {
+    os << "{.id = " << value.id << ", Vs = {";
+    output::container(os, value.Vs, ", ", [] (const auto *ptr) -> const llvm::Value& { return *ptr; });
+    os << "}";
+    return os;
+}

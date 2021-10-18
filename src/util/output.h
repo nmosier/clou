@@ -7,6 +7,39 @@
 #include <vector>
 #include <variant>
 
+namespace output {
+
+template <typename OutputStream, typename InputIt, typename Transform>
+OutputStream& range(OutputStream& os, InputIt begin, InputIt end, const std::string& sep, Transform transform) {
+    os << "{";
+    for (auto it = begin; it != end; ++it) {
+        if (it != begin) {
+            os << sep;
+        }
+        os << transform(*it);
+    }
+    os << "}";
+    return os;
+}
+
+template <typename OutputStream, typename Container, typename Transform>
+OutputStream& container(OutputStream& os, const Container& container, const std::string& sep, Transform transform) {
+    return range(os, container.begin(), container.end(), sep, transform);
+}
+
+#define declare_container(name) \
+template <typename OutputStream, typename... Args> \
+OutputStream& operator<<(OutputStream& os, const name<Args...>& c) { \
+return container(os, c, ", ", [] (const auto& x) { return x; }); \
+}
+
+declare_container(std::vector)
+declare_container(std::unordered_set)
+
+}
+
+
+
 /// Print std::optional
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const std::optional<T>& x) {

@@ -130,16 +130,24 @@ private:
     };
     
     struct Leakage_SpectreV1_Classic {
-        NodeRef secret0;
-        NodeRef transmitter1;
+        NodeRef load0;
+        NodeRef load1;  // secret
+        NodeRef transmitter2;
     };
     
     template <typename OutputIt>
     OutputIt leakage_spectre_v1(z3::solver& solver, OutputIt out);
     
     template <typename OutputIt>
-    void leakage_spectre_v1_secret0(z3::solver& solver, const Mems& mems, NodeRef secret0, NodeRef transmitter1, OutputIt& out, unsigned traceback_depth, EdgeSet flag_edges);
+    void leakage_spectre_v1_load(z3::solver& solver, const Mems& mems, NodeRef secret0, NodeRef transmitter1, OutputIt& out, unsigned traceback_depth, EdgeSet flag_edges);
     
+    using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
+    template <typename OutputIt>
+    void leakage_spectre_v1_rec(z3::solver& solver, const Mems& mems, std::vector<NodeRef>& loads, NodeRef transmitter, OutputIt& out, EdgeVec& flag_edges, NodeRef access, unsigned traceback_depth);
+
+    template <typename OutputIt>
+    void leakage_spectre_v1_traceback(z3::solver& solver, const Mems& mems, const std::vector<NodeRef>& loads, OutputIt& out, EdgeSet flag_edges, NodeRef store, unsigned traceback_depth);
+
     struct Leakage_SpectreV4 {
         NodeRef store0;
         NodeRef store1;
