@@ -119,12 +119,12 @@ OutputIt enumerate(z3::solver& solver, const z3::expr& expr, OutputIt out) {
     return out;
 }
 
-
-}
-
 inline std::ostream& operator<<(std::ostream& os, const z3::concrete_value& x) {
     return os << x.e;
 }
+
+}
+
 
 namespace std {
 

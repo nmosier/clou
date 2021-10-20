@@ -183,7 +183,7 @@ int parse_args() {
             case 'E': {
                 const char *token;
                 while ((token = strsep(&optarg, ",")) != nullptr) {
-                    include_edges.insert(UHBEdge::kind_fromstr(token));
+                    include_edges.insert(aeg::Edge::kind_fromstr(token));
                 }
                 break;
             }

@@ -3,6 +3,8 @@
 #include "aeg/aeg.h"
 #include "cfg/expanded.h"
 
+namespace aeg {
+
 template <typename OutputIt>
 OutputIt AEG::leakage_spectre_v4(z3::solver& solver, OutputIt out) {
     const z3::scope scope {solver};
@@ -172,4 +174,7 @@ void AEG::leakage_spectre_v4_store0(z3::solver& solver, const MemsPair& mem, Nod
         .load2  =  load2,
         .access3 = access3,
     };
+}
+
+
 }

@@ -23,7 +23,7 @@
  *     to skip deleted nodes.
  */
 
-
+namespace aeg {
 
 void AEG::simplify() {
     Progress progress {nodes.size()};
@@ -210,16 +210,16 @@ done:
     std::cerr << "found " << nexecs << " executions\n";
 }
 
-void AEG::add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e) {
+void AEG::add_unidir_edge(NodeRef src, NodeRef dst, const Edge& e) {
     if (e.possible()) {
         graph.insert(src, dst, e);
         ++nedges;
     }
 }
 
-void AEG::add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e) {
-    UHBEdge e1 = e;
-    UHBEdge e2 = e;
+void AEG::add_bidir_edge(NodeRef a, NodeRef b, const Edge& e) {
+    Edge e1 = e;
+    Edge e2 = e;
     const z3::expr dir = context.make_bool();
     e1.exists &=  dir;
     e2.exists &= !dir;
@@ -227,8 +227,8 @@ void AEG::add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e) {
     add_unidir_edge(b, a, e2);
 }
 
-z3::expr AEG::add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e_, const std::string& name) {
-    UHBEdge e = e_;
+z3::expr AEG::add_optional_edge(NodeRef src, NodeRef dst, const Edge& e_, const std::string& name) {
+    Edge e = e_;
     const z3::expr constr = e.exists;
     e.exists = context.make_bool(name);
     e.constraints(z3::implies(e.exists, constr), name);
@@ -242,7 +242,7 @@ std::ostream& operator<<(std::ostream& os, const std::pair<z3::expr, std::string
 }
 }
 
-std::ostream& operator<<(std::ostream& os, const UHBConstraints& c) {
+std::ostream& operator<<(std::ostream& os, const Constraints& c) {
     for (const auto& p : c.exprs) {
         os << p << " && ";
     }
@@ -263,7 +263,7 @@ OutputIt AEG::get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kin
     return out;
 }
 
-AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, UHBEdge::Kind kind) {
+AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, Edge::Kind kind) {
    EdgePtrVec es;
    get_edges(dir, ref, std::back_inserter(es), kind);
    return es;
@@ -327,4 +327,7 @@ NodeRef AEG::exit_con(const z3::eval& eval) const {
     }
     
     error("no arch exit!");
+}
+
+
 }

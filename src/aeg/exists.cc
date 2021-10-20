@@ -1,6 +1,8 @@
 #include "aeg.h"
 #include "cfg/expanded.h"
 
+namespace aeg {
+
 z3::expr AEG::exists(Edge::Kind kind, NodeRef src, NodeRef dst) {
     switch (kind) {
         case Edge::CO: return co_exists(src, dst);
@@ -75,7 +77,7 @@ z3::expr AEG::com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Acce
         return context.FALSE;
     }
     
-    UHBNode::access_order_less less {*this};
+    Node::access_order_less less {*this};
     if (!less(src, dst)) {
         return context.FALSE;
     }
@@ -146,7 +148,7 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
         return src_node.exec() && dst_node.exec();
     }
     
-    const UHBNode::xsaccess_order_less less {*this};
+    const Node::xsaccess_order_less less {*this};
     const z3::expr precond = comx_exists_precond(src, dst, XSWRITE, XSREAD);
     if (precond.is_false()) { return context.FALSE; }
 
@@ -166,13 +168,16 @@ z3::expr AEG::rfx_exists(NodeRef src, NodeRef dst) const {
 z3::expr AEG::cox_exists(NodeRef src, NodeRef dst) const {
     const z3::expr precond = comx_exists_precond(src, dst, XSWRITE, XSWRITE);
     if (precond.is_false()) { return context.FALSE; }
-    const z3::expr cond = UHBNode::xsaccess_order_less(*this)(src, dst);
+    const z3::expr cond = Node::xsaccess_order_less(*this)(src, dst);
     return precond && cond;
 }
 
 z3::expr AEG::frx_exists(NodeRef src, NodeRef dst) const {
     const z3::expr precond = comx_exists_precond(src, dst, XSREAD, XSWRITE);
     if (precond.is_false()) { return context.FALSE; }
-    const UHBNode::xsaccess_order_less less {*this};
+    const Node::xsaccess_order_less less {*this};
     return precond && less(src, dst);
+}
+
+
 }

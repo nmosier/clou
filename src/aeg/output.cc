@@ -1,6 +1,8 @@
 #include "aeg.h"
 #include "fol.h"
 
+namespace aeg {
+
 void AEG::dump_graph(const std::string& path) const {
     std::ofstream ofs {path};
     dump_graph(ofs);
@@ -214,4 +216,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
 void AEG::output_execution(const std::string& path, const z3::eval& eval, const EdgeVec& flag_edges) {
     std::ofstream ofs {path};
     output_execution(ofs, eval, flag_edges);
+}
+
+
 }

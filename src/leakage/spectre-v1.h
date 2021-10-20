@@ -3,6 +3,8 @@
 #include "aeg/aeg.h"
 #include "cfg/expanded.h"
 
+namespace aeg {
+
 /*
  * Alternative approach. Should be simpler.
  *
@@ -53,6 +55,7 @@ OutputIt AEG::leakage_spectre_v1(z3::solver& solver, OutputIt out) {
 
 template <typename OutputIt>
 void AEG::leakage_spectre_v1_rec(z3::solver& solver, const Mems& mems, std::vector<NodeRef>& loads, NodeRef transmitter, OutputIt& out, EdgeVec& flag_edges, NodeRef access, unsigned traceback_depth) {
+    using output::operator<<;
     std::stringstream ss;
     ss << "loads=" << loads << " transmitter=" << transmitter << " access=" << access;
     const std::string desc = ss.str();
@@ -74,7 +77,7 @@ void AEG::leakage_spectre_v1_rec(z3::solver& solver, const Mems& mems, std::vect
         const NodeRef exit = exit_con(eval);
         const auto rfx_edge = util::push(flag_edges, {transmitter, exit, Edge::RFX});
         
-        std::cerr << "FLAG EDGES: " << flag_edges << "\n";
+        // std::cerr << "FLAG EDGES: " << flag_edges << "\n";
         
         const std::string path = leakage_get_path("spectre-v1", {loads.at(1), loads.at(0), transmitter});
         output_execution(path, eval, flag_edges);
@@ -193,4 +196,7 @@ void AEG::leakage_spectre_v1_control_rec(z3::solver& solver, OutputIt& out, cons
     const z3::scope scope {solver};
     
     
+}
+
+
 }

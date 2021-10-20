@@ -14,6 +14,8 @@
 #include "noderef.h"
 #include "util/functional.h"
 
+namespace aeg {
+
 class AEG;
 
 enum Access {
@@ -34,9 +36,9 @@ struct TupleSort {
     }
 };
 
-class UHBContext {
+class Context {
 public:
-    UHBContext();
+    Context();
     
     z3::context context;
     const z3::expr TRUE;
@@ -73,11 +75,11 @@ private:
 
 extern unsigned constraint_counter;
 
-struct UHBConstraints {
+struct Constraints {
     std::vector<std::pair<z3::expr, std::string>> exprs;
     
-    UHBConstraints() {}
-    explicit UHBConstraints(const z3::expr& expr, const std::string& name): exprs({{expr, name}}) {}
+    Constraints() {}
+    explicit Constraints(const z3::expr& expr, const std::string& name): exprs({{expr, name}}) {}
     
     void add_to(z3::solver& solver) const;
     
@@ -92,23 +94,23 @@ struct UHBConstraints {
     }
 };
 
-std::ostream& operator<<(std::ostream& os, const UHBConstraints& c);
+std::ostream& operator<<(std::ostream& os, const Constraints& c);
 
 // TODO: inline this
-struct UHBAddress {
+struct Address {
     z3::expr addr;
     
     operator const z3::expr& () const { return addr; }
     
-    UHBAddress(UHBContext& ctx): addr(ctx.make_int("addr")) {}
-    UHBAddress(const z3::expr& addr): addr(addr) {}
+    Address(Context& ctx): addr(ctx.make_int("addr")) {}
+    Address(const z3::expr& addr): addr(addr) {}
     
-    z3::expr operator==(const UHBAddress& other) const {
+    z3::expr operator==(const Address& other) const {
         return addr == other.addr;
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const UHBAddress& x) {
+inline std::ostream& operator<<(std::ostream& os, const Address& x) {
     return os << "addr(" << x.addr;
 }
 
@@ -134,15 +136,15 @@ enum XSAccessType {
     XSREAD, XSWRITE
 };
 
-struct UHBNode {
+struct Node {
     std::unique_ptr<Inst> inst;
     z3::expr arch;  // bool: program order variable
     z3::expr trans; // bool: transient fetch order variable
     z3::expr trans_depth; // int: transient depth
     z3::expr introduces_trans; // bool: introduces transient execution
-    std::optional<UHBAddress> addr_def;
+    std::optional<Address> addr_def;
     std::optional<z3::expr> xstate;
-    std::unordered_map<const llvm::Value *, UHBAddress> addr_refs;
+    std::unordered_map<const llvm::Value *, Address> addr_refs;
     z3::expr read;
     z3::expr write;
     z3::expr xsread;
@@ -156,7 +158,7 @@ struct UHBNode {
     z3::expr taint; // bool
     z3::expr taint_mem; // int -> bool
     z3::expr taint_trans;
-    UHBConstraints constraints;
+    Constraints constraints;
     
     z3::context& ctx() const { return arch.ctx(); }
 
@@ -182,25 +184,25 @@ struct UHBNode {
     
     void simplify();
     
-    static z3::expr same_addr(const UHBNode& a, const UHBNode& b);
+    static z3::expr same_addr(const Node& a, const Node& b);
     
-    z3::expr same_addr(const UHBNode& other) const {
+    z3::expr same_addr(const Node& other) const {
         return same_addr(*this, other);
     }
 
-    static z3::expr same_xstate(const UHBNode& a, const UHBNode& b);
+    static z3::expr same_xstate(const Node& a, const Node& b);
     
-    z3::expr same_xstate(const UHBNode& other) const {
+    z3::expr same_xstate(const Node& other) const {
         return same_xstate(*this, other);
     }
     
-    UHBNode(std::unique_ptr<Inst>&& inst, UHBContext& c);
+    Node(std::unique_ptr<Inst>&& inst, Context& c);
     
     bool may_read() const { return inst->may_read() != Option::NO ; }
     bool may_write() const { return inst->may_write() != Option::NO; }
     bool may_access() const { return may_read() || may_write(); }
     
-    std::pair<const llvm::Value *, UHBAddress> get_memory_address_pair() const {
+    std::pair<const llvm::Value *, Address> get_memory_address_pair() const {
         const auto *V = dynamic_cast<const MemoryInst&>(*inst).get_memory_operand();
         return *addr_refs.find(V);
     }
@@ -213,20 +215,20 @@ struct UHBNode {
     struct access_order_less;
 };
 
-struct UHBNode::xsaccess_order_less {
+struct Node::xsaccess_order_less {
     const AEG& aeg;
     xsaccess_order_less(const AEG& aeg): aeg(aeg) {}
     z3::expr operator()(NodeRef a, NodeRef b) const;
 };
 
-struct UHBNode::access_order_less {
+struct Node::access_order_less {
     const AEG& aeg;
     access_order_less(const AEG& aeg): aeg(aeg) {}
     bool operator()(NodeRef a, NodeRef b) const;
 };
 
-struct UHBEdge {
-#define UHBEDGE_KIND_X(X)                       \
+struct Edge {
+#define AEGEDGE_KIND_X(X)                       \
 X(PO)                                        \
 X(TFO)                                       \
 X(RF)                                        \
@@ -239,30 +241,30 @@ X(ADDR) \
 X(CTRL) \
 X(DATA)
     
-#define UHBEDGE_KIND_E(name) name,
+#define AEGEDGE_KIND_E(name) name,
     enum Kind {
-        UHBEDGE_KIND_X(UHBEDGE_KIND_E)
+        AEGEDGE_KIND_X(AEGEDGE_KIND_E)
     };
-#undef UHBEDGE_KIND_E
+#undef AEGEDGE_KIND_E
     
     Kind kind;
     z3::expr exists;
-    UHBConstraints constraints;
+    Constraints constraints;
     
     static const char *kind_tostr(Kind kind);
     const char *kind_tostr() const { return kind_tostr(kind); }
     static Kind kind_fromstr(const std::string& s);
     
-    UHBEdge(Kind kind, UHBContext& ctx, const std::string& name = ""):
+    Edge(Kind kind, Context& ctx, const std::string& name = ""):
     kind(kind), exists(ctx.make_bool(name)) {}
     
-    UHBEdge(Kind kind, const z3::expr& exists): kind(kind), exists(exists) {}
+    Edge(Kind kind, const z3::expr& exists): kind(kind), exists(exists) {}
     
     struct Hash {
-        size_t operator()(const UHBEdge& x) const { return std::hash<Kind>()(x.kind); }
+        size_t operator()(const Edge& x) const { return std::hash<Kind>()(x.kind); }
     };
     
-    bool operator==(const UHBEdge& other) const { return kind == other.kind; }
+    bool operator==(const Edge& other) const { return kind == other.kind; }
     void simplify() { constraints.simplify(); }
     
     bool possible() const {
@@ -274,7 +276,9 @@ X(DATA)
     }
 };
 
-std::ostream& operator<<(std::ostream& os, const UHBEdge& e);
-inline std::ostream& operator<<(std::ostream& os, UHBEdge::Kind kind) {
-    return os << UHBEdge::kind_tostr(kind);
+std::ostream& operator<<(std::ostream& os, const aeg::Edge& e);
+inline std::ostream& operator<<(std::ostream& os, aeg::Edge::Kind kind) {
+    return os << aeg::Edge::kind_tostr(kind);
+}
+
 }

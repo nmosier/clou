@@ -1,6 +1,9 @@
 #include "aeg.h"
 #include "cfg/expanded.h"
 
+namespace aeg {
+
+
 AEG::Mems AEG::get_mems(z3::expr Node::*pred) {
     z3::context& ctx = context.context;
     
@@ -64,4 +67,7 @@ AEG::Mems AEG::get_exec_mems() {
     }
     
     return ins;
+}
+
+
 }

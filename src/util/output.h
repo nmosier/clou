@@ -11,6 +11,7 @@ namespace output {
 
 template <typename OutputStream, typename InputIt, typename Transform>
 OutputStream& range(OutputStream& os, InputIt begin, InputIt end, const std::string& sep, Transform transform) {
+    using ::operator<<;
     os << "{";
     for (auto it = begin; it != end; ++it) {
         if (it != begin) {
@@ -79,6 +80,8 @@ struct TuplePrinter {
     
     template <std::size_t i>
     void print(std::ostream& os, const Tuple& tuple) const {
+        using ::operator<<;
+        using output::operator<<;   
         if constexpr (i < sizeof...(Ts)) {
             if constexpr (i > 0) {
                 os << ", ";

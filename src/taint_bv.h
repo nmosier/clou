@@ -6,7 +6,7 @@
 class Taint_BV: public Taint {
 public:
     static constexpr unsigned taint_bits = 2;
-    Taint_BV(AEG& aeg): aeg(aeg), ctx(aeg.context.context) {}
+    Taint_BV(aeg::AEG& aeg): aeg(aeg), ctx(aeg.context.context) {}
     
     virtual z3::expr flag(NodeRef ref) override {
         const Node& node = aeg.lookup(ref);
@@ -21,9 +21,9 @@ public:
     virtual z3::expr get_value(NodeRef ref, const llvm::Value *V) const override;
     
 protected:
-    using Node = AEG::Node;
-    using Edge = AEG::Edge;
-    AEG& aeg;
+    using Node = aeg::AEG::Node;
+    using Edge = aeg::AEG::Edge;
+    aeg::AEG& aeg;
     z3::context& ctx;
     std::unordered_map<const llvm::Argument *, z3::expr> args;
 };
@@ -31,7 +31,7 @@ protected:
 class Taint_Array: public Taint_BV {
 public:
     z3::expr taint_mem;
-    Taint_Array(AEG& aeg): Taint_BV(aeg), taint_mem(aeg.context) {}
+    Taint_Array(aeg::AEG& aeg): Taint_BV(aeg), taint_mem(aeg.context) {}
     
     virtual void run() override;
     

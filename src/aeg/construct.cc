@@ -7,6 +7,8 @@
 #include "cfg/expanded.h"
 #include "util/algorithm.h"
 
+namespace aeg {
+
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
     std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
@@ -186,15 +188,15 @@ void AEG::construct_addr_defs() {
         if (auto *RI = dynamic_cast<RegularInst *>(node.inst.get())) {
             // TODO: this is fragmented. Try to unify addr_defs
             if (RI->addr_def) {
-                node.addr_def = UHBAddress {context};
+                node.addr_def = Address {context};
             }
         }
     }
 }
 
 void AEG::construct_addr_refs() {
-    std::unordered_map<const llvm::Argument *, UHBAddress> main_args;
-    std::unordered_map<const llvm::Constant *, UHBAddress> globals;
+    std::unordered_map<const llvm::Argument *, Address> main_args;
+    std::unordered_map<const llvm::Constant *, Address> globals;
     
     for (NodeRef ref = 0; ref < size(); ++ref) {
         const CFG::Node& po_node = po.lookup(ref);
@@ -204,12 +206,12 @@ void AEG::construct_addr_refs() {
             
             for (const llvm::Value *V : inst->addr_refs) {
                 const auto defs_it = po_node.refs.find(V);
-                std::optional<UHBAddress> e;
+                std::optional<Address> e;
                 if (defs_it == po_node.refs.end()) {
                     if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
                         if (CD->isNullValue()) {
                             const auto zero = context.context.int_val(0);
-                            e = UHBAddress {context.context.int_val(0)};
+                            e = Address {context.context.int_val(0)};
                         } else {
                             llvm::errs() << "unhandled constant data: " << *CD << "\n";
                             std::abort();
@@ -217,13 +219,13 @@ void AEG::construct_addr_refs() {
                     } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
                         auto main_args_it = main_args.find(A);
                         if (main_args_it == main_args.end()) {
-                            main_args_it = main_args.emplace(A, UHBAddress {context}).first;
+                            main_args_it = main_args.emplace(A, Address {context}).first;
                         }
                         e = main_args_it->second;
                     } else if (const llvm::Constant *G = llvm::dyn_cast<llvm::Constant>(V)) {
                         auto globals_it = globals.find(G);
                         if (globals_it == globals.end()) {
-                            globals_it = globals.emplace(G, UHBAddress {context}).first;
+                            globals_it = globals.emplace(G, Address {context}).first;
                         }
                         e = globals_it->second;
                         llvm::errs() << "GLOBAL: " << *G << "\n" << inst->I << "\n";
@@ -246,7 +248,7 @@ void AEG::construct_addr_refs() {
                     if (defs.size() == 1) {
                         e = lookup_def(*defs.begin());
                     } else {
-                        e = UHBAddress {context};
+                        e = Address {context};
                         if (defs.size() != 0) {
                             node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                                     [&] (NodeRef def) {
@@ -852,4 +854,6 @@ void AEG::construct_com() {
         node.read = f(node.inst->may_read(), "read");
         node.write = f(node.inst->may_write(), "write");
     }
+}
+
 }

@@ -21,13 +21,15 @@
 class Taint_Array;
 class CFG_Expanded;
 
+namespace aeg {
+
 class AEG {
 public:
     const CFG_Expanded& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
-    UHBContext context; /*!<  The context for AEG construction. */
+    Context context; /*!<  The context for AEG construction. */
 
-    using Node = UHBNode;
-    using Edge = UHBEdge;
+    using Node = Node;
+    using Edge = Edge;
     using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
     
     NodeRef entry; /*!< The unique entry node of the AEG (node has type Inst::Kind::ENTRY) */
@@ -65,10 +67,10 @@ public:
     template <typename Function> void for_each_node(Inst::Kind kind, Function f);
     template <typename Function> void for_each_node(Inst::Kind kind, Function f) const;
     
-    const UHBContext& ctx() const { return context; }
+    const Context& ctx() const { return context; }
    
 private:
-    UHBConstraints constraints; /*!< global constraints (i.e. can't be attributed to one particular node or edge) */
+    Constraints constraints; /*!< global constraints (i.e. can't be attributed to one particular node or edge) */
     std::vector<Node> nodes;
     unsigned nedges = 0;
     
@@ -196,12 +198,12 @@ public:
 private:
     NodeRef add_node(Node&& node); /*!< Add node to the AEG and return its corresponding node ref. */
     
-    void add_unidir_edge(NodeRef src, NodeRef dst, const UHBEdge& e); /*!< Add a directed edge from \p src to \p dst with edge \p e */
-    void add_bidir_edge(NodeRef a, NodeRef b, const UHBEdge& e); /*!< Add a directed edge in each direction between nodes \p a and \p b with edge \p e */
+    void add_unidir_edge(NodeRef src, NodeRef dst, const Edge& e); /*!< Add a directed edge from \p src to \p dst with edge \p e */
+    void add_bidir_edge(NodeRef a, NodeRef b, const Edge& e); /*!< Add a directed edge in each direction between nodes \p a and \p b with edge \p e */
     /** Add a directed edge from \p src to \p dst and make the edge \p e optional with an additional unconstrained boolean variable
      * @param name The base name of the unconstrained boolean variable
      */
-    z3::expr add_optional_edge(NodeRef src, NodeRef dst, const UHBEdge& e, const std::string& name);
+    z3::expr add_optional_edge(NodeRef src, NodeRef dst, const Edge& e, const std::string& name);
     
     template <typename OutputIt>
     OutputIt get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind);
@@ -209,11 +211,13 @@ private:
     using EdgePtrVec = std::vector<Edge *>;
     EdgePtrVec get_edges(Direction dir, NodeRef ref, Edge::Kind kind);
     
+public:
     template <typename OutputIt>
     OutputIt get_nodes(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) const;
     
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
-    
+
+private:
     void output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
     void output_execution(const std::string& path, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
     
@@ -352,3 +356,4 @@ template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f
     }
 }
 
+}

@@ -13,6 +13,7 @@
 #include "leakage/spectre-v4.h"
 #include "util/output.h"
 #include "util/iterator.h"
+#include "leakage.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
  * Any rfx edges, it's leakage, as long as the tail of the rfx edge is a READ.
@@ -60,6 +61,8 @@
  
  
  */
+
+namespace aeg {
 
 template <typename OutputIt>
 void AEG::leakage_rfx(OutputIt out) const {
@@ -406,6 +409,7 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
     path << output_dir << "/leakage.txt";
     std::ofstream ofs {path.str()};
     for (const auto& pair : leakages) {
+        using ::operator<<;
         const Leakage& leakage = pair.first;
         ofs << pair.second << " " << leakage.com_kind << " " << leakage.com << " " << leakage.comx << " " << leakage.desc;
         ofs << " --" << leakage.com_kind << " (" << po.lookup(leakage.com.first).v << "; " << po.lookup(leakage.com.second).v << ") (" << po.lookup(leakage.comx.first).v << "; " << po.lookup(leakage.comx.second).v << ")\n";
@@ -561,3 +565,52 @@ std::string AEG::leakage_get_path(const std::string& name, const NodeRefVec& vec
     ss << ".dot";
     return ss.str();
 }
+
+}
+
+/* LEAKAGE DETECTOR METHODS */
+
+LeakageDetector::Mems LeakageDetector::get_mems() {
+    z3::context& ctx = this->ctx();
+    auto& po = aeg.po;
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+
+    const z3::expr init_mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<unsigned>(aeg.entry)));
+    Mems ins;
+    Mems outs = {{aeg.entry, init_mem}};
+    for (const NodeRef cur : order) {
+        if (cur == aeg.entry) { continue; }
+        const auto& cur_node = aeg.lookup(cur);
+        
+        const auto tfos = aeg.get_nodes(Direction::IN, cur, aeg::Edge::TFO);
+        assert(!tfos.empty());
+        
+        z3::expr mem = std::accumulate(tfos.begin(), tfos.end(), init_mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
+            const NodeRef pred = tfo.first;
+            return z3::ite(tfo.second, outs.at(pred), acc);
+        });
+        
+        ins.emplace(cur, mem);
+        
+        if (cur_node.may_write()) {
+            // TODO: this might be sped up by not making these stores conditional, since the above logic filters out unexecuted nodes.
+            mem = z3::conditional_store(mem, cur_node.get_memory_address(), ctx.int_val(static_cast<unsigned>(cur)), cur_node.exec());
+        }
+        
+        outs.emplace(cur, mem);
+    }
+    
+    return ins;
+}
+
+
+
+
+void LeakageDetector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
+    // trace back load via rf
+    // TODO
+    
+}
+
+

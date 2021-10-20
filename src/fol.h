@@ -138,7 +138,7 @@ struct Context {
     using relation_type = relation<Bool, Ts...>;
     logic_type logic;
     Eval eval;
-    AEG& aeg; /*!< AEG to construct relations from */
+    aeg::AEG& aeg; /*!< AEG to construct relations from */
     
     /** Construct an empty relation given an example tuple. The value type of the relation is equal to the type of `tuple`.
      */
@@ -148,13 +148,13 @@ struct Context {
     }
     
     /** Get the binary relation on NodeRef corresponding to the given edge `kind`. */
-    relation_type<NodeRef, NodeRef> edge_rel(UHBEdge::Kind kind) const;
+    relation_type<NodeRef, NodeRef> edge_rel(aeg::Edge::Kind kind) const;
     
-    relation_type<NodeRef> node_rel(Inst::Kind kind, ExecMode mode); /*!< Get the set of nodes of the given `kind` and execution `mode`. */
-    relation_type<NodeRef> node_rel(ExecMode mode); /*!< Get the set of all nodes of the given execution `mode`. */
+    relation_type<NodeRef> node_rel(Inst::Kind kind, aeg::ExecMode mode); /*!< Get the set of nodes of the given `kind` and execution `mode`. */
+    relation_type<NodeRef> node_rel(aeg::ExecMode mode); /*!< Get the set of all nodes of the given execution `mode`. */
     
-    relation_type<NodeRef> node_rel(z3::expr UHBNode::*pred, ExecMode mode);
-    relation_type<NodeRef> node_rel(z3::expr (UHBNode::*pred)() const, ExecMode mode);
+    relation_type<NodeRef> node_rel(z3::expr aeg::Node::*pred, aeg::ExecMode mode);
+    relation_type<NodeRef> node_rel(z3::expr (aeg::Node::*pred)() const, aeg::ExecMode mode);
     
     /** Get the set of nodes satisfying the condition (of type \a Bool ) when each node is applied to \p pred .
      * \tparam Pred predicate functor type equivalent to std::function<Bool (NodeRef, AEG::NodeRef)>
@@ -225,7 +225,7 @@ struct Context {
      * \param eval Evaluator to use to convert z3 formulae in \p aeg into `Bool`
      * \param aeg AEG to construct relations from.
      */
-    Context(const logic_type& logic, Eval eval, AEG& aeg): logic(logic), eval(eval), aeg(aeg) {}
+    Context(const logic_type& logic, Eval eval, aeg::AEG& aeg): logic(logic), eval(eval), aeg(aeg) {}
 };
 
 /** Make an empty relation over the given types \p Ts and using the boolean type \p Bool */
@@ -700,7 +700,7 @@ relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::same_xstate() const {
 }
 
 template <typename Bool, typename Eval>
-relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::edge_rel(UHBEdge::Kind kind) const {
+relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::edge_rel(aeg::Edge::Kind kind) const {
     relation_type<NodeRef, NodeRef> rel {logic};
     for (const NodeRef src : aeg.node_range()) {
         if (logic.is_false(eval(aeg.exists_src(kind, src)))) { continue; }
@@ -713,13 +713,13 @@ relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::edge_rel(UHBEdge::Kind kin
 }
 
 template <typename Bool, typename Eval>
-relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(Inst::Kind kind, ExecMode mode) {
-    return node_rel_if([&] (NodeRef, const AEG::Node& node) {
+relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(Inst::Kind kind, aeg::ExecMode mode) {
+    return node_rel_if([&] (NodeRef, const aeg::AEG::Node& node) {
         z3::expr cond {node.arch.ctx()};
         switch (mode) {
-            case ARCH: cond = node.arch; break;
-            case TRANS: cond = node.trans; break;
-            case EXEC: cond = node.exec(); break;
+            case aeg::ARCH: cond = node.arch; break;
+            case aeg::TRANS: cond = node.trans; break;
+            case aeg::EXEC: cond = node.exec(); break;
             default: std::abort();
         }
         return cond && node.inst->kind() == kind;
@@ -727,27 +727,27 @@ relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(Inst::Kind kind, ExecMode 
 }
 
 template <typename Bool, typename Eval>
-relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(ExecMode mode) {
-    return node_rel_if([&] (NodeRef, const AEG::Node& node) {
+relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(aeg::ExecMode mode) {
+    return node_rel_if([&] (NodeRef, const aeg::AEG::Node& node) {
         switch (mode) {
-            case ARCH: return node.arch;
-            case TRANS: return node.trans;
-            case EXEC: return node.exec();
+            case aeg::ARCH: return node.arch;
+            case aeg::TRANS: return node.trans;
+            case aeg::EXEC: return node.exec();
             default: std::abort();
         }
     });
 }
 
 template <typename Bool, typename Eval>
-relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr UHBNode::*pred, ExecMode mode) {
-    return node_rel_if([&] (NodeRef, const AEG::Node& node) {
+relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr aeg::Node::*pred, aeg::ExecMode mode) {
+    return node_rel_if([&] (NodeRef, const aeg::AEG::Node& node) {
         z3::context& ctx = node.arch.ctx();
         z3::expr cond {ctx};
         // TODO: unify this switch with identical above switch
         switch (mode) {
-            case ARCH: cond = node.arch; break;
-            case TRANS: cond = node.trans; break;
-            case EXEC: cond = node.exec(); break;
+            case aeg::ARCH: cond = node.arch; break;
+            case aeg::TRANS: cond = node.trans; break;
+            case aeg::EXEC: cond = node.exec(); break;
             default: std::abort();
         }
         return cond && node.*pred;
@@ -755,15 +755,15 @@ relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr UHBNode::*pred, E
 }
 
 template <typename Bool, typename Eval>
-relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr (UHBNode::*pred)() const, ExecMode mode) {
-    return node_rel_if([&] (NodeRef, const AEG::Node& node) {
+relation<Bool, NodeRef> Context<Bool, Eval>::node_rel(z3::expr (aeg::Node::*pred)() const, aeg::ExecMode mode) {
+    return node_rel_if([&] (NodeRef, const aeg::AEG::Node& node) {
         z3::context& ctx = node.arch.ctx();
         z3::expr cond {ctx};
         // TODO: unify this switch with identical above switch
         switch (mode) {
-            case ARCH: cond = node.arch; break;
-            case TRANS: cond = node.trans; break;
-            case EXEC: cond = node.exec(); break;
+            case aeg::ARCH: cond = node.arch; break;
+            case aeg::TRANS: cond = node.trans; break;
+            case aeg::EXEC: cond = node.exec(); break;
             default: std::abort();
         }
         return cond && (node.*pred)();
