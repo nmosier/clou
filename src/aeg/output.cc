@@ -70,7 +70,7 @@ void AEG::dump_graph(std::ostream& os) const {
     os << "}\n";
 }
 
-void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet& flag_edges) {
+void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec& flag_edges) {
     os << R"=(
     digraph G {
     overlap = scale;
@@ -108,21 +108,6 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
                 ss << "(" << eval(*node.xsaccess_order) << ") ";
             }
             
-#if USE_TAINT
-            // DEBUG: taint
-            ss << " taint(" << eval(node.taint) << ")";
-            if (node.inst->is_memory()) {
-                const z3::expr flag = tainter->flag(ref);
-                if (eval(flag)) {
-                    ss << " FLAGGED";
-                }
-                
-            }
-            if (eval(node.taint_trans)) {
-                ss << " taint_trans";
-            }
-#endif
-            
             std::string color;
             if (eval(node.arch)) {
                 color = "green";
@@ -155,7 +140,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
             {Edge::PO, "black"},
         };
         std::string color = colors.at(kind);
-        if (flag_edges.find(std::make_tuple(src, dst, kind)) != flag_edges.end()) {
+        if (std::find(flag_edges.begin(), flag_edges.end(), std::make_tuple(src, dst, kind)) != flag_edges.end()) {
             color = "red";
         }
         dot::emit_kvs(os, dot::kv_vec {{"label", util::to_string(kind)}, {"color", color}});
@@ -226,7 +211,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet
     os << "}\n";
 }
 
-void AEG::output_execution(const std::string& path, const z3::eval& eval, const EdgeSet& flag_edges) {
+void AEG::output_execution(const std::string& path, const z3::eval& eval, const EdgeVec& flag_edges) {
     std::ofstream ofs {path};
     output_execution(ofs, eval, flag_edges);
 }

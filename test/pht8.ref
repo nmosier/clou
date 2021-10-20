@@ -1,1 +1,2 @@
-RF (<ENTRY>; <EXIT>) (  %18 = load i8, i8* %17, align 1; <EXIT>)
+LOAD   %7 = load i64, i64* %2, align 8; LOAD   %13 = load i8, i8* %12, align 1; LOAD   %18 = load i8, i8* %17, align 1
+

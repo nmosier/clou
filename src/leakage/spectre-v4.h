@@ -158,14 +158,13 @@ void AEG::leakage_spectre_v4_store0(z3::solver& solver, const MemsPair& mem, Nod
     };
     const NodeRef exit = get_exit();
     
-    EdgeSet flag_edges;
-    flag_edges.emplace(store0, load2, Edge::RFX);
-    flag_edges.emplace(store0, store1, Edge::CO);
-    flag_edges.emplace(access3, exit, Edge::RFX);
-    std::stringstream ss;
-    ss << output_dir << "/spectre-v4-s" << store0 << "-" << store1 << "-" << load2 << "-" << access3 << ".dot";
-    std::cerr << "spectre-v4: saving to: " << ss.str() << "\n";
-    output_execution(ss.str(), eval, flag_edges);
+    const std::string path = leakage_get_path("spectre-v4", {store0, store1, load2, access3});
+    std::cerr << "spectre-v4: saving to: " << path << "\n";
+    output_execution(path, eval, {
+        {store0, load2, Edge::RFX},
+        {store0, store1, Edge::CO},
+        {access3, exit, Edge::RFX},
+    });
     
     *out++ = Leakage_SpectreV4 {
         .store0 =  store0,

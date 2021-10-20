@@ -317,3 +317,14 @@ OutputIt AEG::get_path(const z3::eval& eval, OutputIt out) const {
         return static_cast<bool>(eval(lookup(ref).arch));
     });
 }
+
+
+NodeRef AEG::exit_con(const z3::eval& eval) const {
+    for (const NodeRef exit : exits) {
+        if (eval(lookup(exit).arch)) {
+            return exit;
+        }
+    }
+    
+    error("no arch exit!");
+}

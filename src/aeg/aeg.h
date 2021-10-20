@@ -33,6 +33,8 @@ public:
     NodeRef entry; /*!< The unique entry node of the AEG (node has type Inst::Kind::ENTRY) */
     NodeRefSet exits; /*!< The set of exit nodes of the AEG (nodes have type Inst::Kind::EXIT) */
     
+    NodeRef exit_con(const z3::eval& eval) const;
+    
     graph_type graph;
     
     /** Construct the AEG.
@@ -115,6 +117,7 @@ private:
         std::string name;
     };
     
+    // TODO: remove
     template <typename OutputIt>
     void leakage_rfx(OutputIt out) const;
     template <typename OutputIt>
@@ -129,6 +132,9 @@ private:
         Mems trans;
     };
     
+    static std::string leakage_get_path(const std::string& name, const NodeRefVec& vec);
+
+    
     struct Leakage_SpectreV1_Classic {
         NodeRef load0;
         NodeRef load1;  // secret
@@ -138,15 +144,21 @@ private:
     template <typename OutputIt>
     OutputIt leakage_spectre_v1(z3::solver& solver, OutputIt out);
     
-    template <typename OutputIt>
-    void leakage_spectre_v1_load(z3::solver& solver, const Mems& mems, NodeRef secret0, NodeRef transmitter1, OutputIt& out, unsigned traceback_depth, EdgeSet flag_edges);
-    
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
     template <typename OutputIt>
     void leakage_spectre_v1_rec(z3::solver& solver, const Mems& mems, std::vector<NodeRef>& loads, NodeRef transmitter, OutputIt& out, EdgeVec& flag_edges, NodeRef access, unsigned traceback_depth);
-
+    
+    struct Leakage_SpectreV1_Control {
+        NodeRef load0; /// addr dep src; exec
+        NodeRef load1; /// addr dep dst and ctrl dep src; exec
+        NodeRef transmitter2; /// ctrl dep dst and rfx src; trans
+    };
+    
     template <typename OutputIt>
-    void leakage_spectre_v1_traceback(z3::solver& solver, const Mems& mems, const std::vector<NodeRef>& loads, OutputIt& out, EdgeSet flag_edges, NodeRef store, unsigned traceback_depth);
+    OutputIt leakage_spectre_v1_control(z3::solver& solver, OutputIt out);
+    
+    template <typename OutputIt>
+    void leakage_spectre_v1_control_rec(z3::solver& solver, OutputIt& out, const Mems& mems, NodeRef transmitter, EdgeVec& flag_edges, unsigned traceback_depth);
 
     struct Leakage_SpectreV4 {
         NodeRef store0;
@@ -202,8 +214,8 @@ private:
     
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
-    void output_execution(std::ostream& os, const z3::eval& eval, const EdgeSet& flag_edges = EdgeSet());
-    void output_execution(const std::string& path, const z3::eval& eval, const EdgeSet& flag_edges = EdgeSet());
+    void output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
+    void output_execution(const std::string& path, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;

@@ -71,11 +71,30 @@ std::ostream& operator<<(std::ostream& os, const std::unordered_set<T>& set) {
     return os;
 }
 
+namespace detail {
+template <typename... Ts>
+struct TuplePrinter {
+    using Tuple = std::tuple<Ts...>;
+    friend std::ostream& operator<<(std::ostream& os, const Tuple& tuple);
+    
+    template <std::size_t i>
+    void print(std::ostream& os, const Tuple& tuple) const {
+        if constexpr (i < sizeof...(Ts)) {
+            if constexpr (i > 0) {
+                os << ", ";
+            }
+            os << std::get<i>(tuple);
+            print<i+1>(os, tuple);
+        }
+    }
+};
+}
+
 /// Print tuple
 template <typename... Ts>
 std::ostream& operator<<(std::ostream& os, const std::tuple<Ts...>& tuple) {
     os << "(";
-    TuplePrinter<Ts...>().template print<0>(os, tuple);
+    detail::TuplePrinter<Ts...>().template print<0>(os, tuple);
     os << ")";
     return os;
 }

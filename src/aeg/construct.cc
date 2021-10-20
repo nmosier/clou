@@ -402,6 +402,15 @@ void AEG::construct_tfo() {
         }
     }
     std::cerr << "added " << nedges << " tfo edges\n";
+    
+    // assert only one tfo window
+    z3::expr_vector tfos {context.context};
+    for_each_edge(Edge::TFO, [&] (const NodeRef src, const NodeRef dst, const Edge& edge) {
+        const Node& src_node = lookup(src);
+        const Node& dst_node = lookup(dst);
+        tfos.push_back(src_node.arch && dst_node.trans && edge.exists);
+    });
+    constraints(z3::atmost(tfos, 1), "at-most-one-spec-intro");
 }
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
@@ -826,38 +835,6 @@ void AEG::construct_data() {
         }
     }
 }
-
-#if 0
-void AEG::construct_taint() {
-    logv(2) << "Constructing taint\n";
-    tainter = std::make_unique<Taint_Array>(*this);
-    tainter->run();
-    
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
-    // add transient execution taint pass
-    for (NodeRef ref : order) {
-        Node& node = lookup(ref);
-        if (const auto pred = can_trans(ref)) {
-            const Node& pred_node = lookup(*pred);
-            node.taint_trans = pred_node.taint_trans;
-            if (const auto *I = pred_node.inst->get_inst()) {
-                if (const auto *B = llvm::dyn_cast<llvm::BranchInst>(pred_node.inst->get_inst())) {
-                    if (B->isConditional()) {
-                        const auto *C = B->getCondition();
-                        const auto cond_taint = tainter->get_value(*pred, C);
-                        node.taint_trans = node.taint_trans || cond_taint;
-                    }
-                }
-            }
-            node.taint_trans = node.taint_trans && node.trans;
-        } else {
-            node.taint_trans = context.FALSE;
-        }
-    }
-}
-#endif
 
 void AEG::construct_com() {
     // initialize read, write

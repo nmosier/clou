@@ -158,22 +158,7 @@ inline std::system_error syserr(const std::string& what = "") {
 }
 
 
-template <typename... Ts>
-struct TuplePrinter {
-    using Tuple = std::tuple<Ts...>;
-    friend std::ostream& operator<<(std::ostream& os, const Tuple& tuple);
-    
-    template <std::size_t i>
-    void print(std::ostream& os, const Tuple& tuple) const {
-        if constexpr (i < sizeof...(Ts)) {
-            if constexpr (i > 0) {
-                os << ", ";
-            }
-            os << std::get<i>(tuple);
-            print<i+1>(os, tuple);
-        }
-    }
-};
+
 
 
 

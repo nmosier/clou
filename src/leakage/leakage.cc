@@ -90,7 +90,8 @@ void AEG::leakage_rfx(OutputIt out) const {
                 /*
                  * Require at least 2 arch-prior arch stores; require addr_src be load; require addr_dst be xswrite
                  */
-                const Node& addr_src_node = lookup(addr_src);
+              
+            const Node& addr_src_node = lookup(addr_src);
                 const Node& addr_dst_node = lookup(addr_dst);
                 NodeRefVec order;
                 po.reverse_postorder(std::back_inserter(order));
@@ -387,10 +388,10 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
             std::stringstream dot;
             dot << output_dir << "/leakage-" << i << ".dot";
             
-            EdgeSet flag_edges;
+            EdgeVec flag_edges;
             for (const Leakage& lkg : new_leakages) {
-                flag_edges.insert(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
-                flag_edges.insert(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
+                flag_edges.push_back(std::tuple_cat(lkg.com, std::make_tuple(lkg.com_kind)));
+                flag_edges.push_back(std::tuple_cat(lkg.comx, std::make_tuple(lkg.comx_kind)));
             }
             output_execution(dot.str(), eval, flag_edges);
             
@@ -548,4 +549,15 @@ OutputIt AEG::process_leakage(OutputIt out, const z3::eval& eval) {
     }
     
     return out;
+}
+
+
+std::string AEG::leakage_get_path(const std::string& name, const NodeRefVec& vec) {
+    std::stringstream ss;
+    ss << output_dir << "/" << name;
+    for (const NodeRef ref : vec) {
+        ss << "-" << ref;
+    }
+    ss << ".dot";
+    return ss.str();
 }
