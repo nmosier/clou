@@ -44,8 +44,13 @@ protected:
     
     /** Trace back load */
     void traceback(NodeRef load, std::function<void (NodeRef)> func);
+    void traceback_rf(NodeRef load, std::function<void (NodeRef)> func);
     
-    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, NodeRef)> func) const;
+    void for_each_transmitter(std::function<void (NodeRef)> func) const;
+    
+    auto push_edge(const EdgeRef& edge) {
+        return util::push(flag_edges, edge);
+    }
     
 private:
     Mems get_mems();
@@ -118,6 +123,29 @@ private:
     virtual DepVec deps() const override final;
 };
 
+struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
+    NodeRef transmitter;
+    NodeRef bypassed_store;
+    NodeRef sourced_store;
+    NodeRef load;
+    
+    NodeRefVec vec() const {
+        return {sourced_store, bypassed_store, load, transmitter};
+    }
+    
+    NodeRef get_transmitter() const { return transmitter; }
+};
+
+class SpectreV4_Detector: public LeakageDetector_<SpectreV4_Leakage> {
+public:
+    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver): LeakageDetector_(aeg, solver) {}
+private:
+    SpectreV4_Leakage leak;
+    
+    virtual void run(OutputIt out) override final;
+    void run_load(OutputIt& out, NodeRef access); /*!< binds speculative load */
+    void run_bypassed_store(OutputIt& out); /*!< binds bypassed store */
+};
 
 /* IMPLEMENTATIONS */
 
