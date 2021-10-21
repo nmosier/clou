@@ -217,9 +217,11 @@ public:
     
     std::vector<std::pair<NodeRef, z3::expr>> get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const;
 
-private:
+public:
     void output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
     void output_execution(const std::string& path, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
+    
+private:
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;

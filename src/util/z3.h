@@ -101,6 +101,7 @@ struct scope {
         solver.pop();
     }
 };
+#define z3_scope const z3::scope scope {solver}
 
 
 /** Enumerate all the possible values of the given expression \p expr under the current constraints in \p solver.
@@ -123,8 +124,13 @@ inline std::ostream& operator<<(std::ostream& os, const z3::concrete_value& x) {
     return os << x.e;
 }
 
+inline bool always_true(z3::solver& solver, const z3::expr& pred) {
+    z3::expr_vector vec {solver.ctx()};
+    vec.push_back(!pred);
+    return solver.check(vec) == z3::unsat;
 }
 
+}
 
 namespace std {
 

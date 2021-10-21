@@ -275,7 +275,7 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
             return 0;
         }
           
-#if 1
+#if 0
         case LeakageClass::SPECTRE_V1: {
             std::vector<Leakage_SpectreV1_Classic> leaks;
             leakage_spectre_v1(solver, std::back_inserter(leaks));
@@ -295,6 +295,12 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
                 llvm::errs() << *transmitter << "\n";
             }
             
+            return 0;
+        }
+#elif 1
+        case LeakageClass::SPECTRE_V1: {
+            SpectreV1_Detector detector {*this, solver};
+            static_cast<LeakageDetector&>(detector).run();
             return 0;
         }
 #endif
@@ -608,9 +614,152 @@ LeakageDetector::Mems LeakageDetector::get_mems() {
 
 
 void LeakageDetector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
-    // trace back load via rf
-    // TODO
+    // function to trace back via addr+data
+    const auto traceback_dep = [&] (NodeRef access) {
+        const z3::scope scope {solver};
+        
+        // trace back via addr
+        const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
+        const auto datas = aeg.get_nodes(Direction::IN, access, aeg::Edge::DATA);
+        
+        // function to trace back addr or data
+        const auto traceback_dep_one = [&] (const auto& deps, const char *name) {
+            for (const auto& dep : deps) {
+                const z3::scope scope {solver};
+                solver.add(dep.second, util::to_string(dep.first, " -", name, "-> ", access).c_str());
+                func(dep.first);
+            }
+        };
+        
+        traceback_dep_one(addrs, "addr");
+        traceback_dep_one(datas, "data");
+    };
     
+    // trace back load via rf (optional)
+    {
+        const z3::expr store_sym = mems.at(load)[aeg.lookup(load).get_memory_address()];
+        std::vector<z3::expr> stores_con;
+        z3::enumerate(solver, store_sym, std::back_inserter(stores_con));
+        
+        for (const z3::expr& store_con : stores_con) {
+            const NodeRef store = store_con.get_numeral_uint();
+            const z3::scope scope {solver};
+            solver.add(store_con == store_sym, util::to_string(store, " -rf-> ", load).c_str());
+            traceback_dep(store);
+        }
+    }
+    
+    // traceback load via addr+data
+    traceback_dep(load);
 }
 
 
+template <typename Derived>
+void Leakage<Derived>::print_short(std::ostream& os) const {
+    const auto v = static_cast<const Derived&>(*this).vec();
+    for (auto it = v.begin(); it != v.end(); ++it) {
+        if (it != v.begin()) {
+            os << " ";
+        }
+        os << *it;
+    }
+}
+
+template <typename Derived>
+void Leakage<Derived>::print_long(std::ostream& os, const aeg::AEG& aeg) const {
+    const auto v = static_cast<const Derived&>(*this).vec();
+    for (auto it = v.begin(); it != v.end(); ++it) {
+        if (it != v.begin()) {
+            os << "; ";
+        }
+        os << *aeg.lookup(*it).inst;
+    }
+}
+
+
+void LeakageDetector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, NodeRef)> func) const {
+    aeg.for_each_edge(kind, [&] (const NodeRef src, const NodeRef dst, const aeg::Edge& edge) {
+        z3_scope;
+        
+        const NodeRef transmitter = dst;
+        
+        // require edge.exists
+        solver.add(edge.exists, "transmitter edge.exists");
+        
+        // require transmitter.trans
+        solver.add(aeg.lookup(transmitter).trans, "transmitter.trans");
+
+        // require transmitter -rfx-> exit
+        {
+            const z3::expr f = std::transform_reduce(aeg.exits.begin(), aeg.exits.end(), aeg.context.FALSE, util::logical_or<z3::expr>(), [&] (const NodeRef exit) -> z3::expr {
+                return aeg.lookup(exit).arch && aeg.rfx_exists(transmitter, exit);
+            });
+            solver.add(f, "transmitter -rfx-> exit");
+        }
+        
+        func(src, dst);
+    });
+}
+
+
+void SpectreV1_Detector::run(OutputIt out) {
+    z3_scope;
+    
+    for_each_transmitter(aeg::Edge::ADDR, [&] (const NodeRef addr_src, const NodeRef addr_dst) {
+        std::cerr << "here\n";
+        const NodeRef transmitter = addr_dst;
+        run1(out, transmitter, transmitter);
+    });
+}
+
+void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access) {
+    std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
+    
+    if (loads.size() == 2) {
+        assert(solver.check() == z3::sat);
+        const z3::eval eval {solver.get_model()};
+        
+        const SpectreV1_Classic_Leakage leak = {
+            .load0 = loads.at(1),
+            .load1 = loads.at(0),
+            .transmitter2 = transmitter,
+        };
+        *out++ = leak;
+        
+        // find exit
+        const NodeRef exit = aeg.exit_con(eval);
+        const auto rfx_edge = util::push(flag_edges, {transmitter, exit, aeg::Edge::RFX});
+        
+        output_execution(leak);
+    }
+    
+    if (loads.size() >= 2) {
+        return;
+    }
+    
+    /* try committing load */
+    {
+        
+        const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
+        for (const auto& addr : addrs) {
+            z3_scope;
+            const NodeRef load = addr.first;
+            const auto push_load = util::push(loads, load);
+            solver.add(addr.second, util::to_string("addr-", access, "-", load).c_str());
+            const auto addr_edge = util::push(flag_edges, EdgeRef {
+                .src = load,
+                .dst = access,
+                .kind = aeg::Edge::ADDR,
+            });
+                
+            std::cerr << __FUNCTION__ << ": committed " << load << " -addr-> " << access << "\n";
+            run1(out, transmitter, load);
+        }
+    }
+    
+    /* traceback */
+    traceback(access, [&] (const NodeRef load) {
+        std::cerr << name() << ": traceback " << access << " to " << load << "\n";
+        run1(out, transmitter, load);
+    });
+}
