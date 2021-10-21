@@ -299,10 +299,11 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
         }
 #elif 1
         case LeakageClass::SPECTRE_V1: {
-            SpectreV1_Detector detector {*this, solver};
+            SpectreV1_Classic_Detector detector {*this, solver};
             static_cast<LeakageDetector&>(detector).run();
             return 0;
         }
+            
 #endif
             
         default: break;
@@ -715,11 +716,11 @@ void SpectreV1_Detector::run(OutputIt out) {
 void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access) {
     std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
     
-    if (loads.size() == 2) {
+    if (loads.size() == deps().size()) {
         assert(solver.check() == z3::sat);
         const z3::eval eval {solver.get_model()};
         
-        const SpectreV1_Classic_Leakage leak = {
+        const SpectreV1_Leakage leak = {
             .load0 = loads.at(1),
             .load1 = loads.at(0),
             .transmitter2 = transmitter,
@@ -731,28 +732,30 @@ void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access
         const auto rfx_edge = util::push(flag_edges, {transmitter, exit, aeg::Edge::RFX});
         
         output_execution(leak);
-    }
-    
-    if (loads.size() >= 2) {
+        
         return;
     }
+    
+    assert(loads.size() < deps().size());
     
     /* try committing load */
     {
         
-        const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
-        for (const auto& addr : addrs) {
+        const aeg::Edge::Kind dep_kind = *(deps().rbegin() + loads.size());
+        const std::string dep_str = util::to_string(dep_kind);
+        const auto deps = aeg.get_nodes(Direction::IN, access, dep_kind);
+        for (const auto& dep : deps) {
             z3_scope;
-            const NodeRef load = addr.first;
+            const NodeRef load = dep.first;
             const auto push_load = util::push(loads, load);
-            solver.add(addr.second, util::to_string("addr-", access, "-", load).c_str());
+            solver.add(dep.second, util::to_string(load, " -", dep_kind, "-> ", access).c_str());
             const auto addr_edge = util::push(flag_edges, EdgeRef {
                 .src = load,
                 .dst = access,
                 .kind = aeg::Edge::ADDR,
             });
                 
-            std::cerr << __FUNCTION__ << ": committed " << load << " -addr-> " << access << "\n";
+            std::cerr << __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n";
             run1(out, transmitter, load);
         }
     }
@@ -762,4 +765,13 @@ void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access
         std::cerr << name() << ": traceback " << access << " to " << load << "\n";
         run1(out, transmitter, load);
     });
+}
+
+
+SpectreV1_Classic_Detector::DepVec SpectreV1_Classic_Detector::deps() const {
+    return {aeg::Edge::ADDR, aeg::Edge::ADDR};
+}
+
+SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
+    return {aeg::Edge::ADDR, aeg::Edge::CTRL};
 }
