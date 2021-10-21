@@ -41,7 +41,7 @@ extern LeakageClass leakage_class;
 struct SpectreV1Mode {
     enum Mode {
         CLASSIC,
-        BRANCH_PREDICATE,
+        BRANCH_PREDICATE, // TODO: rename to 'CONTROL'
     } mode;
 };
 extern SpectreV1Mode spectre_v1_mode;

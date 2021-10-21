@@ -20,6 +20,7 @@ struct Leakage {
 class LeakageDetector {
 public:
     virtual void run() = 0;
+    virtual ~LeakageDetector() {}
     
 protected:
     struct EdgeRef {
@@ -90,6 +91,7 @@ public:
 protected:
     using DepVec = std::vector<aeg::Edge::Kind>;
     virtual DepVec deps() const = 0;
+    virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
 
     SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver): LeakageDetector_(aeg, solver) {}
 

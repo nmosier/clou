@@ -299,8 +299,17 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
         }
 #elif 1
         case LeakageClass::SPECTRE_V1: {
-            SpectreV1_Classic_Detector detector {*this, solver};
-            static_cast<LeakageDetector&>(detector).run();
+            std::unique_ptr<LeakageDetector> detector;
+            switch (spectre_v1_mode.mode) {
+                case SpectreV1Mode::Mode::CLASSIC:
+                    detector = std::make_unique<SpectreV1_Classic_Detector>(*this, solver);
+                    break;
+                case SpectreV1Mode::Mode::BRANCH_PREDICATE:
+                    detector = std::make_unique<SpectreV1_Control_Detector>(*this, solver);
+                    break;
+                default: std::abort();
+            }
+            detector->run();
             return 0;
         }
             
@@ -706,7 +715,12 @@ void LeakageDetector::for_each_transmitter(aeg::Edge::Kind kind, std::function<v
 void SpectreV1_Detector::run(OutputIt out) {
     z3_scope;
     
-    for_each_transmitter(aeg::Edge::ADDR, [&] (const NodeRef addr_src, const NodeRef addr_dst) {
+    /*
+     *
+     *
+     */
+    
+    for_each_transmitter(cur_dep(), [&] (const NodeRef addr_src, const NodeRef addr_dst) {
         std::cerr << "here\n";
         const NodeRef transmitter = addr_dst;
         run1(out, transmitter, transmitter);
@@ -715,6 +729,8 @@ void SpectreV1_Detector::run(OutputIt out) {
 
 void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access) {
     std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
+    
+    if (solver.check() != z3::sat) { return; }
     
     if (loads.size() == deps().size()) {
         assert(solver.check() == z3::sat);
@@ -741,7 +757,8 @@ void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access
     /* try committing load */
     {
         
-        const aeg::Edge::Kind dep_kind = *(deps().rbegin() + loads.size());
+        const aeg::Edge::Kind dep_kind = cur_dep();
+        std::cerr << "dep kind: " << dep_kind << "\n";
         const std::string dep_str = util::to_string(dep_kind);
         const auto deps = aeg.get_nodes(Direction::IN, access, dep_kind);
         for (const auto& dep : deps) {
