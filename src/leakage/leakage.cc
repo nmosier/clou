@@ -65,19 +65,19 @@ namespace aeg {
 unsigned AEG::leakage(z3::solver& solver) {
     switch (leakage_class) {
         case LeakageClass::SPECTRE_V4: {
-            auto detector = std::make_unique<SpectreV4_Detector>(*this, solver);
+            auto detector = std::make_unique<lkg::SpectreV4_Detector>(*this, solver);
             detector->run();
             return 0;
         }
           
         case LeakageClass::SPECTRE_V1: {
-            std::unique_ptr<LeakageDetector> detector;
+            std::unique_ptr<lkg::Detector> detector;
             switch (spectre_v1_mode.mode) {
                 case SpectreV1Mode::Mode::CLASSIC:
-                    detector = std::make_unique<SpectreV1_Classic_Detector>(*this, solver);
+                    detector = std::make_unique<lkg::SpectreV1_Classic_Detector>(*this, solver);
                     break;
                 case SpectreV1Mode::Mode::BRANCH_PREDICATE:
-                    detector = std::make_unique<SpectreV1_Control_Detector>(*this, solver);
+                    detector = std::make_unique<lkg::SpectreV1_Control_Detector>(*this, solver);
                     break;
                 default: std::abort();
             }
@@ -91,9 +91,12 @@ unsigned AEG::leakage(z3::solver& solver) {
 
 }
 
+
+namespace lkg {
+
 /* LEAKAGE DETECTOR METHODS */
 
-LeakageDetector::Mems LeakageDetector::get_mems() {
+Detector::Mems Detector::get_mems() {
     z3::context& ctx = this->ctx();
     auto& po = aeg.po;
     NodeRefVec order;
@@ -128,7 +131,7 @@ LeakageDetector::Mems LeakageDetector::get_mems() {
 }
 
 
-void LeakageDetector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
+void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
     const z3::expr store_sym = mems.at(load)[aeg.lookup(load).get_memory_address()];
     std::vector<z3::expr> stores_con;
     z3::enumerate(solver, store_sym, std::back_inserter(stores_con));
@@ -142,7 +145,7 @@ void LeakageDetector::traceback_rf(NodeRef load, std::function<void (NodeRef)> f
 }
 
 
-void LeakageDetector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
+void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     if (traceback_depth == max_traceback) {
         return;
     }
@@ -201,7 +204,7 @@ void Leakage<Derived>::print_long(std::ostream& os, const aeg::AEG& aeg) const {
 }
 
 
-void LeakageDetector::for_each_transmitter(std::function<void (NodeRef)> func) const {
+void Detector::for_each_transmitter(std::function<void (NodeRef)> func) const {
     for (NodeRef transmitter : aeg.node_range()) {
         z3_scope;
         const aeg::Node& transmitter_node = aeg.lookup(transmitter);
@@ -366,4 +369,7 @@ void SpectreV4_Detector::run_sourced_store() {
             output_execution(leak);
         }
     }
+}
+
+
 }

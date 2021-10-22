@@ -7,9 +7,8 @@
 #include <z3++.h>
 
 // TODO: shouldn't need to include "aeg.h"
-#include "aeg/aeg.h"
 
-
+namespace lkg {
 
 template <typename Derived>
 struct Leakage {
@@ -19,10 +18,10 @@ struct Leakage {
     NodeRef get_transmitter() const { std::abort(); }
 };
 
-class LeakageDetector {
+class Detector {
 public:
     virtual void run() = 0;
-    virtual ~LeakageDetector() {}
+    virtual ~Detector() {}
     
 protected:
     struct EdgeRef {
@@ -38,7 +37,7 @@ protected:
     Mems mems;
     EdgeVec flag_edges;
     
-    LeakageDetector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), mems(get_mems()) {}
+    Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), mems(get_mems()) {}
     
     z3::context& ctx() { return aeg.context.context; }
     
@@ -60,7 +59,7 @@ private:
 };
 
 template <typename Leakage>
-class LeakageDetector_: public LeakageDetector {
+class Detector_: public Detector {
 public:
     using leakage_type = Leakage;
     
@@ -75,7 +74,7 @@ protected:
 
     void output_execution(const Leakage& leak);
     
-    LeakageDetector_(aeg::AEG& aeg, z3::solver& solver): LeakageDetector(aeg, solver) {}
+    Detector_(aeg::AEG& aeg, z3::solver& solver): Detector(aeg, solver) {}
     
 private:
     std::vector<Leakage> leaks;
@@ -93,7 +92,7 @@ struct SpectreV1_Leakage: Leakage<SpectreV1_Leakage> {
     }
 };
 
-class SpectreV1_Detector: public LeakageDetector_<SpectreV1_Leakage> {
+class SpectreV1_Detector: public Detector_<SpectreV1_Leakage> {
 public:
     
 protected:
@@ -101,7 +100,7 @@ protected:
     virtual DepVec deps() const = 0;
     virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
 
-    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver): LeakageDetector_(aeg, solver) {}
+    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver): Detector_(aeg, solver) {}
 
 private:
     NodeRefVec loads;
@@ -140,9 +139,9 @@ struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
     NodeRef get_transmitter() const { return transmitter; }
 };
 
-class SpectreV4_Detector: public LeakageDetector_<SpectreV4_Leakage> {
+class SpectreV4_Detector: public Detector_<SpectreV4_Leakage> {
 public:
-    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver): LeakageDetector_(aeg, solver) {}
+    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver): Detector_(aeg, solver) {}
 private:
     SpectreV4_Leakage leak;
     
@@ -156,7 +155,7 @@ private:
 /* IMPLEMENTATIONS */
 
 template <typename Leakage>
-void LeakageDetector_<Leakage>::run() {
+void Detector_<Leakage>::run() {
     run_();
     
     // open file
@@ -184,7 +183,7 @@ void LeakageDetector_<Leakage>::run() {
 
 
 template <typename Leakage>
-void LeakageDetector_<Leakage>::output_execution(const Leakage& leak) {
+void Detector_<Leakage>::output_execution(const Leakage& leak) {
     leaks.push_back(leak);
     
     std::stringstream ss;
@@ -209,4 +208,6 @@ void LeakageDetector_<Leakage>::output_execution(const Leakage& leak) {
     });
     
     aeg.output_execution(path, eval, flag_edges_);
+}
+
 }
