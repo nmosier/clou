@@ -98,9 +98,6 @@ private:
     void construct_taint();
     
     
-    using EdgeSet = std::set<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
-    
-    
     // TODO: unify this, so that it just returns a NodeRefMap for in, out.
     using DependencyMap = NodeRefMap;
     DependencyMap dependencies;
@@ -112,82 +109,9 @@ private:
     void construct_dominators() { dominators = construct_dominators_shared(Direction::OUT); }
     void construct_postdominators() { postdominators = construct_dominators_shared(Direction::IN); }
     
-    struct LeakageClause {
-        z3::expr pred;
-        NodeRefSet nodes;
-        std::unordered_set<Edge::Kind> edges;
-        std::string name;
-    };
+    unsigned leakage(z3::solver& solver);
     
-    // TODO: remove
-    template <typename OutputIt>
-    void leakage_rfx(OutputIt out) const;
-    template <typename OutputIt>
-    void leakage_cox(OutputIt out) const;
-    template <typename OutputIt>
-    void leakage_frx(OutputIt out) const;
-    unsigned leakage(z3::solver& solver, unsigned max);
-    
-    using Mems = std::unordered_map<NodeRef, z3::expr>;
-    struct MemsPair {
-        Mems arch;
-        Mems trans;
-    };
-    
-    static std::string leakage_get_path(const std::string& name, const NodeRefVec& vec);
-
-    
-    struct Leakage_SpectreV1_Classic {
-        NodeRef load0;
-        NodeRef load1;  // secret
-        NodeRef transmitter2;
-    };
-    
-    template <typename OutputIt>
-    OutputIt leakage_spectre_v1(z3::solver& solver, OutputIt out);
-    
-    using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, Edge::Kind>>;
-    template <typename OutputIt>
-    void leakage_spectre_v1_rec(z3::solver& solver, const Mems& mems, std::vector<NodeRef>& loads, NodeRef transmitter, OutputIt& out, EdgeVec& flag_edges, NodeRef access, unsigned traceback_depth);
-    
-    struct Leakage_SpectreV1_Control {
-        NodeRef load0; /// addr dep src; exec
-        NodeRef load1; /// addr dep dst and ctrl dep src; exec
-        NodeRef transmitter2; /// ctrl dep dst and rfx src; trans
-    };
-    
-    template <typename OutputIt>
-    OutputIt leakage_spectre_v1_control(z3::solver& solver, OutputIt out);
-    
-    template <typename OutputIt>
-    void leakage_spectre_v1_control_rec(z3::solver& solver, OutputIt& out, const Mems& mems, NodeRef transmitter, EdgeVec& flag_edges, unsigned traceback_depth);
-
-    struct Leakage_SpectreV4 {
-        NodeRef store0;
-        NodeRef store1;
-        NodeRef load2;
-        NodeRef access3;
-    };
-    
-    template <typename OutputIt>
-    OutputIt leakage_spectre_v4(z3::solver& solver, OutputIt out);
-    
-    template <typename OutputIt>
-    void leakage_spectre_v4_load2(z3::solver& solver, const MemsPair& mems, NodeRef load2, NodeRef access3, OutputIt& out, unsigned traceback_depth = 0);
-    
-    template <typename OutputIt>
-    void leakage_spectre_v4_store1(z3::solver& solver, const MemsPair& mems, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
-    
-    template <typename OutputIt>
-    void leakage_spectre_v4_store0(z3::solver& solver, const MemsPair& mem, NodeRef store0, NodeRef store1, NodeRef load2, NodeRef access3, OutputIt& out);
-
-    z3::expr leakage_get_same_solution(const LeakageClause& clause, const z3::eval& eval);
-    
-    // TODO: this should be more general than hard-coding two com/comx edges, maybe?
-    struct Leakage;
-    
-    template <typename OutputIt>
-    OutputIt process_leakage(OutputIt out, const z3::eval& eval);
+    using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
     
 public:
     using NodeRange = util::RangeContainer<NodeRef>;
@@ -280,32 +204,7 @@ private:
     friend class Taint;
     friend class Taint_Array;
     std::unique_ptr<Taint> tainter;
-    
-    template <typename OutputIt>
-    OutputIt get_path(const z3::eval& eval, OutputIt out) const;
-    
-private:
-    Mems get_mems(z3::expr Node::*pred);
-    Mems get_exec_mems();
 };
-
-
-struct AEG::Leakage {
-    Edge::Kind com_kind;
-    using Pair = std::pair<NodeRef, NodeRef>;
-    Pair com;
-    Edge::Kind comx_kind;
-    Pair comx;
-    std::string desc;
-    z3::expr pred;
-    
-    auto to_tuple() const { return std::make_tuple(com_kind, com, comx_kind, comx, desc); }
-
-    bool operator<(const Leakage& other) const {
-        return to_tuple() < other.to_tuple();
-    }
-};
-
 
 
 template <typename Function>

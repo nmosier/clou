@@ -84,13 +84,13 @@ void AEG::test() {
     
     // add edge constraints
     {
-    std::cerr << __FUNCTION__ << ": adding edge constraints...\n";
-    Progress progress {nedges};
-    std::unordered_map<std::string, unsigned> names;
-    graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
-        edge.constraints.add_to(solver);
-        ++progress;
-    });
+        std::cerr << __FUNCTION__ << ": adding edge constraints...\n";
+        Progress progress {nedges};
+        std::unordered_map<std::string, unsigned> names;
+        graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
+            edge.constraints.add_to(solver);
+            ++progress;
+        });
         progress.done();
     }
     
@@ -98,10 +98,10 @@ void AEG::test() {
     {
         std::cerr << __FUNCTION__ << ": adding node constraints...\n";
         Progress progress {size()};
-    for (NodeRef ref : node_range()) {
-        lookup(ref).constraints.add_to(solver);
-        ++progress;
-    }
+        for (NodeRef ref : node_range()) {
+            lookup(ref).constraints.add_to(solver);
+            ++progress;
+        }
         progress.done();
     }
     
@@ -122,7 +122,7 @@ void AEG::test() {
     std::optional<Timer> timer = Timer();
     z3::scope scope {solver};
     timer = std::nullopt;
-
+    
     // TODO: clean this crap up
     {
         fol::Context<z3::expr, fol::SymEval> fol_ctx {fol::Logic<z3::expr>(context.context), fol::SymEval(context.context), *this};
@@ -144,70 +144,8 @@ void AEG::test() {
         solver.pop();
         
         Timer timer;
-        const auto nleaks = leakage(solver, 32);
-        std::cerr << "Detected " << nleaks << " leaks.\n";
-        if (nleaks == 0) {
-            return;
-        }
+        leakage(solver);
     }
-    
-    unsigned nexecs = 0;
-    
-    constexpr unsigned max_nexecs = 16;
-    while (nexecs < max_nexecs) {
-        Stopwatch timer;
-        timer.start();
-        const auto res = solver.check();
-        timer.stop();
-        std::cerr << res << " " << timer << "\n";
-        
-            switch (res) {
-            case z3::unsat: {
-                const auto& core = solver.unsat_core();
-                for (const auto& expr : core) {
-                    llvm::errs() << util::to_string(expr) << "\n";
-                }
-                goto done;
-            }
-            case z3::sat: {
-                const z3::eval eval {solver.get_model()};
-                output_execution(std::string("out/exec") + std::to_string(nexecs) + ".dot", eval);
-                
-                ++nexecs;
-                
-                // add constraints
-                std::cerr << "adding different solution constraints...\n";
-                Stopwatch timer;
-                timer.start();
-                std::vector<z3::expr> exprs;
-                auto it = std::back_inserter(exprs);
-                for (const Node& node : nodes) {
-                    *it++ = node.arch;
-                    *it++ = node.trans;
-                }
-                
-                for_each_edge([&] (NodeRef, NodeRef, const Edge& edge) {
-                    *it++ = edge.exists;
-                });
-                
-                const z3::expr same_sol = std::transform_reduce(exprs.begin(), exprs.end(), context.TRUE, util::logical_and<z3::expr>(), [&] (const z3::expr& e) -> z3::expr {
-                    return e == eval(e);
-                });
-                
-                solver.add(!same_sol);
-                
-                timer.stop();
-                std::cerr << timer << "\n";
-                
-                break;
-            }
-            case z3::unknown:
-                goto done;
-        }
-    }
-    
-done:
-    std::cerr << "found " << nexecs << " executions\n";
 }
 
 void AEG::add_unidir_edge(NodeRef src, NodeRef dst, const Edge& e) {
@@ -264,9 +202,9 @@ OutputIt AEG::get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kin
 }
 
 AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, Edge::Kind kind) {
-   EdgePtrVec es;
-   get_edges(dir, ref, std::back_inserter(es), kind);
-   return es;
+    EdgePtrVec es;
+    get_edges(dir, ref, std::back_inserter(es), kind);
+    return es;
 }
 
 std::vector<std::pair<NodeRef, z3::expr>> AEG::get_nodes(Direction dir, NodeRef ref, Edge::Kind kind) const {
@@ -307,15 +245,6 @@ NodeRef AEG::add_node(Node&& node) {
 
 unsigned AEG::num_specs() const {
     return po.num_specs;
-}
-
-template <typename OutputIt>
-OutputIt AEG::get_path(const z3::eval& eval, OutputIt out) const {
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    return std::copy_if(order.begin(), order.end(), out, [&] (NodeRef ref) -> bool {
-        return static_cast<bool>(eval(lookup(ref).arch));
-    });
 }
 
 
