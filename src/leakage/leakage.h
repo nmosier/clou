@@ -68,7 +68,7 @@ protected:
     using OutputIt = std::back_insert_iterator<LeakVec>;
     
     virtual std::string name() const = 0;
-    virtual void run(OutputIt out) = 0;
+    virtual void run_() = 0;
 
     void output_execution(const Leakage& leak);
     
@@ -102,9 +102,9 @@ protected:
 
 private:
     NodeRefVec loads;
-    virtual void run(OutputIt out) override final;
+    virtual void run_() override final;
 
-    void run1(OutputIt& out, NodeRef transmitter, NodeRef access);
+    void run1(NodeRef transmitter, NodeRef access);
     virtual std::string name() const override final { return "spectrev1"; }
 };
 
@@ -142,16 +142,17 @@ public:
 private:
     SpectreV4_Leakage leak;
     
-    virtual void run(OutputIt out) override final;
-    void run_load(OutputIt& out, NodeRef access); /*!< binds speculative load */
-    void run_bypassed_store(OutputIt& out); /*!< binds bypassed store */
+    virtual void run_() override final;
+    void run_load(NodeRef access); /*!< binds speculative load */
+    void run_bypassed_store(); /*!< binds bypassed store */
+    void run_sourced_store(); /*!< binds sourced stores */
 };
 
 /* IMPLEMENTATIONS */
 
 template <typename Leakage>
 void LeakageDetector_<Leakage>::run() {
-    run(std::back_inserter(leaks));
+    run_();
     
     // open file
     const std::string path = util::to_string(output_dir, "/leakage.txt");
@@ -179,6 +180,8 @@ void LeakageDetector_<Leakage>::run() {
 
 template <typename Leakage>
 void LeakageDetector_<Leakage>::output_execution(const Leakage& leak) {
+    leaks.push_back(leak);
+    
     std::stringstream ss;
     ss << output_dir << "/" << name();
     for (const NodeRef ref : leak.vec()) {
@@ -188,6 +191,11 @@ void LeakageDetector_<Leakage>::output_execution(const Leakage& leak) {
     const std::string path = ss.str();
     assert(solver.check() == z3::sat);
     const z3::eval eval {solver.get_model()};
+    const auto edge = push_edge(EdgeRef {
+        .src = leak.get_transmitter(),
+        .dst = aeg.exit_con(eval),
+        .kind = aeg::Edge::RFX,
+    });
     
     // TODO: shouldn't need to do this
     std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>> flag_edges_;

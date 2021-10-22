@@ -710,13 +710,13 @@ void LeakageDetector::for_each_transmitter(std::function<void (NodeRef)> func) c
 }
 
 
-void SpectreV1_Detector::run(OutputIt out) {
+void SpectreV1_Detector::run_() {
     for_each_transmitter([&] (const NodeRef transmitter) {
-        run1(out, transmitter, transmitter);
+        run1(transmitter, transmitter);
     });
 }
 
-void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access) {
+void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
     
     if (solver.check() != z3::sat) { return; }
@@ -730,11 +730,6 @@ void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access
             .load1 = loads.at(0),
             .transmitter2 = transmitter,
         };
-        *out++ = leak;
-        
-        // find exit
-        const NodeRef exit = aeg.exit_con(eval);
-        const auto rfx_edge = util::push(flag_edges, {transmitter, exit, aeg::Edge::RFX});
         
         output_execution(leak);
         
@@ -762,14 +757,14 @@ void SpectreV1_Detector::run1(OutputIt& out, NodeRef transmitter, NodeRef access
             });
                 
             std::cerr << __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n";
-            run1(out, transmitter, load);
+            run1(transmitter, load);
         }
     }
     
     /* traceback */
     traceback(access, [&] (const NodeRef load) {
         std::cerr << name() << ": traceback " << access << " to " << load << "\n";
-        run1(out, transmitter, load);
+        run1(transmitter, load);
     });
 }
 
@@ -783,15 +778,14 @@ SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
 }
 
 
-void SpectreV4_Detector::run(OutputIt out) {
+void SpectreV4_Detector::run_() {
     for_each_transmitter([&] (const NodeRef transmitter) {
         leak.transmitter = transmitter;
-        run_load(out, transmitter);
+        run_load(transmitter);
     });
 }
 
-#if 0
-void SpectreV4_Detector::run_load(OutputIt& out, NodeRef access) {
+void SpectreV4_Detector::run_load(NodeRef access) {
     // bind loads
     {
         const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
@@ -807,17 +801,47 @@ void SpectreV4_Detector::run_load(OutputIt& out, NodeRef access) {
             solver.add(addr.second, util::to_string(load, " -addr-> ", access).c_str());
             solver.add(aeg.lookup(load).trans, "load.trans");
             if (solver.check() == z3::sat) {
-                run_bypassed_store(out);
+                run_bypassed_store();
             }
         }
     }
     
-    traceback(<#NodeRef load#>, <#std::function<void (NodeRef)> func#>)
+    // traceback
+    traceback(access, [&] (NodeRef load) {
+        run_load(access);
+    });
 }
 
 
-void SpectreV4_Detector::run_bypassed_store(OutputIt& out) {
-    
+void SpectreV4_Detector::run_bypassed_store() {
+    traceback_rf(leak.load, [&] (const NodeRef bypassed_store) {
+        z3_scope;
+        leak.bypassed_store = bypassed_store;
+        const auto edge = push_edge({
+            .src = bypassed_store,
+            .dst = leak.load,
+            .kind = aeg::Edge::ADDR,
+        });
+        run_sourced_store();
+    });
 }
 
-#endif
+
+void SpectreV4_Detector::run_sourced_store() {
+    for (const NodeRef sourced_store : aeg.node_range()) {
+        z3_scope;
+        leak.sourced_store = sourced_store;
+        const z3::expr same_addr = aeg::Node::same_addr(aeg.lookup(sourced_store), aeg.lookup(leak.load));
+        solver.add(same_addr, "load.addr == sourced_store.addr");
+        solver.add(aeg.rfx_exists(sourced_store, leak.load), "load -rfx-> sourced_store");
+        
+        if (solver.check() == z3::sat) {
+            const auto edge = push_edge(EdgeRef {
+                .src = leak.load,
+                .dst = sourced_store,
+                .kind = aeg::Edge::RFX,
+            });
+            output_execution(leak);
+        }
+    }
+}
