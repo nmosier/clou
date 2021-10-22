@@ -250,6 +250,7 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
     std::ofstream leakage_ofs {util::to_string(output_dir, "/leakage.txt")};
     
     switch (leakage_class) {
+#if 0
         case LeakageClass::SPECTRE_V4: {
             std::vector<Leakage_SpectreV4> leaks;
             leakage_spectre_v4(solver, std::back_inserter(leaks));
@@ -274,6 +275,13 @@ unsigned AEG::leakage(z3::solver& solver, unsigned max) {
             
             return 0;
         }
+#else
+        case LeakageClass::SPECTRE_V4: {
+            auto detector = std::make_unique<SpectreV4_Detector>(*this, solver);
+            detector->run();
+            return 0;
+        }
+#endif
           
 #if 0
         case LeakageClass::SPECTRE_V1: {
@@ -636,6 +644,12 @@ void LeakageDetector::traceback_rf(NodeRef load, std::function<void (NodeRef)> f
 
 
 void LeakageDetector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
+    if (traceback_depth == max_traceback) {
+        return;
+    }
+    
+    const auto inc_depth = util::inc_scope(traceback_depth);
+    
     // function to trace back via addr+data
     const auto traceback_dep = [&] (NodeRef access) {
         const z3::scope scope {solver};
@@ -780,6 +794,7 @@ SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
 
 void SpectreV4_Detector::run_() {
     for_each_transmitter([&] (const NodeRef transmitter) {
+        std::cerr << "transmitter " << transmitter << "\n";
         leak.transmitter = transmitter;
         run_load(transmitter);
     });
@@ -808,7 +823,8 @@ void SpectreV4_Detector::run_load(NodeRef access) {
     
     // traceback
     traceback(access, [&] (NodeRef load) {
-        run_load(access);
+        std::cerr << "traceback " << load << "\n";
+        run_load(load);
     });
 }
 
@@ -830,8 +846,15 @@ void SpectreV4_Detector::run_bypassed_store() {
 void SpectreV4_Detector::run_sourced_store() {
     for (const NodeRef sourced_store : aeg.node_range()) {
         z3_scope;
+
+        const aeg::Node& sourced_store_node = aeg.lookup(sourced_store);
+        if (!sourced_store_node.may_write()) { continue; }
+        solver.add(sourced_store_node.write, "sourced_store.write");
+        
+        std::cerr << "run_sourced_store\n";
+        
         leak.sourced_store = sourced_store;
-        const z3::expr same_addr = aeg::Node::same_addr(aeg.lookup(sourced_store), aeg.lookup(leak.load));
+        const z3::expr same_addr = aeg::Node::same_addr(sourced_store_node, aeg.lookup(leak.load));
         solver.add(same_addr, "load.addr == sourced_store.addr");
         solver.add(aeg.rfx_exists(sourced_store, leak.load), "load -rfx-> sourced_store");
         

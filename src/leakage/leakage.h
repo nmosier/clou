@@ -53,6 +53,7 @@ protected:
     }
     
 private:
+    unsigned traceback_depth = 0;
     Mems get_mems();
 };
 
@@ -105,7 +106,6 @@ private:
     virtual void run_() override final;
 
     void run1(NodeRef transmitter, NodeRef access);
-    virtual std::string name() const override final { return "spectrev1"; }
 };
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
@@ -114,6 +114,7 @@ public:
     
 private:
     virtual DepVec deps() const override final;
+    virtual std::string name() const override final { return "SpectreV1Classic"; }
 };
 
 class SpectreV1_Control_Detector final: public SpectreV1_Detector {
@@ -121,6 +122,7 @@ public:
     SpectreV1_Control_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
 private:
     virtual DepVec deps() const override final;
+    virtual std::string name() const override final { return "SpectreV1Control"; }
 };
 
 struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
@@ -146,6 +148,7 @@ private:
     void run_load(NodeRef access); /*!< binds speculative load */
     void run_bypassed_store(); /*!< binds bypassed store */
     void run_sourced_store(); /*!< binds sourced stores */
+    virtual std::string name() const override final { return "SpectreV4"; }
 };
 
 /* IMPLEMENTATIONS */

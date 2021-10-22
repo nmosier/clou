@@ -209,4 +209,35 @@ push_scope<Container> push(Container& container, const typename Container::value
     return push_scope<Container>(container, x);
 }
 
+template <typename T>
+class op_scope {
+public:
+    using function_type = std::function<void (T&)>;
+    op_scope(T& x, function_type inc, function_type dec): x(x), inc(inc), dec(dec) {
+        inc(x);
+    }
+    
+    ~op_scope() {
+        dec(x);
+    }
+    
+private:
+    T& x;
+    function_type inc;
+    function_type dec;
+};
+
+template <typename T>
+op_scope<T> inc_scope(T& x) {
+    return op_scope<T> {
+        x,
+        [] (T& x) {
+            ++x;
+        },
+        [] (T& x) {
+            --x;
+        },
+    };
+}
+
 }
