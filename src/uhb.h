@@ -24,18 +24,6 @@ enum Access {
 
 enum ExecMode {ARCH, TRANS, EXEC};
 
-struct TupleSort {
-    z3::context& ctx;
-    z3::func_decl cons;
-    z3::func_decl_vector projs;
-    z3::sort sort;
-
-    TupleSort(z3::context& ctx, const std::string& name, unsigned n, const char *names[], const z3::sort sorts[]): ctx(ctx), cons(ctx), projs(ctx), sort(ctx) {
-        cons = ctx.tuple_sort(name.c_str(), n, names, sorts, projs);
-        sort = cons.range();
-    }
-};
-
 class Context {
 public:
     Context();
@@ -140,7 +128,6 @@ struct Node {
     std::unique_ptr<Inst> inst;
     z3::expr arch;  // bool: program order variable
     z3::expr trans; // bool: transient fetch order variable
-    z3::expr trans_depth; // int: transient depth
     z3::expr introduces_trans; // bool: introduces transient execution
     std::optional<Address> addr_def;
     std::optional<z3::expr> xstate;

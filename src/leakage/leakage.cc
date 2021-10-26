@@ -132,6 +132,7 @@ Detector::Mems Detector::get_mems() {
 
 
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
+#if 0
     const z3::expr store_sym = mems.at(load)[aeg.lookup(load).get_memory_address()];
     std::vector<z3::expr> stores_con;
     z3::enumerate(solver, store_sym, std::back_inserter(stores_con));
@@ -142,6 +143,23 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         solver.add(store_con == store_sym, util::to_string(store, " -rf-> ", load).c_str());
         func(store);
     }
+#elif 0
+    for (const auto& store_pair : rf[load]) {
+        const NodeRef store = store_pair.first;
+        const z3::expr& cond = store_pair.second;
+        z3_scope;
+        solver.add(cond, util::to_string(store, " -rf-> ", load).c_str());
+        func(store);
+    }
+#else
+    for (const auto& store_pair : rf_sources(load)) {
+        const NodeRef store = store_pair.first;
+        const z3::expr& cond = store_pair.second;
+        z3_scope;
+        solver.add(cond, util::to_string(store, " -rf-> ", load).c_str());
+        func(store);
+    }
+#endif
 }
 
 
@@ -204,8 +222,16 @@ void Leakage<Derived>::print_long(std::ostream& os, const aeg::AEG& aeg) const {
 }
 
 
-void Detector::for_each_transmitter(std::function<void (NodeRef)> func) const {
-    for (NodeRef transmitter : aeg.node_range()) {
+void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) const {
+    NodeRefSet candidate_transmitters;
+    aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
+        candidate_transmitters.insert(ref);
+    });
+    
+    std::size_t i = 0;
+    for (NodeRef transmitter : candidate_transmitters) {
+        std::cerr << ++i << "/" << candidate_transmitters.size() << "\n";
+        
         z3_scope;
         const aeg::Node& transmitter_node = aeg.lookup(transmitter);
         
@@ -231,7 +257,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef)> func) const {
 
 
 void SpectreV1_Detector::run_() {
-    for_each_transmitter([&] (const NodeRef transmitter) {
+    for_each_transmitter(deps().back(), [&] (const NodeRef transmitter) {
         run1(transmitter, transmitter);
     });
 }
@@ -250,6 +276,8 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
             .load1 = loads.at(0),
             .transmitter2 = transmitter,
         };
+        
+        std::cerr << "spectre-v1 leak found\n";
         
         output_execution(leak);
         
@@ -299,7 +327,7 @@ SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
 
 
 void SpectreV4_Detector::run_() {
-    for_each_transmitter([&] (const NodeRef transmitter) {
+    for_each_transmitter(aeg::Edge::ADDR, [&] (const NodeRef transmitter) {
         std::cerr << "transmitter " << transmitter << "\n";
         leak.transmitter = transmitter;
         run_load(transmitter);
@@ -373,6 +401,40 @@ void SpectreV4_Detector::run_sourced_store() {
             output_execution(leak);
         }
     }
+}
+
+
+void Detector::precompute_rf(NodeRef load) {
+    z3::solver& solver = rf_solver;
+    std::cerr << "precomputing rf " << load << "\n";
+    
+    auto& out = rf[load];
+    
+    if (aeg.exits.find(load) != aeg.exits.end()) { return; }
+    const aeg::Node& node = aeg.lookup(load);
+    if (!node.may_read()) { return; }
+    
+    z3_scope;
+    solver.add(node.read, "read");
+    
+    const z3::expr store_sym = mems.at(load)[node.get_memory_address()];
+    std::vector<z3::expr> stores_con;
+    z3::enumerate(solver, store_sym, std::back_inserter(stores_con));
+    
+    for (const z3::expr& store_con : stores_con) {
+        const NodeRef store = store_con.get_numeral_uint();
+        out.emplace(store, store_sym == store_con);
+    }
+}
+
+const Detector::Sources& Detector::rf_sources(NodeRef load) {
+    auto it = rf.find(load);
+    if (it == rf.end()) {
+        precompute_rf(load);
+        it = rf.find(load);
+    }
+    assert(it != rf.end());
+    return it->second;
 }
 
 

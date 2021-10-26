@@ -41,7 +41,7 @@ protected:
     Mems mems;
     EdgeVec flag_edges;
     
-    Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), mems(get_mems()) {}
+    Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), mems(get_mems()), rf_solver(z3::duplicate(solver)) {}
     
     z3::context& ctx() { return aeg.context.context; }
     
@@ -51,16 +51,25 @@ protected:
     void traceback(NodeRef load, std::function<void (NodeRef)> func);
     void traceback_rf(NodeRef load, std::function<void (NodeRef)> func);
     
-    void for_each_transmitter(std::function<void (NodeRef)> func) const;
+    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) const;
     
     auto push_edge(const EdgeRef& edge) {
         return util::push(flag_edges, edge);
     }
     
+    void precompute_rf(NodeRef load);
+    
+    using Sources = std::unordered_map<NodeRef, z3::expr>;
+    using RF = std::unordered_map<NodeRef, Sources>;
+    const Sources& rf_sources(NodeRef load);
+    
 private:
     unsigned traceback_depth = 0;
     
     Mems get_mems();
+    
+    RF rf;
+    z3::solver rf_solver;
 };
 
 template <typename Leakage>

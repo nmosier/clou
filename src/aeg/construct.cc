@@ -161,19 +161,6 @@ void AEG::construct_nodes() {
 #endif
     }
     
-    // initialize `trans_depth`
-    {
-        for (NodeRef ref : node_range()) {
-            Node& node = lookup(ref);
-            if (node.trans.is_false()) {
-                node.trans_depth = context.context.int_val(0);
-            } else {
-                // TODO: this should actually be inlined; I think that'll be more performant.
-                node.trans_depth = context.make_int("trans_depth");
-            }
-        }
-    }
-    
     // initialize `xsread`, `xswrite`
     {
         for (NodeRef ref : node_range()) {
@@ -293,42 +280,6 @@ void AEG::construct_arch() {
 void AEG::construct_trans() {
     // NOTE: depends on results of construct_tfo()
     
-    
-    // limit transient depth to speculation depth
-    for (Node& node : nodes) {
-        const auto f = z3::implies(node.trans, node.trans_depth <= context.context.int_val(num_specs()));
-        node.constraints(f, "depth-limit-trans");
-    }
-    
-    // arch resets transient depth
-    for (Node& node : nodes) {
-        const auto f = z3::implies(node.arch, node.trans_depth == context.context.int_val(0));
-        node.constraints(f, "depth-reset");
-    }
-    
-    // tfo increments transient depth
-    // TODO: Perform substitution when possible
-    for (const auto ref : node_range()) {
-        Node& node = lookup(ref);
-
-#if 1
-        const auto tfos = get_nodes(Direction::IN, ref, Edge::TFO);
-        for (const auto& tfo : tfos) {
-            const Node& pred_node = lookup(tfo.first);
-            node.constraints(z3::implies(tfo.second && node.trans,
-                                         node.trans_depth == pred_node.trans_depth + context.context.int_val(1)), "depth-add");
-        }
-#else
-        const auto& preds = po.po.rev.at(ref);
-        if (preds.size() == 1) {
-            Node& node = lookup(ref);
-            const NodeRef pred = *preds.begin();
-            const auto f = z3::implies(node.trans, node.trans_depth == lookup(pred).trans_depth + context.context.int_val(1));
-            node.constraints(f, "depth-add");
-        }
-#endif
-    }
-    
     // transient execution of node requires incoming tfo edge
     for (const auto ref : node_range()) {
         Node& node = lookup(ref);
@@ -338,6 +289,19 @@ void AEG::construct_trans() {
             return edge->exists;
         }, context.FALSE);
         node.constraints(z3::implies(node.trans, f), "trans-tfo");
+    }
+    
+    // ensure that the number of transiently executed nodes doesn't exceed trans limit
+    {
+        z3::expr_vector trans {context.context};
+        for (NodeRef ref : node_range()) {
+            trans.push_back(lookup(ref).trans);
+        }
+        unsigned max = num_specs();
+        if (max_transient_nodes) {
+            max = std::min(max, *max_transient_nodes);
+        }
+        constraints(z3::atmost(trans, max), "trans-limit");
     }
 } 
 

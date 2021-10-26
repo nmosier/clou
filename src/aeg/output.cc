@@ -31,8 +31,7 @@ void AEG::dump_graph(std::ostream& os) const {
         ss << ref << " ";
         ss << *node.inst << "\n";
         ss << "po: " << node.arch << "\n"
-        << "tfo: " << node.trans << "\n"
-        << "tfo_depth: " << node.trans_depth << "\n";
+           << "tfo: " << node.trans << "\n";
         
         if (node.addr_def) {
             ss << "addr (def): " << *node.addr_def << "\n";

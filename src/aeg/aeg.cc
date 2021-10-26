@@ -108,6 +108,7 @@ void AEG::test() {
     // add main constraints
     constraints.add_to(solver);
     
+#if 0
     // limits: transient nodes
     if (max_transient_nodes) {
         z3::expr_vector trans {context.context};
@@ -116,6 +117,8 @@ void AEG::test() {
         }
         solver.add(z3::atmost(trans, *max_transient_nodes));
     }
+    // NOTE: now do this in construct.cc
+#endif
     
     std::cerr << solver.statistics() << "\n";
     
