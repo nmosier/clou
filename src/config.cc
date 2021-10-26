@@ -39,8 +39,11 @@ SpectreV1Mode spectre_v1_mode = {
     .mode = SpectreV1Mode::CLASSIC,
 };
 SpectreV4Mode spectre_v4_mode = {
+    .psf = false,
     .stb_size = 0,
 };
+bool witness_executions = true;
+bool fast_mode = false;
 
 // TODO: add automated way for describing default values
 
@@ -73,6 +76,8 @@ only examine given functions
                      set Spectre-v4 options. Suboptions:
     stb-size=<uint>       store buffer size
 --traceback <uint>   set max traceback via rf * (addr + data) edges.
+--witnesses <bool>   enable/disable generation of witness executions (default: on)
+--fast <bool>        enable/disable fast mode (default: off)
 )=";
     fprintf(f, s);
 }
@@ -109,6 +114,14 @@ bool parse_bool(const std::string& s) {
     error("invalid boolean flag '%s'", s.c_str());
 }
 
+bool parse_bool_opt(const char *s) {
+    if (s) {
+        return parse_bool(s);
+    } else {
+        return true;
+    }
+}
+
 int parse_args() {
     if (char *line = getenv("LCM_ARGS")) {
         while (char *s = strsep(&line, " ")) {
@@ -132,6 +145,8 @@ int parse_args() {
         SPECTRE_V1,
         SPECTRE_V4,
         TRACEBACK,
+        WITNESSES,
+        FAST,
     };
     
     struct option opts[] = {
@@ -151,6 +166,8 @@ int parse_args() {
         {"spectre-v1", optional_argument, nullptr, SPECTRE_V1},
         {"spectre-v4", optional_argument, nullptr, SPECTRE_V4},
         {"traceback", required_argument, nullptr, TRACEBACK},
+        {"witnesses", optional_argument, nullptr, WITNESSES},
+        {"fast", optional_argument, nullptr, FAST},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -293,16 +310,19 @@ int parse_args() {
                 leakage_class = LeakageClass::SPECTRE_V4;
                 
                 enum Key {
+                    PSF,
                     STB_SIZE,
                     COUNT
                 };
 
                 const char *keylist[COUNT + 1] = {
+                    [PSF] = "psf",
                     [STB_SIZE] = "stb-size",
                     [COUNT] = nullptr
                 };
                 
                 bool args[COUNT] = {
+                    [PSF] = false,
                     [STB_SIZE] = true,
                 };
                 
@@ -313,6 +333,10 @@ int parse_args() {
                         error("spectre-v4: suboption '%s' missing value", suboptarg);
                     }
                     switch (idx) {
+                        case PSF:
+                            spectre_v4_mode.psf = true;
+                            break;
+                            
                         case STB_SIZE:
                             spectre_v4_mode.stb_size = std::stoul(value);
                             break;
@@ -330,6 +354,19 @@ int parse_args() {
                 
             case TRACEBACK: {
                 max_traceback = std::stoul(optarg);
+                break;
+            }
+                
+            case WITNESSES: {
+                witness_executions = parse_bool_opt(optarg);
+                break;
+            }
+                
+            case FAST: {
+                fast_mode = parse_bool_opt(optarg);
+                if (fast_mode) {
+                    witness_executions = false;
+                }
                 break;
             }
                 

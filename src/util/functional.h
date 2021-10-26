@@ -45,5 +45,4 @@ struct identity {
 };
 
 
-
 }

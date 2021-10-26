@@ -465,7 +465,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     nos = musts = mays = 0;
     for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
         ValueLoc vl1 {it1->id, it1->V};
-        alias_rel.emplace(std::make_pair(vl1, vl1), llvm::MustAlias);
+        alias_rel.emplace(std::make_pair(vl1, vl1), llvm::AliasResult::MustAlias);
         for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
             if (po.alias_valid(it1->id, it2->id)) {
                 const auto alias_res = AA.alias(it1->V, it2->V);
@@ -484,17 +484,17 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 const z3::expr precond = alias_mode.transient ? context.TRUE : (arch1 && arch2);
                                 
                 switch (alias_res) {
-                    case llvm::NoAlias:
+                    case llvm::AliasResult::NoAlias:
                         constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
-                    case llvm::MayAlias:
+                    case llvm::AliasResult::MayAlias:
                         if (alias_mode.lax) {
                             constraints(z3::implies(precond, it1->e != it2->e), "may-alias");
                         }
                         ++mays;
                         break;
-                    case llvm::MustAlias:
+                    case llvm::AliasResult::MustAlias:
                         constraints(z3::implies(precond, it1->e == it2->e), "must-alias");
                         ++musts;
                         break;
@@ -536,6 +536,21 @@ void AEG::construct_comx() {
     for (NodeRef i : node_range()) {
         Node& node = lookup(i);
         process(i, node, node.inst->may_xsread(), node.inst->may_xswrite());
+    }
+    
+    // connect xstate and addr
+    const bool psf = g_psf();
+    for (NodeRef ref : xsaccesses) {
+        Node& node = lookup(ref);
+        
+        // sibling instructions always have the same address
+        
+        
+        if (g_psf()) {
+            
+        } else {
+            
+        }
     }
     
     logv(3) << "constructing xsaccess order...\n";
@@ -793,7 +808,6 @@ void AEG::construct_ctrl() {
                         if (access_dom_node.may_access()) {
                             // EMIT EDGE
                             add_unidir_edge(load_dep_ref, access_dom_ref, Edge {Edge::CTRL, (load_dep_node.exec() && load_dep_node.read) && (br_node.exec()) && (access_dom_node.exec() && access_dom_node.access())});
-                            std::cerr << "CTRL " << load_dep_ref << " " << access_dom_ref << "\n";
                         }
                     }
                 }
@@ -829,9 +843,6 @@ void AEG::construct_data() {
                         Edge::DATA,
                         (store_node.exec() && store_node.write) && (candidate_node.exec() && candidate_node.read)
                     });
-                    
-                    // DEBUG
-                    llvm::errs() << "DATA dep: " << candidate_src << " " << store_ref << "\n";
                 }
             }
         }
@@ -855,5 +866,6 @@ void AEG::construct_com() {
         node.write = f(node.inst->may_write(), "write");
     }
 }
+
 
 }

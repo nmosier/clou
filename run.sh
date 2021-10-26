@@ -11,6 +11,8 @@ EOF
 JOBS=`nproc`
 ARGS=
 
+CLANG=${LLVM_DIR}/bin/clang
+
 while getopts "hgx:j:o" OPTCHAR; do
     case "$OPTCHAR" in
 	h)
@@ -40,7 +42,7 @@ shift $((OPTIND-1))
 
 ARGS+=" -j$JOBS "
 
-LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER clang-12 -fdeclspec -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"
+LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER $CLANG -fdeclspec -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"
 
 if [[ "$OPEN" ]]; then
     make2 -sj

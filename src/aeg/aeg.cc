@@ -125,6 +125,7 @@ void AEG::test() {
     
     // TODO: clean this crap up
     {
+#if 0
         fol::Context<z3::expr, fol::SymEval> fol_ctx {fol::Logic<z3::expr>(context.context), fol::SymEval(context.context), *this};
         const auto addr_rel = fol_ctx.edge_rel(Edge::ADDR);
         const auto trans_rel = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) -> z3::expr {
@@ -142,6 +143,7 @@ void AEG::test() {
             throw util::resume("no addr edges");
         }
         solver.pop();
+#endif
         
         Timer timer;
         leakage(solver);

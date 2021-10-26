@@ -96,7 +96,9 @@ private:
     void construct_data();
     void construct_ctrl();
     void construct_taint();
+
     
+    NodeRefSet spectrev4_siblings(NodeRef ref) const;
     
     // TODO: unify this, so that it just returns a NodeRefMap for in, out.
     using DependencyMap = NodeRefMap;

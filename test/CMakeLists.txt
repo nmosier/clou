@@ -2,6 +2,8 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/test.sh ${CMAKE_CURRENT_BINARY_DIR}/t
 
 file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c)
 
+message("LLVM_DIR=${LLVM_DIR}")
+
 
 foreach(PHT_SRC ${PHT_SRCS})
   get_filename_component(PHT_NAME ${PHT_SRC} NAME_WLE)

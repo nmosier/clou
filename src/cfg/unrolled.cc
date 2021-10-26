@@ -68,9 +68,6 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
             const Translations::Key key {callee_id, &*FA_it};
             const Translations::Value value {caller_id, {*CA_it}};
             translations.map.emplace(key, value);
-            
-            // DEBUG
-            llvm::errs() << "adding parameter translation: key = " << key << ", value = " << value << "\n";
         }
     }
     

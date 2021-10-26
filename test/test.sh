@@ -8,9 +8,10 @@ usage: $0 [-h] -O <output-dir> -T <test-path>.c -R <reference-path> -L <lcm-path
 EOF
 }
 
-ARGS="${ARGS-}" 
+ARGS="${ARGS-}"
+CLANG='/opt/homebrew/opt/llvm@12/bin/clang-12'
 
-while getopts "hO:T:R:L:A:" OPTC; do
+while getopts "hO:T:R:L:A:C:" OPTC; do
     case $OPTC in
 	h)
 	    usage
@@ -31,6 +32,9 @@ while getopts "hO:T:R:L:A:" OPTC; do
 	A)
 	    ARGS="$ARGS $OPTARG"
 	    ;;
+	C)
+	    CLANG="$OPTARG"
+	    ;;
 	*)
 	    usage >&2
 	    exit 1
@@ -42,7 +46,7 @@ shift $((OPTIND-1))
 
 mkdir -p "$OUTDIR"
 
-LCM_ARGS="-o$OUTDIR $ARGS" clang-12 -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
+LCM_ARGS="-o$OUTDIR $ARGS" "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
 
 awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | sort > "$OUTDIR/leakage.txt.tmp"
 sort "$REF" > "$OUTDIR/ref.txt"

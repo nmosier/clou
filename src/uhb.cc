@@ -3,13 +3,13 @@
 #include "aeg/aeg.h"
 #include "cfg/expanded.h"
 
+namespace aeg {
+
 std::ostream& operator<<(std::ostream& os, const aeg::Edge& e) {
     os << e.kind << " " << e.exists << "\n"
     << e.constraints << "\n";
     return os;
 }
-
-namespace aeg {
 
 unsigned constraint_counter = 0;
 

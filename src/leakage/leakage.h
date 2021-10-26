@@ -6,6 +6,8 @@
 
 #include <z3++.h>
 
+#include "config.h"
+
 // TODO: shouldn't need to include "aeg.h"
 
 namespace lkg {
@@ -24,6 +26,8 @@ public:
     virtual ~Detector() {}
     
 protected:
+    struct next_transmitter {};
+    
     struct EdgeRef {
         NodeRef src;
         NodeRef dst;
@@ -55,6 +59,7 @@ protected:
     
 private:
     unsigned traceback_depth = 0;
+    
     Mems get_mems();
 };
 
@@ -185,7 +190,7 @@ void Detector_<Leakage>::run() {
 template <typename Leakage>
 void Detector_<Leakage>::output_execution(const Leakage& leak) {
     leaks.push_back(leak);
-    
+        
     std::stringstream ss;
     ss << output_dir << "/" << name();
     for (const NodeRef ref : leak.vec()) {
@@ -207,7 +212,13 @@ void Detector_<Leakage>::output_execution(const Leakage& leak) {
         return std::make_tuple(e.src, e.dst, e.kind);
     });
     
-    aeg.output_execution(path, eval, flag_edges_);
+    if (witness_executions) {
+        aeg.output_execution(path, eval, flag_edges_);
+    }
+    
+    if (fast_mode) {
+        throw next_transmitter {};
+    }
 }
 
 }

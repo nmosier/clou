@@ -220,7 +220,11 @@ void Detector::for_each_transmitter(std::function<void (NodeRef)> func) const {
         solver.add(transmitter_node.trans, "transmitter.trans");
         
         if (solver.check() == z3::sat) {
-            func(transmitter);
+            try {
+                func(transmitter);
+            } catch (const next_transmitter& e) {
+                // continue
+            }
         }
     }
 }

@@ -16,6 +16,8 @@ extern unsigned rob_size;
 extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 extern std::optional<unsigned> max_transient_nodes;
 extern unsigned max_traceback;
+extern bool witness_executions;
+extern bool fast_mode;
 
 struct AliasMode {
     bool transient; /*!< enable alias analysis on transient instructions too (default: off) */
@@ -47,9 +49,14 @@ struct SpectreV1Mode {
 extern SpectreV1Mode spectre_v1_mode;
 
 struct SpectreV4Mode {
+    bool psf; /// whether to allow psf
     unsigned stb_size; /// store buffer size
 };
 extern SpectreV4Mode spectre_v4_mode;
+
+inline bool g_psf() {
+    return leakage_class == LeakageClass::SPECTRE_V4 && spectre_v4_mode.psf;
+}
 
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;

@@ -101,8 +101,6 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
         kind = UNKNOWN;
     }
     
-    llvm::errs() << "resolving " << *I << " " << *V << "\n";
-    
     switch (kind) {
         case INST:
         case ARG: {

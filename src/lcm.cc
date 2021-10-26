@@ -31,7 +31,7 @@ void output_(const Graph& graph, const std::string& name, const llvm::Function& 
     }
 }
 
-struct LCMPass : public llvm::FunctionPass {
+struct LCMPass: public llvm::FunctionPass {
     static char ID;
     
     LCMPass(): FunctionPass(ID) {}
@@ -92,7 +92,7 @@ struct LCMPass : public llvm::FunctionPass {
             << aegpo_expanded.size() << " (expanded)\n";
             output_(aegpo_expanded, "aegpoexp", F);
             
-#if 1
+#if 0
             // DEBUG: show refs
             for (NodeRef ref = 0; ref < aegpo_expanded.size(); ++ref) {
                 using namespace output;
@@ -144,8 +144,7 @@ static llvm::RegisterStandardPasses RegisterMyPass {
 };
 
 
-
-/* NOTES 
+/* NOTES
  * We only consider these instructions:
  * - Memory accesses: load, store, clflush, etc.
  * - Branch instructions
