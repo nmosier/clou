@@ -112,16 +112,19 @@ Detector::Mems Detector::get_mems() {
         const auto tfos = aeg.get_nodes(Direction::IN, cur, aeg::Edge::TFO);
         assert(!tfos.empty());
         
-        z3::expr mem = std::accumulate(tfos.begin(), tfos.end(), init_mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
-            const NodeRef pred = tfo.first;
-            return z3::ite(tfo.second, outs.at(pred), acc);
+        z3::expr mem {ctx};
+        
+        auto tfo_it = tfos.begin();
+        mem = outs.at(tfo_it->first);
+        ++tfo_it;
+        mem = std::accumulate(tfo_it, tfos.end(), mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
+            return z3::ite(tfo.second, outs.at(tfo.first), acc);
         });
         
         ins.emplace(cur, mem);
         
         if (cur_node.may_write()) {
-            // TODO: this might be sped up by not making these stores conditional, since the above logic filters out unexecuted nodes.
-            mem = z3::conditional_store(mem, cur_node.get_memory_address(), ctx.int_val(static_cast<unsigned>(cur)), cur_node.exec());
+            mem = z3::conditional_store(mem, cur_node.get_memory_address(), ctx.int_val(static_cast<unsigned>(cur)), cur_node.write);
         }
         
         outs.emplace(cur, mem);
@@ -156,7 +159,9 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         const NodeRef store = store_pair.first;
         const z3::expr& cond = store_pair.second;
         z3_scope;
-        solver.add(cond, util::to_string(store, " -rf-> ", load).c_str());
+        
+        const std::string desc = util::to_string(store, " -rf-> ", load).c_str();
+        solver.add(cond, desc.c_str());
         func(store);
     }
 #endif
@@ -265,9 +270,15 @@ void SpectreV1_Detector::run_() {
 void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
     
+#if 1
     if (solver.check() != z3::sat) { return; }
+#endif
     
     if (loads.size() == deps().size()) {
+#if 0
+        if (z3::check_force(solver) == z3::unsat) { return; }
+#endif
+        
         assert(solver.check() == z3::sat);
         const z3::eval eval {solver.get_model()};
         
@@ -405,7 +416,6 @@ void SpectreV4_Detector::run_sourced_store() {
 
 
 void Detector::precompute_rf(NodeRef load) {
-    z3::solver& solver = rf_solver;
     std::cerr << "precomputing rf " << load << "\n";
     
     auto& out = rf[load];
@@ -413,6 +423,10 @@ void Detector::precompute_rf(NodeRef load) {
     if (aeg.exits.find(load) != aeg.exits.end()) { return; }
     const aeg::Node& node = aeg.lookup(load);
     if (!node.may_read()) { return; }
+    
+#if 0
+    
+    z3::solver& solver = rf_solver;
     
     z3_scope;
     solver.add(node.read, "read");
@@ -425,6 +439,37 @@ void Detector::precompute_rf(NodeRef load) {
         const NodeRef store = store_con.get_numeral_uint();
         out.emplace(store, store_sym == store_con);
     }
+    
+#else
+    
+    assert(alias_mode.transient);
+    
+    NodeRefVec todo = {load};
+    NodeRefSet seen;
+    while (!todo.empty()) {
+        const NodeRef ref = todo.back();
+        todo.pop_back();
+        if (!seen.insert(ref).second) { continue; }
+        
+        if (aeg.lookup(ref).may_write()) {
+            switch (aeg.check_alias(load, ref)) {
+                case llvm::NoAlias: break;
+                    
+                case llvm::MayAlias:
+                case llvm::MustAlias:
+                    out.emplace(ref, mems.at(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
+                    break;
+                    
+                default: std::abort();
+            }
+        }
+        
+        for (NodeRef pred : aeg.po.po.rev.at(ref)) {
+            todo.push_back(pred);
+        }
+    }
+    
+#endif
 }
 
 const Detector::Sources& Detector::rf_sources(NodeRef load) {

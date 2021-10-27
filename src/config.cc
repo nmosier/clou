@@ -9,6 +9,7 @@
 
 #include "config.h"
 #include "util.h"
+#include "uhb.h"
 
 /* TODO
  * [ ] Handle function names

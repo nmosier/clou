@@ -200,12 +200,16 @@ private:
     using ValueLocRel = std::unordered_map<std::pair<ValueLoc, ValueLoc>, llvm::AliasResult>;
     ValueLocRel alias_rel;
     
+public:
     llvm::AliasResult check_alias(NodeRef ref1, NodeRef ref2) const;
+private:
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     
     friend class Taint;
     friend class Taint_Array;
     std::unique_ptr<Taint> tainter;
+    
+    ValueLoc get_value_loc(NodeRef ref) const;
 };
 
 

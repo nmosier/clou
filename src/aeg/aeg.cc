@@ -263,5 +263,11 @@ NodeRef AEG::exit_con(const z3::eval& eval) const {
     error("no arch exit!");
 }
 
+AEG::ValueLoc AEG::get_value_loc(NodeRef ref) const {
+    return {
+        *po.lookup(ref).id,
+        lookup(ref).get_memory_address_pair().first,
+    };
+}
 
 }

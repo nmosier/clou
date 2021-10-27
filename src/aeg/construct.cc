@@ -427,6 +427,10 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     // add constraints
     unsigned nos, musts, mays;
     nos = musts = mays = 0;
+    
+    // TODO: pointers are sketchy, but can't use iterators.
+    std::unordered_map<const Info *, std::unordered_set<const Info *>> no_map;
+    
     for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
         ValueLoc vl1 {it1->id, it1->V};
         alias_rel.emplace(std::make_pair(vl1, vl1), llvm::AliasResult::MustAlias);
@@ -449,6 +453,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                                 
                 switch (alias_res) {
                     case llvm::AliasResult::NoAlias:
+                        no_map[&*it1].insert(&*it2);
+                        no_map[&*it2].insert(&*it1);
                         constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
@@ -471,6 +477,13 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     std::cerr << "NoAlias: " << nos << "\n"
     << "MustAlias: " << musts << "\n"
     << "MayAlias: " << mays << "\n";
+    
+#if 0
+    // NOTE: This only improves assertions by 2x.
+    std::vector<std::unordered_set<const Info *>> no_subgraphs;
+    util::complete_subgraphs<const Info *>{no_map}(std::back_inserter(no_subgraphs));
+    std::cerr << "NoAlias subgraphs: " << no_subgraphs.size() << "\n";
+#endif
 }
 
 void AEG::construct_comx() {

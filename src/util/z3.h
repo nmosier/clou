@@ -137,6 +137,18 @@ inline z3::solver duplicate(const z3::solver& orig) {
     return dup;
 }
 
+template <typename... Args>
+inline z3::check_result check_force(z3::solver& solver, Args&&... args) {
+    const auto res = solver.check(std::forward<Args>(args)...);
+    switch (res) {
+        case z3::sat:
+        case z3::unsat:
+            return res;
+        case z3::unknown:
+            throw z3::exception("check result unknown");
+    }
+}
+
 }
 
 namespace std {
