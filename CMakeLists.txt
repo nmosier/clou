@@ -14,6 +14,9 @@ include(FindPkgConfig)
 pkg_search_module(LIBPROFILER REQUIRED libprofiler)
 include_directories(${LIBPROFILER_INCLUDE_DIRS})
 link_directories(${LIBPROFILER_LIBRARY_DIRS})
+# set(SANITIZE undefined)
+add_compile_options(-fsanitize=${SANITIZE})
+add_link_options(-fsanitize=${SANITIZE})
 
 enable_testing()
 

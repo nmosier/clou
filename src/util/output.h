@@ -72,6 +72,21 @@ std::ostream& operator<<(std::ostream& os, const std::unordered_set<T>& set) {
     return os;
 }
 
+/// Print std::unordered_map
+template <typename T, typename U>
+std::ostream& operator<<(std::ostream& os, const std::unordered_map<T, U>& map) {
+    os << "{";
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        if (it != map.begin()) {
+            os << ", ";
+        }
+        os << *it;
+    }
+    os << "}";
+    return os;
+}
+
+
 namespace detail {
 template <typename... Ts>
 struct TuplePrinter {

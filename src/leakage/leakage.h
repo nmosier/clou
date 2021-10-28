@@ -7,6 +7,7 @@
 #include <z3++.h>
 
 #include "config.h"
+#include "util/output.h"
 
 // TODO: shouldn't need to include "aeg.h"
 
@@ -23,7 +24,9 @@ struct Leakage {
 class Detector {
 public:
     virtual void run() = 0;
-    virtual ~Detector() {}
+    virtual ~Detector() {
+        std::cerr << rf_source_count << "\n";
+    }
     
 protected:
     struct next_transmitter {};
@@ -79,6 +82,7 @@ protected:
     using Sources = std::unordered_map<NodeRef, z3::expr>;
     using RF = std::unordered_map<NodeRef, Sources>;
     const Sources& rf_sources(NodeRef load);
+    void rf_sources(NodeRef load, Sources&& sources);
     
 private:
     unsigned traceback_depth = 0;
@@ -90,6 +94,9 @@ private:
     
     RF rf;
     z3::solver rf_solver;
+    
+    // DEBUG members
+    std::unordered_map<NodeRef, unsigned> rf_source_count;
 };
 
 template <typename Leakage>

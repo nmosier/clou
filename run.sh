@@ -13,7 +13,10 @@ ARGS=
 
 CLANG=${LLVM_DIR}/bin/clang
 
-while getopts "hgx:j:o" OPTCHAR; do
+OUTDIR="out"
+LIBLCM="src/liblcm.so"
+
+while getopts "hgx:j:oO:L:" OPTCHAR; do
     case "$OPTCHAR" in
 	h)
 	    usage
@@ -31,6 +34,12 @@ while getopts "hgx:j:o" OPTCHAR; do
 	o)
 	    OPEN="yes"
 	    ;;
+	O)
+	    OUTDIR="$OPTARG"
+	    ;;
+	L)
+	    LIBLCM="$OPTARG"
+	    ;;
 	*)
 	    usage >&2
 	    exit 1
@@ -40,9 +49,14 @@ done
 
 shift $((OPTIND-1))
 
+mkdir -p "$OUTDIR"
+
 ARGS+=" -j$JOBS "
 
-LCM_ARGS="-oout -vvv $ARGS" $DEBUGGER $CLANG -fdeclspec -Wno-\#warnings -Xclang -load -Xclang src/liblcm.so -c "$@"
+ASAN_VARS="DYLD_INSERT_LIBRARIES=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/lib/darwin/libclang_rt.asan_osx_dynamic.dylib"
+
+LCM_ARGS="-o$OUTDIR -vvv $ARGS" $DEBUGGER $CLANG -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LIBLCM" -c "$@"
+
 
 if [[ "$OPEN" ]]; then
     make2 -sj

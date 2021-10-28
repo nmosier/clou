@@ -254,6 +254,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         func(store);
     }
 #elif 1
+    // Sources new_sources;
     for (const auto& store_pair : rf_sources(load)) {
         const NodeRef store = store_pair.first;
         const z3::expr& cond = store_pair.second;
@@ -261,8 +262,12 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         
         const std::string desc = util::to_string(store, " -rf-> ", load).c_str();
         solver.add(cond, desc.c_str());
+        if (solver.check() != z3::sat) { continue; }
+        // new_sources.insert(store_pair);
+        // TODO: need to separately check if this is due to something else
         func(store);
     }
+    // rf_sources(load, std::move(new_sources));
 #else
     const aeg::Node& load_node = aeg.lookup(load);
     for (const auto& store_pair : rf_sources(load)) {
@@ -389,8 +394,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     }
     
     if (loads.size() == deps().size()) {
-        assert(solver.check() == z3::sat);
-        const z3::eval eval {solver.get_model()};
+        z3_eval;
         
         const SpectreV1_Leakage leak = {
             .load0 = loads.at(1),
@@ -434,7 +438,6 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     
     /* traceback */
     if (access != transmitter) {
-        
         traceback(access, [&] (const NodeRef load) {
             std::cerr << name() << ": traceback " << access << " to " << load << "\n";
             run1(transmitter, load);
@@ -539,35 +542,35 @@ void Detector::precompute_rf(NodeRef load) {
     const aeg::Node& node = aeg.lookup(load);
     if (!node.may_read()) { return; }
     
-#if 0
+#define FILTER_USING_ORDER 1
     
-    z3::solver& solver = rf_solver;
+#if FILTER_USING_ORDER
+    NodeRefVec order;
+    aeg.po.reverse_postorder(std::back_inserter(order));
     
-    z3_scope;
-    solver.add(node.read, "read");
-    
-    const z3::expr store_sym = mems.at(load)[node.get_memory_address()];
-    std::vector<z3::expr> stores_con;
-    z3::enumerate(solver, store_sym, std::back_inserter(stores_con));
-    
-    for (const z3::expr& store_con : stores_con) {
-        const NodeRef store = store_con.get_numeral_uint();
-        out.emplace(store, store_sym == store_con);
+    std::unordered_map<NodeRef, NodeRefVec::const_iterator> ref2order;
+    for (auto it = order.begin(); it != order.end(); ++it) {
+        ref2order.emplace(*it, it);
     }
-    
-#else
+#endif
     
     assert(alias_mode.transient);
-    
-    NodeRefVec todo = {load};
+
+    NodeRefVec todo;
+    util::copy(aeg.po.po.rev.at(load), std::back_inserter(todo));
     NodeRefSet seen;
     while (!todo.empty()) {
         const NodeRef ref = todo.back();
         todo.pop_back();
         if (!seen.insert(ref).second) { continue; }
         
-        // verify ref is ancestor of pred
-        if (!aeg.po.is_ancestor(ref, load)) { continue; }
+#if FILTER_USING_ORDER
+        if (ref2order.at(ref) > ref2order.at(load)) {
+            std::cerr << "skipping rf " << ref << " " << load << "\n";
+            continue;
+            
+        }
+#endif
         
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.check_alias(load, ref)) {
@@ -581,16 +584,16 @@ void Detector::precompute_rf(NodeRef load) {
                 default: std::abort();
             }
         }
-        
-        for (NodeRef pred : aeg.po.po.rev.at(ref)) {
-            todo.push_back(pred);
-        }
+
+        util::copy(aeg.po.po.rev.at(ref), std::back_inserter(todo));
     }
     
-#endif
 }
 
 const Detector::Sources& Detector::rf_sources(NodeRef load) {
+    rf_source_count[load]++;
+    std::cerr << rf_source_count << "\n";
+    
     auto it = rf.find(load);
     if (it == rf.end()) {
         precompute_rf(load);
@@ -600,5 +603,8 @@ const Detector::Sources& Detector::rf_sources(NodeRef load) {
     return it->second;
 }
 
+void Detector::rf_sources(NodeRef load, Sources&& sources) {
+    rf[load] = sources;
+}
 
 }

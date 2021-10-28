@@ -45,3 +45,12 @@ foreach(STL ${STLS})
     -A "-Epo -d20 --spectre-v4 --traceback=2 --max-transient=25 --aa=transient -fcase_${STL} ${STL_ARGS}"
     )
 endforeach()
+
+set(LIBSODIUM ${CMAKE_CURRENT_SOURCE_DIR}/../../libsodium/src/libsodium)
+add_test(NAME spectre-v1-medium
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
+  -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-medium
+  -L $<TARGET_FILE:lcm>
+  -x "-Epo,tfo,rf,rfx,addr,data -d20 --spectre-v1=mode=classic --fast --aa=transient -fpoly1305_blocks"
+  ${LIBSODIUM}/crypto_onetimeauth/poly1305/donna/poly1305_donna.c -I ${LIBSODIUM}/include/sodium
+  )

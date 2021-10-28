@@ -87,6 +87,7 @@ struct eval {
         return e == model.eval(e, true);
     }
 };
+#define z3_eval const z3::eval eval {solver.get_model()}
 
 inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3::expr& v, const z3::expr& c) {
     return store(a, i, ite(c, v, a[i]));
@@ -148,6 +149,22 @@ inline z3::check_result check_force(z3::solver& solver, Args&&... args) {
             throw z3::exception("check result unknown");
     }
 }
+
+class checker {
+public:
+    checker(z3::solver& solver): solver(solver) {}
+    
+    z3::check_result operator()() {
+        if (!result) {
+            result = solver.check();
+        }
+        return *result;
+    }
+    
+private:
+    z3::solver& solver;
+    std::optional<z3::check_result> result;
+};
 
 }
 
