@@ -1,6 +1,7 @@
 
 #include "cfg/cfg.h"
 #include "util.h"
+#include "util/algorithm.h"
 
 /* Construction Algorithm
  * We will construct functions recursively. Constructing a function should return the
@@ -214,4 +215,18 @@ bool CFG::Node::may_read() const {
             return true;
         },
     }, v);
+}
+
+
+bool CFG::is_ancestor(NodeRef parent, NodeRef child) const {
+    NodeRefVec todo = {child};
+    NodeRefSet seen;
+    while (!todo.empty()) {
+        const NodeRef ref = todo.back();
+        todo.pop_back();
+        if (!seen.insert(ref).second) { continue; }
+        if (ref == parent) { return true; }
+        util::copy(po.rev.at(ref), std::back_inserter(todo));
+    }
+    return false;
 }

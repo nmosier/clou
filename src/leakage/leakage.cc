@@ -134,6 +134,105 @@ Detector::Mems Detector::get_mems() {
 }
 
 
+Detector::Mems Detector::get_mems_arch() {
+    z3::context& ctx = this->ctx();
+
+    NodeRefVec order;
+    aeg.po.reverse_postorder(std::back_inserter(order));
+    
+    const z3::expr init_mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<uint64_t>(aeg.entry)));
+    
+    Mems ins;
+    Mems outs = {{aeg.entry, init_mem}};
+    z3::expr mem = init_mem;
+    for (const NodeRef ref : order) {
+        if (ref == aeg.entry) { continue; }
+        const aeg::Node& node = aeg.lookup(ref);
+        ins.emplace(ref, mem);
+        
+        if (node.may_write()) {
+            mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<uint64_t>(ref)), node.arch && node.write);
+        }
+        
+        outs.emplace(ref, mem);
+    }
+    
+    return ins;
+}
+
+Detector::Mems Detector::get_mems_trans() {
+    z3::context& ctx = this->ctx();
+    
+    NodeRefVec order;
+    aeg.po.reverse_postorder(std::back_inserter(order));
+    
+    const z3::expr init_mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<uint64_t>(aeg.entry)));
+    
+    const auto apply_write = [&] (const NodeRef ref, z3::expr& mem) {
+        const aeg::Node& node = aeg.lookup(ref);
+        if (!node.may_write()) { return; }
+        mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<uint64_t>(ref)), node.exec() && node.write);
+    };
+    
+    Mems ins;
+    Mems outs = {{aeg.entry, init_mem}};
+
+    for (const NodeRef ref : order) {
+        if (ref == aeg.entry) { continue; }
+        const NodeRefSet& equivs = aeg.control_equivalents[ref];
+        if (equivs.empty()) {
+            
+            // old fashioned way: merge predecessors using ite
+            const auto tfos = aeg.get_nodes(Direction::IN, ref, aeg::Edge::TFO);
+            assert(!tfos.empty());
+            auto it = tfos.begin();
+            z3::expr mem = outs.at(it->first);
+            for (++it; it != tfos.end(); ++it) {
+                mem = z3::ite(it->second, outs.at(it->first), mem);
+            }
+            ins.emplace(ref, mem);
+            apply_write(ref, mem);
+            outs.emplace(ref, mem);
+
+        } else {
+            // get closest control-equivalent ancestor and set of intervening nodes
+            NodeRefVec todo = {ref};
+            NodeRefSet seen;
+            std::optional<NodeRef> equiv; // nearest equiv, initially unknown
+            while (!todo.empty()) {
+                const NodeRef cur = todo.back();
+                todo.pop_back();
+                
+                // check if found control-equivalent node
+                if (equivs.find(cur) != equivs.end()) {
+                    equiv = cur;
+                    continue;
+                }
+                
+                // check if seen
+                if (!seen.insert(cur).second) { continue; }
+                
+                // explore predecessors
+                util::copy(aeg.po.po.rev.at(cur), std::back_inserter(todo));
+            }
+            assert(equiv);
+            
+            // apply writes
+            z3::expr mem = outs.at(*equiv);
+            
+            for (auto it = order.begin(); *it != ref; ++it) {
+                apply_write(*it, mem);
+            }
+            ins.emplace(ref, mem);
+            apply_write(ref, mem);
+            outs.emplace(ref, mem);
+        }
+        
+    }
+    
+    return ins;
+}
+
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
 #if 0
     const z3::expr store_sym = mems.at(load)[aeg.lookup(load).get_memory_address()];
@@ -154,7 +253,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         solver.add(cond, util::to_string(store, " -rf-> ", load).c_str());
         func(store);
     }
-#else
+#elif 1
     for (const auto& store_pair : rf_sources(load)) {
         const NodeRef store = store_pair.first;
         const z3::expr& cond = store_pair.second;
@@ -164,43 +263,57 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         solver.add(cond, desc.c_str());
         func(store);
     }
+#else
+    const aeg::Node& load_node = aeg.lookup(load);
+    for (const auto& store_pair : rf_sources(load)) {
+        const NodeRef store = store_pair.first;
+        const aeg::Node& store_node = aeg.lookup(store);
+        
+        z3_scope scope;
+    }
+    
 #endif
 }
 
 
 void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
+    const aeg::Node& load_node = aeg.lookup(load);
+#if 0
+    assert(load_node.may_read());
+#else
+    z3_scope;
+    solver.add(load_node.exec() &&  load_node.read, util::to_string(load, ".read").c_str());
+    if (solver.check() != z3::sat) { return; }
+#endif
+    
     if (traceback_depth == max_traceback) {
         return;
     }
     
     const auto inc_depth = util::inc_scope(traceback_depth);
     
-    // function to trace back via addr+data
-    const auto traceback_dep = [&] (NodeRef access) {
-        const z3::scope scope {solver};
-        
-        // trace back via addr
-        const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
-        const auto datas = aeg.get_nodes(Direction::IN, access, aeg::Edge::DATA);
-        
-        // function to trace back addr or data
-        const auto traceback_dep_one = [&] (const auto& deps, const char *name) {
-            for (const auto& dep : deps) {
-                const z3::scope scope {solver};
-                solver.add(dep.second, util::to_string(dep.first, " -", name, "-> ", access).c_str());
-                func(dep.first);
-            }
-        };
-        
-        traceback_dep_one(addrs, "addr");
-        traceback_dep_one(datas, "data");
+    unsigned num_traced_back = 0;
+    const auto traceback_edge = [&] (aeg::Edge::Kind kind, NodeRef ref) {
+        const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
+        for (const auto& edge : edges) {
+            z3_scope;
+            solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
+            func(edge.first);
+        }
+        ++num_traced_back;
     };
     
-    // traceback via rf * addr+data
-    traceback_rf(load, traceback_dep);
+    // traceback via rf.data
+    traceback_rf(load, [&] (const NodeRef store) {
+        traceback_edge(aeg::Edge::DATA, store);
+    });
     
-    // traceback load via addr+data
-    traceback_dep(load);
+    // traceback via addr
+    traceback_edge(aeg::Edge::ADDR, load);
+    
+    if (num_traced_back == 0) {
+        trace("backtrack: no traceback edges\n");
+    }
 }
 
 
@@ -270,15 +383,12 @@ void SpectreV1_Detector::run_() {
 void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
     
-#if 1
-    if (solver.check() != z3::sat) { return; }
-#endif
+    if (solver.check() != z3::sat) {
+        trace("backtrack: unsat");
+        return;
+    }
     
     if (loads.size() == deps().size()) {
-#if 0
-        if (z3::check_force(solver) == z3::unsat) { return; }
-#endif
-        
         assert(solver.check() == z3::sat);
         const z3::eval eval {solver.get_model()};
         
@@ -299,11 +409,13 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     
     /* try committing load */
     {
-        
+
         const aeg::Edge::Kind dep_kind = cur_dep();
-        std::cerr << "dep kind: " << dep_kind << "\n";
         const std::string dep_str = util::to_string(dep_kind);
         const auto deps = aeg.get_nodes(Direction::IN, access, dep_kind);
+        
+        trace("trying to commit %lu (%zu deps)", access, deps.size());
+
         for (const auto& dep : deps) {
             z3_scope;
             const NodeRef load = dep.first;
@@ -321,10 +433,13 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     }
     
     /* traceback */
-    traceback(access, [&] (const NodeRef load) {
-        std::cerr << name() << ": traceback " << access << " to " << load << "\n";
-        run1(transmitter, load);
-    });
+    if (access != transmitter) {
+        
+        traceback(access, [&] (const NodeRef load) {
+            std::cerr << name() << ": traceback " << access << " to " << load << "\n";
+            run1(transmitter, load);
+        });
+    }
 }
 
 
@@ -451,13 +566,16 @@ void Detector::precompute_rf(NodeRef load) {
         todo.pop_back();
         if (!seen.insert(ref).second) { continue; }
         
+        // verify ref is ancestor of pred
+        if (!aeg.po.is_ancestor(ref, load)) { continue; }
+        
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.check_alias(load, ref)) {
                 case llvm::NoAlias: break;
                     
                 case llvm::MayAlias:
                 case llvm::MustAlias:
-                    out.emplace(ref, mems.at(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
+                    out.emplace(ref, mem(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
                     break;
                     
                 default: std::abort();

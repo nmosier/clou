@@ -38,10 +38,27 @@ protected:
     
     aeg::AEG& aeg;
     z3::solver& solver;
+#if 1
     Mems mems;
+#endif
+    Mems mems_arch, mems_trans;
+    
+    z3::expr mem(NodeRef ref) const {
+#if 0
+        const aeg::Node& node = aeg.lookup(ref);
+        return z3::ite(node.arch, mems_arch.at(ref), mems_trans.at(ref));
+#else
+        return mems.at(ref);
+#endif
+    }
+    
     EdgeVec flag_edges;
     
-    Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), mems(get_mems()), rf_solver(z3::duplicate(solver)) {}
+    Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver),
+#if 1
+    mems(get_mems()),
+#endif
+    mems_arch(get_mems_arch()), mems_trans(get_mems_trans()), rf_solver(z3::duplicate(solver)) {}
     
     z3::context& ctx() { return aeg.context.context; }
     
@@ -67,6 +84,9 @@ private:
     unsigned traceback_depth = 0;
     
     Mems get_mems();
+    
+    Mems get_mems_arch();
+    Mems get_mems_trans();
     
     RF rf;
     z3::solver rf_solver;

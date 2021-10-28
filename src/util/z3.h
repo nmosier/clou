@@ -111,7 +111,7 @@ struct scope {
  */
 template <typename OutputIt>
 OutputIt enumerate(z3::solver& solver, const z3::expr& expr, OutputIt out) {
-    const z3::scope scope {solver};
+    z3_scope;
     while (solver.check() == z3::sat) {
         const z3::eval eval {solver.get_model()};
         *out++ = eval(expr).e;

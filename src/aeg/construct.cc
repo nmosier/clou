@@ -6,6 +6,8 @@
 #include "taint_bv.h"
 #include "cfg/expanded.h"
 #include "util/algorithm.h"
+#include "util/iterator.h"
+#include "util/output.h"
 
 namespace aeg {
 
@@ -77,6 +79,8 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_dominators();
     logv(2) << "Constructing postdominators\n";
     construct_postdominators();
+    logv(2) << "Constructing control-equivalents\n";
+    construct_control_equivalents();
     
     // syntactic memory dependencies
     logv(2) << "Constructing addr\n";
@@ -386,6 +390,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         const llvm::Value *V;
         z3::expr e;
         std::optional<NodeRef> ref;
+        
+        ValueLoc vl() const { return {id, V}; }
     };
     std::vector<Info> addrs;
     std::unordered_map<std::pair<ID, const llvm::Value *>, NodeRef> seen;
@@ -429,16 +435,26 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     nos = musts = mays = 0;
     
     // TODO: pointers are sketchy, but can't use iterators.
-    std::unordered_map<const Info *, std::unordered_set<const Info *>> no_map;
+    using InfoSet = std::unordered_set<const Info *>;
+    using InfoRel = std::unordered_map<const Info *, InfoSet>;
+    
+    InfoRel no_map; // TODO: currently unused
+
+    using MustRel = std::unordered_map<ValueLoc, std::unordered_set<ValueLoc>>;
+    MustRel must_rel;
+    
+    using ValueLocSet = std::unordered_set<ValueLoc>;
+    ValueLocSet skip_vls; // skip because already saw 'must alias'
     
     for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
-        ValueLoc vl1 {it1->id, it1->V};
-        alias_rel.emplace(std::make_pair(vl1, vl1), llvm::AliasResult::MustAlias);
+        const ValueLoc vl1 = it1->vl();
+        if (util::contains(skip_vls, vl1)) { continue; }
         for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
             if (po.alias_valid(it1->id, it2->id)) {
                 const auto alias_res = AA.alias(it1->V, it2->V);
-                ValueLoc vl2 {it2->id, it2->V};
-                
+                const ValueLoc vl2 = it2->vl();
+                if (util::contains(skip_vls, vl2)) { continue; }
+
                 const auto is_arch = [&] (const Info& x) -> z3::expr {
                     if (x.ref) {
                         return lookup(*x.ref).arch;
@@ -450,27 +466,38 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 const z3::expr arch1 = is_arch(*it1);
                 const z3::expr arch2 = is_arch(*it2);
                 const z3::expr precond = alias_mode.transient ? context.TRUE : (arch1 && arch2);
-                                
+                
                 switch (alias_res) {
-                    case llvm::AliasResult::NoAlias:
+                    case llvm::AliasResult::NoAlias: {
                         no_map[&*it1].insert(&*it2);
                         no_map[&*it2].insert(&*it1);
                         constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
-                    case llvm::AliasResult::MayAlias:
+                    }
+                        
+                    case llvm::AliasResult::MayAlias: {
                         if (alias_mode.lax) {
                             constraints(z3::implies(precond, it1->e != it2->e), "may-alias");
                         }
                         ++mays;
                         break;
-                    case llvm::AliasResult::MustAlias:
+                    }
+                        
+                    case llvm::AliasResult::MustAlias: {
+                        must_rel[vl1].insert(vl2);
+                        must_rel[vl2].insert(vl1);
+                        skip_vls.insert(vl2);
                         constraints(z3::implies(precond, it1->e == it2->e), "must-alias");
                         ++musts;
                         break;
+                    }
+                        
                     default: std::abort();
                 }
+                
                 add_alias_result(vl1, vl2, alias_res);
+                
             }
         }
     }
@@ -484,6 +511,37 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     util::complete_subgraphs<const Info *>{no_map}(std::back_inserter(no_subgraphs));
     std::cerr << "NoAlias subgraphs: " << no_subgraphs.size() << "\n";
 #endif
+    
+#if 0
+    // analyze 'must alias'
+    using ValueLocSet = std::unordered_set<ValueLoc>;
+    std::vector<ValueLocSet> must_parts;
+    util::complete_subgraphs<ValueLoc>{must_rel}(std::back_inserter(must_parts));
+    std::cerr << "Must partitions: " << must_parts.size() << "\n";
+    
+    // get map from Info pointer to part
+    std::unordered_map<ValueLoc, const ValueLocSet *> info_to_part;
+    for (const Info& info : addrs) {
+        const ValueLoc vl = info.vl();
+        const auto it = std::find_if(must_parts.begin(), must_parts.end(), [&] (const ValueLocSet& set) -> bool {
+            return static_cast<bool>(util::contains(set, vl));
+        });
+        assert(it != must_parts.end());
+        info_to_part[vl] = &*it;
+    }
+    
+    // rewrite alias rel to be minimal
+    std::unordered_map<std::pair<const ValueLocSet *, const ValueLocSet *>, llvm::AliasResult> new_alias_rel;
+    for (const auto& p : alias_rel) {
+        const ValueLocSet *a = info_to_part.at(p.first.first);
+        const ValueLocSet *b = info_to_part.at(p.first.second);
+        new_alias_rel[std::make_pair(a, b)] = p.second;
+    }
+    
+    // now add assertions
+    
+#endif
+    
 }
 
 void AEG::construct_comx() {
@@ -739,6 +797,22 @@ AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
         }
     }
     return doms;
+}
+
+void AEG::construct_control_equivalents() {
+    // depends on AEG::construct_dominators(), AEG::construct_postdominators()
+    /* Find all node pairs that have each other as dominator/postdominator.
+     * Brute force: O(n^2)
+     */
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    for (auto it1 = order.begin(); it1 != order.end(); ++it1) {
+        for (auto it2 = std::next(it1); it2 != order.end(); ++it2) {
+            if (util::contains(postdominators.at(*it1), *it2) && util::contains(dominators.at(*it2), *it1)) {
+                control_equivalents[*it2].insert(*it1);
+            }
+        }
+    }
 }
 
 void AEG::construct_ctrl() {

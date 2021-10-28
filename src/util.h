@@ -240,4 +240,12 @@ op_scope<T> inc_scope(T& x) {
     };
 }
 
+#define trace(...) \
+do { \
+fprintf(stderr, "%s:%d: ", __FUNCTION__, __LINE__); \
+fprintf(stderr, __VA_ARGS__); \
+fprintf(stderr, "\n"); \
+} while (false)
+
 }
+

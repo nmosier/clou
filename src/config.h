@@ -25,12 +25,6 @@ struct AliasMode {
 };
 extern AliasMode alias_mode;
 
-enum class LeakageSource {
-    ADDR_DST,
-    CTRL_DST,
-};
-extern std::unordered_set<LeakageSource> leakage_sources;
-
 enum class LeakageClass {
     INVALID,
     SPECTRE_V1,

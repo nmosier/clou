@@ -107,9 +107,14 @@ private:
     
     using DominatorMap = NodeRefMap;
     DominatorMap construct_dominators_shared(Direction dir) const;
-    DominatorMap dominators, postdominators;
+public:
+    DominatorMap dominators; /*!< Maps nodes to their dominators (which are always ancestors)*/
+    DominatorMap postdominators; /*!< Maps nodes to their postdominators (which are always grandchildren) */
+    DominatorMap control_equivalents; /*!< Maps nodes to their control-equivalent ancestors */
+private:
     void construct_dominators() { dominators = construct_dominators_shared(Direction::OUT); }
     void construct_postdominators() { postdominators = construct_dominators_shared(Direction::IN); }
+    void construct_control_equivalents();
     
     unsigned leakage(z3::solver& solver);
     

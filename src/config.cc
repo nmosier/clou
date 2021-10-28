@@ -29,7 +29,6 @@ unsigned num_jobs = 1;
 unsigned rob_size = 10;
 unsigned max_traceback = 1;
 std::ofstream log_;
-std::unordered_set<LeakageSource> leakage_sources;
 LeakageClass leakage_class = LeakageClass::INVALID;
 std::optional<unsigned> max_transient_nodes;
 AliasMode alias_mode = {
@@ -84,7 +83,6 @@ only examine given functions
 }
 
 void initialize() {
-    leakage_sources = {LeakageSource::ADDR_DST};
     log_.open("log");
 }
 
@@ -140,7 +138,6 @@ int parse_args() {
     
     enum Option {
         SPECULATION_PRIMITIVES = 256,
-        LEAKAGE_SOURCES,
         MAX_TRANSIENT,
         AA_FLAGS,
         SPECTRE_V1,
@@ -161,7 +158,6 @@ int parse_args() {
         {"depth", required_argument, nullptr, 'd'},
         {"jobs", required_argument, nullptr, 'j'},
         {"speculation-primitives", required_argument, nullptr, SPECULATION_PRIMITIVES},
-        {"leakage-sources", required_argument, nullptr, LEAKAGE_SOURCES},
         {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
         {"aa", optional_argument, nullptr, AA_FLAGS},
         {"spectre-v1", optional_argument, nullptr, SPECTRE_V1},
@@ -214,20 +210,6 @@ int parse_args() {
                 num_jobs = std::stoul(optarg);
                 break;
                 
-            case LEAKAGE_SOURCES: {
-                leakage_sources.clear();
-                parse_list(optarg, std::inserter(leakage_sources, leakage_sources.end()), [] (const std::string& s) {
-                    if (s == "addr-dst") {
-                        return LeakageSource::ADDR_DST;
-                    } else if (s == "taint-trans") {
-                        return LeakageSource::CTRL_DST;
-                    } else {
-                        error("invalid leakage source '%s'", s.c_str());
-                    }
-                });
-                break;
-            }
-                
             case MAX_TRANSIENT:
                 max_transient_nodes = std::stoul(optarg);
                 break;
@@ -253,8 +235,6 @@ int parse_args() {
             }
             
             case SPECTRE_V1: {
-                leakage_sources.clear();
-
                 enum Key {
                     MODE,
                     COUNT
@@ -288,17 +268,6 @@ int parse_args() {
                         default: std::abort();
                     }
                 }
-                    
-                // TODO: shouldn't need to configure this
-                switch (spectre_v1_mode.mode) {
-                    case SpectreV1Mode::CLASSIC:
-                        leakage_sources = {LeakageSource::ADDR_DST};
-                        break;
-                    case SpectreV1Mode::BRANCH_PREDICATE:
-                        leakage_sources = {LeakageSource::CTRL_DST};
-                        break;
-                    default: std::abort();
-                }
                 
                 leakage_class = LeakageClass::SPECTRE_V1;
                 
@@ -307,7 +276,6 @@ int parse_args() {
                 
                 
             case SPECTRE_V4: {
-                leakage_sources.clear();
                 leakage_class = LeakageClass::SPECTRE_V4;
                 
                 enum Key {

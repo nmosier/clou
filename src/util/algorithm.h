@@ -85,5 +85,10 @@ private:
 };
 
 
+template <typename Container, typename OutputIt>
+OutputIt copy(const Container& container, OutputIt out) {
+    return std::copy(container.begin(), container.end(), out);
+}
+
 
 }
