@@ -17,7 +17,9 @@ extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives
 extern std::optional<unsigned> max_transient_nodes;
 extern unsigned max_traceback;
 extern bool witness_executions;
+extern bool partial_executions;
 extern bool fast_mode;
+
 
 struct AliasMode {
     bool transient; /*!< enable alias analysis on transient instructions too (default: off) */

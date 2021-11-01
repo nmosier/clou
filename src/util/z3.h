@@ -166,6 +166,33 @@ private:
     std::optional<z3::check_result> result;
 };
 
+
+template <typename InputIt, typename Op>
+z3::expr_vector transform(z3::context& ctx, InputIt begin, InputIt end, Op op) {
+    z3::expr_vector vec {ctx};
+    for (auto it = begin; it != end; ++it) {
+        vec.push_back(op(*it));
+    }
+    return vec;
+}
+
+template <typename InputIt, typename Op>
+z3::expr_vector transform(InputIt begin, InputIt end, Op op) {
+    assert(begin != end);
+    z3::context& ctx = op(*begin).ctx();
+    return transform(ctx, begin, end, op);
+}
+
+template <typename Container, typename Op>
+z3::expr_vector transform(z3::context& ctx, const Container& container, Op op) {
+    return transform(ctx, container.begin(), container.end(), op);
+}
+
+template <typename Container, typename Op>
+z3::expr_vector transform(const Container& container, Op op) {
+    return transform(container.begin(), container.end(), op);
+}
+
 }
 
 namespace std {

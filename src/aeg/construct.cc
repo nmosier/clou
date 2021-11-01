@@ -59,8 +59,10 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_addr_refs();
     logv(2) << "Constructing aliases\n";
     construct_aliases(AA);
+#if 0
     logv(2) << "Constructing arch order\n";
     construct_arch_order();
+#endif
     logv(2) << "Constructing com\n";
     construct_com();
 #if 0
@@ -325,29 +327,49 @@ void AEG::construct_po() {
         }
     }
     
+    const auto edge_exists = [&] (const auto& edge) -> z3::expr {
+        return edge->exists;
+    };
+    
+    
+    const auto count_func = partial_executions ? &z3::atmost : &z3::exactly;
+    
     // add 'exactly one successor' constraint
     for (const NodeRef src : node_range()) {
         if (exits.find(src) != exits.end()) { continue; }
         const auto edges = get_edges(Direction::OUT, src, Edge::PO);
-        z3::expr_vector vec {context};
-        for (const auto& e : edges) {
-            vec.push_back(e->exists);
-        }
+        const z3::expr_vector vec = z3::transform(edges, edge_exists);
         Node& src_node = lookup(src);
-        src_node.constraints(z3::implies(src_node.arch, z3::exactly(vec, 1)), "po-succ");
+        src_node.constraints(z3::implies(src_node.arch, count_func(vec, 1)), "po-succ");
     }
     
     // add 'exactly one predecessor' constraint
     for (const NodeRef dst : node_range()) {
         if (dst == entry) { continue; }
+        if (partial_executions && exits.find(dst) != exits.end()) { continue; }
         const auto edges = get_edges(Direction::IN, dst, Edge::PO);
-        z3::expr_vector vec {context};
-        for (const auto& e : edges) {
-            vec.push_back(e->exists);
-        }
+        const z3::expr_vector vec = z3::transform(edges, edge_exists);
         Node& dst_node = lookup(dst);
         dst_node.constraints(z3::implies(dst_node.arch, z3::exactly(vec, 1)), "po-pred");
     }
+    
+    if (partial_executions) {
+        const z3::expr_vector exit_archs = z3::transform(exits, [&] (const NodeRef ref) -> z3::expr {
+            return lookup(ref).arch;
+        });
+        constraints(z3::exactly(exit_archs, 1), "one-exit-partial");
+    }
+    
+#if 0
+    // only one cold start (predecessor with no po)
+    const z3::expr_vector arch_intros = z3::transform(node_range(), [&] (const NodeRef ref) -> z3::expr {
+        if (ref == entry) { return context.FALSE; }
+        const auto pos = get_edges(Direction::IN, ref, Edge::PO);
+        const auto vec = z3::transform(context.context, pos, edge_exists);
+        return !z3::implies(lookup(ref).arch, z3::mk_or(vec));
+    });
+    constraints(z3::exactly(arch_intros, partial_executions ? 1 : 0), "exactly-1-cold-po-start");
+#endif
 }
 
 void AEG::construct_tfo() {
@@ -865,7 +887,6 @@ void AEG::construct_ctrl() {
             }
         }
     }
-    
 }
 
 

@@ -43,6 +43,7 @@ SpectreV4Mode spectre_v4_mode = {
     .stb_size = 0,
 };
 bool witness_executions = true;
+bool partial_executions = false;
 bool fast_mode = false;
 
 // TODO: add automated way for describing default values
@@ -77,6 +78,7 @@ only examine given functions
     stb-size=<uint>       store buffer size
 --traceback <uint>   set max traceback via rf * (addr + data) edges.
 --witnesses <bool>   enable/disable generation of witness executions (default: on)
+--partial [<bool>]   model partial executions in AEG (default: false)
 --fast <bool>        enable/disable fast mode (default: off)
 )=";
     fprintf(f, s);
@@ -144,6 +146,7 @@ int parse_args() {
         SPECTRE_V4,
         TRACEBACK,
         WITNESSES,
+        PARTIAL,
         FAST,
     };
     
@@ -164,6 +167,7 @@ int parse_args() {
         {"spectre-v4", optional_argument, nullptr, SPECTRE_V4},
         {"traceback", required_argument, nullptr, TRACEBACK},
         {"witnesses", optional_argument, nullptr, WITNESSES},
+        {"partial", optional_argument, nullptr, PARTIAL},
         {"fast", optional_argument, nullptr, FAST},
         {nullptr, 0, nullptr, 0}
     };
@@ -331,10 +335,16 @@ int parse_args() {
                 break;
             }
                 
+            case PARTIAL: {
+                partial_executions = parse_bool_opt(optarg);
+                break;
+            }
+                
             case FAST: {
                 fast_mode = parse_bool_opt(optarg);
                 if (fast_mode) {
                     witness_executions = false;
+                    partial_executions = true;
                 }
                 break;
             }

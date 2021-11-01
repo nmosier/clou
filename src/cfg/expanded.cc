@@ -82,6 +82,25 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
     
     /* remaining tasks */
     resolve_refs(in);
+    
+#if 0
+    /* finally, add extra edges*/
+    if (partial_executions && true) {
+        // entry to all other nodes
+        for (NodeRef dst = 0; dst < size(); ++dst) {
+            if (dst == entry) { continue; }
+            add_edge(entry, dst);
+        }
+        
+        // all nodes to exits
+        for (const NodeRef exit : exits) {
+            for (NodeRef src = 0; src < size(); ++src) {
+                if (exits.find(src) != exits.end()) { continue; }
+                add_edge(src, exit);
+            }
+        }
+    }
+#endif
 }
 
 
