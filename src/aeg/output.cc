@@ -1,11 +1,47 @@
 #include "aeg.h"
 #include "fol.h"
+#include "cfg/expanded.h"
 
 namespace aeg {
 
 void AEG::dump_graph(const std::string& path) const {
     std::ofstream ofs {path};
     dump_graph(ofs);
+}
+
+AEG::Execution AEG::analyze_execution(const z3::eval& eval) const {
+    Execution exec;
+    z3::context& ctx = eval.ctx();
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    for (const NodeRef ref : order) {
+        const Node& node = lookup(ref);
+        
+        // arch
+        if (eval(node.arch)) {
+            exec.arch.push_back(ref);
+        }
+        
+        // trans
+        if (eval(node.trans)) {
+            exec.trans.push_back(ref);
+        }
+        
+        // spec gadget
+        if (eval(node.arch)) {
+            const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
+            const z3::expr_vector tfo_exists = z3::transform(ctx, tfos, [&] (const auto& tfo) -> z3::expr {
+                return tfo.second;
+            });
+            if (eval(z3::mk_or(tfo_exists))) {
+                exec.spec_gadget = ref;
+            }
+        }
+    }
+    
+    return exec;
 }
 
 void AEG::dump_graph(std::ostream& os) const {
@@ -78,6 +114,9 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
     splines = true;
     
     )=";
+    
+    // get execution info
+    const Execution execution = analyze_execution(eval);
     
     // define nodes
     unsigned next_id = 0;
@@ -180,7 +219,6 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
         std::apply(output_edge, edge);
     }
     
-#if 1
     // add tfo rollback edges
     for (const NodeRef ref : node_range()) {
         const Node& node = lookup(ref);
@@ -207,7 +245,20 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
             output_edge(trans_src, *arch_dst, Edge::TFO);
         }
     }
-#endif
+    
+    // add po, tfo edges to exit
+    {
+        const NodeRef exit = exit_con(eval);
+        
+        // find last arch node
+        output_edge(*std::next(execution.arch.rbegin()), exit, Edge::PO);
+        
+        // find last trans node
+        if (execution.arch.back() == execution.spec_gadget && !execution.trans.empty()) {
+            output_edge(execution.trans.back(), exit, Edge::TFO);
+        }
+    }
+    
     
     os << "}\n";
 }

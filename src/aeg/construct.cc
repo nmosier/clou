@@ -307,7 +307,7 @@ void AEG::construct_trans() {
         if (max_transient_nodes) {
             max = std::min(max, *max_transient_nodes);
         }
-        constraints(z3::atmost(trans, max), "trans-limit");
+        constraints(z3::atmost(trans, max), "trans-limit-max");
     }
 } 
 

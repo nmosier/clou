@@ -153,6 +153,8 @@ public:
     void output_execution(const std::string& path, const z3::eval& eval, const EdgeVec& flag_edges = EdgeVec());
     
 private:
+    struct Execution;
+    Execution analyze_execution(const z3::eval& eval) const;
     
     Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind);
     const Edge *find_edge(NodeRef src, NodeRef dst, Edge::Kind kind) const;
@@ -267,5 +269,12 @@ template <typename Function> void AEG::for_each_node(Inst::Kind kind, Function f
         }
     }
 }
+
+
+struct AEG::Execution {
+    NodeRefVec arch;
+    NodeRefVec trans;
+    NodeRef spec_gadget;
+};
 
 }

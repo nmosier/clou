@@ -50,6 +50,11 @@ inline z3::expr exactly(const z3::expr_vector& exprs, unsigned count) {
     return lower && upper;
 }
 
+/// NOTE: bounds are inclusive
+inline z3::expr atleastmost(const z3::expr_vector& exprs, unsigned lower, unsigned upper) {
+    return z3::atleast2(exprs, lower) && z3::atmost2(exprs, upper);
+}
+
 
 inline bool to_bool(const z3::expr& e) {
     switch (e.bool_value()) {
@@ -85,6 +90,9 @@ struct eval {
     }
     z3::expr equal(const z3::expr& e) const {
         return e == model.eval(e, true);
+    }
+    z3::context& ctx() const {
+        return model.ctx();
     }
 };
 #define z3_eval const z3::eval eval {solver.get_model()}
