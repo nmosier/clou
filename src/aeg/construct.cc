@@ -277,10 +277,10 @@ void AEG::construct_arch() {
     Node& entry_node = lookup(entry);
     entry_node.constraints(entry_node.arch, "entry-arch");
     
-    constraints(std::transform_reduce(exits.begin(), exits.end(), context.FALSE, util::logical_or<z3::expr>(), [&] (NodeRef ref) -> z3::expr {
+    const z3::expr_vector exit_archs = z3::transform(exits, [&] (const NodeRef ref) -> z3::expr {
         return lookup(ref).arch;
-    }), "exit-arch");
-    // TODO: replace with "true", then substitute changes
+    });
+    constraints(z3::exactly(exit_archs, 1), "exit-arch");
 }
 
 void AEG::construct_trans() {
@@ -350,25 +350,21 @@ void AEG::construct_po() {
         const auto edges = get_edges(Direction::IN, dst, Edge::PO);
         const z3::expr_vector vec = z3::transform(edges, edge_exists);
         Node& dst_node = lookup(dst);
-        dst_node.constraints(z3::implies(dst_node.arch, z3::exactly(vec, 1)), "po-pred");
+        dst_node.constraints(z3::implies(dst_node.arch, count_func(vec, 1)), "po-pred");
     }
     
+#if 1
     if (partial_executions) {
-        const z3::expr_vector exit_archs = z3::transform(exits, [&] (const NodeRef ref) -> z3::expr {
-            return lookup(ref).arch;
+        // only one cold start (predecessor with no po)
+        const z3::expr_vector arch_intros = z3::transform(node_range(), [&] (const NodeRef ref) -> z3::expr {
+            if (ref == entry) { return context.FALSE; }
+            if (exits.find(ref) != exits.end()) { return context.FALSE; }
+            const auto pos = get_edges(Direction::IN, ref, Edge::PO);
+            const auto vec = z3::transform(context.context, pos, edge_exists);
+            return !z3::implies(lookup(ref).arch, z3::mk_or(vec));
         });
-        constraints(z3::exactly(exit_archs, 1), "one-exit-partial");
+        constraints(z3::exactly(arch_intros, 1), "exactly-1-cold-po-start");
     }
-    
-#if 0
-    // only one cold start (predecessor with no po)
-    const z3::expr_vector arch_intros = z3::transform(node_range(), [&] (const NodeRef ref) -> z3::expr {
-        if (ref == entry) { return context.FALSE; }
-        const auto pos = get_edges(Direction::IN, ref, Edge::PO);
-        const auto vec = z3::transform(context.context, pos, edge_exists);
-        return !z3::implies(lookup(ref).arch, z3::mk_or(vec));
-    });
-    constraints(z3::exactly(arch_intros, partial_executions ? 1 : 0), "exactly-1-cold-po-start");
 #endif
 }
 
