@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstdio>
+#include <sys/file.h>
 
 #include "util.h"
 
@@ -21,7 +22,7 @@ private:
     int fd;
     
     void lock(int operation) const {
-        if (flock(fd, operation) < 0) {
+        if (::flock(fd, operation) < 0) {
             throw util::syserr();
         }
     }
