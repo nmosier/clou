@@ -195,7 +195,7 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
                 map[p.first].insert(p.second.begin(), p.second.end());
             }
             
-#if 0
+#if 1
             // check if done
             if (util::subset(po.fwd.at(pred), done)) {
                 maps.erase(pred);
@@ -203,7 +203,7 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
 #endif
         }
 
-        const Node& node = lookup(ref);
+        Node& node = lookup(ref);
         
         std::visit(util::overloaded {
             [&] (const llvm::Instruction *I) {
@@ -215,8 +215,28 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
             [] (Entry) {},
             [] (Exit) {},
         }, node.v);
+        
+        /* resolve refs */
+        node.refs.clear();
+        std::visit(util::overloaded {
+            [&] (const llvm::Instruction *I) {
+                for (const llvm::Value *V : I->operand_values()) {
+                    resolve_single_ref(I, V, in,
+                                       maps,
+                                       node, ref);
+                }
+            },
+            [&] (const Node::Call& call) {
+                resolve_single_ref(call.C, call.arg, in,
+                                   maps,
+                                   node, ref);
+            },
+            [&] (Entry) {},
+            [&] (Exit) {},
+        }, node.v);
     }
     
+#if 0
     /* Now resolve refs */
     for (const NodeRef ref : order) {
         Node& node = lookup(ref);
@@ -238,6 +258,7 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
             [&] (Exit) {},
         }, node.v);
     }
+#endif
 }
 
 NodeRef Expand_SpectreV1::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 namespace util {
 
 template <typename Container, typename... Args>
@@ -70,6 +72,68 @@ TransformOutputIterator<T, U, OutputIt> make_transform_output_iterator(OutputIt 
 }
 
 
+#if 0
+template <typename T, typename Iter>
+class FilterIterator {
+    using Traits = std::iterator_traits<Iter>;
+public:
+    using value_type = T;
+    using filter_type = std::function<bool (const T&)>;
+    
+    FilterIterator() {}
+    FilterIterator(const Iter& it, const Iter& end, filter_type filter): it(it), end(end), filter(filter) {}
+    
+    typename Traits::reference operator*() {
+        return *it;
+    }
+    
+    typename Traits::const_reference operator*() const {
+        return *it;
+    }
+    
+    typename Traits::pointer operator->() {
+        return it.operator->();
+    }
+    
+    typename Traits::const_pointer operator->() const {
+        return it.operator->();
+    }
+    
+    FilterIterator& operator++() {
+        return inc();
+    }
+    
+    FilterIterator& operator++(int) {
+        return inc();
+    }
+    
+    bool operator==(const FilterIterator& other) const {
+        return it == other.it;
+    }
+    
+    bool operator!=(const FilterIterator& other) const {
+        return !(*this == other);
+    }
+    
+private:
+    Iter it;
+    Iter end;
+    filter_type filter;
+    
+    void advance() {
+        while (it != end && !filter(*it)) {
+            ++it;
+        }
+    }
+    
+    FilterIterator& inc() {
+        assert(it != end);
+        ++it;
+        advance();
+        return *this;
+    }
+};
+#endif
 
 
 }

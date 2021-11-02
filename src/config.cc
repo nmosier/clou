@@ -47,6 +47,7 @@ bool witness_executions = true;
 bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
+bool output_graphs = true;
 
 SharedDatabaseListSet analyzed_functions;
 
@@ -348,6 +349,7 @@ int parse_args() {
                 if (fast_mode) {
                     witness_executions = false;
                     partial_executions = true;
+                    output_graphs = false;
                 }
                 break;
             }

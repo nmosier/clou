@@ -248,7 +248,7 @@ struct hash<CFG::ID> {
 
 template <typename OutputIt>
 void CFG::reverse_postorder(OutputIt out) const {
-    std::unordered_set<NodeRef> done;
+    NodeRefSet done;
     std::vector<NodeRef> order;
     postorder_rec(done, order, entry);
     std::copy(order.rbegin(), order.rend(), out) ;
@@ -256,7 +256,7 @@ void CFG::reverse_postorder(OutputIt out) const {
 
 template <typename OutputIt>
 void CFG::postorder(OutputIt out) const {
-    std::unordered_set<NodeRef> done;
+    NodeRefSet done;
     std::vector<NodeRef> order;
     postorder_rec(done, order, entry);
     std::copy(order.begin(), order.end(), out);

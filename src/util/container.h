@@ -35,16 +35,39 @@ public:
         insert(first, last);
     }
     
-    natural_set(natural_set&& other): size_(other.size_), v(std::move(other.v)) {}
+    natural_set(const natural_set& other) {
+        *this = other;
+    }
+    
+    natural_set(natural_set&& other) {
+        *this = other;
+    }
     
     natural_set(std::initializer_list<value_type> init): size_(0) {
         insert(init);
+    }
+    
+    natural_set& operator=(natural_set&& other) {
+        size_ = other.size_; other.size_ = 0;
+        v = std::move(other.v);
+    }
+    
+    natural_set& operator=(const natural_set& other) {
+        size_ = other.size_;
+        v = other.v;
     }
     
     /* ITERATORS */
     
     class iterator {
     public:
+        /* ITERATOR TRAITS */
+        using difference_type = std::ptrdiff_t;
+        using value_type = natural_set::value_type;
+        using pointer = void;
+        using reference = value_type;
+        using iterator_category = std::bidirectional_iterator_tag;
+        
         iterator() {}
         
         value_type operator*() const {
@@ -215,7 +238,7 @@ public:
     
     /* COMPARISONS */
     
-    bool operator==(const natural_set& other) {
+    bool operator==(const natural_set& other) const {
         if (size() != other.size()) {
             return false;
         }
@@ -223,7 +246,7 @@ public:
         return std::equal(v.begin(), v.begin() + v_size, other.v.begin());
     }
     
-    bool operator!=(const natural_set& other) {
+    bool operator!=(const natural_set& other) const {
         return !(*this == other);
     }
     

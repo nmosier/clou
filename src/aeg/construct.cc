@@ -366,7 +366,6 @@ void AEG::construct_po() {
         dst_node.constraints(z3::implies(dst_node.arch, count_func(vec, 1)), "po-pred");
     }
     
-#if 1
     if (partial_executions) {
         // only one cold start (predecessor with no po)
         const z3::expr_vector arch_intros = z3::transform(node_range(), [&] (const NodeRef ref) -> z3::expr {
@@ -378,9 +377,9 @@ void AEG::construct_po() {
         });
         constraints(z3::exactly(arch_intros, 1), "exactly-1-cold-po-start");
     }
-#endif
 }
 
+/// depends on construct_po()
 void AEG::construct_tfo() {
     std::size_t nedges = 0;
     for (const NodeRef src : node_range()) {
@@ -412,6 +411,17 @@ void AEG::construct_tfo() {
         tfos.push_back(src_node.arch && dst_node.trans && edge.exists);
     });
     constraints(z3::atmost(tfos, 1), "at-most-one-spec-intro");
+    
+    // entry has no po or tfo successors
+    if (partial_executions) {
+        for (const Edge::Kind kind : std::array<Edge::Kind, 2> {Edge::PO, Edge::TFO}) {
+            const auto edges = get_nodes(Direction::OUT, entry, kind);
+            const z3::expr_vector v = z3::transform(edges, [&] (const auto& p) -> z3::expr {
+                return p.second;
+            });
+            lookup(entry).constraints(!z3::mk_or(v), util::to_string("entry-no-out-", kind));
+        }
+    }
 }
 
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
@@ -735,6 +745,7 @@ void AEG::construct_addr() {
     }
 }
 
+// TODO: rewrite in space-efficient way?
 void AEG::construct_dependencies() {
     /* Compute map of noderefs to set of noderefs it depends on.
      * FORWARD pass

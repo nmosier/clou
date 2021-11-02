@@ -24,6 +24,9 @@
 #include "util/output.h"
 #include "db.h"
 
+// tmp
+#include "util/container.h"
+
 using llvm::errs;
 
 template <typename Graph>
@@ -88,10 +91,12 @@ struct LCMPass: public llvm::FunctionPass {
             
             CFG_Calls cfg_calls {spec_depth};
             cfg_calls.construct(aegpo_unrolled);
-            output_(cfg_calls, "calls", F);
             
-            std::cerr << "outputting\n";
-            output_(aegpo_unrolled, "aegpo", F);
+            if (output_graphs) {
+                std::cerr << "outputting\n";
+                output_(cfg_calls, "calls", F);
+                output_(aegpo_unrolled, "aegpo", F);
+            }
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
             CFG_Expanded cfg_expanded {spec_depth};
@@ -114,21 +119,10 @@ struct LCMPass: public llvm::FunctionPass {
             }
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
             << cfg_expanded.size() << " (expanded)\n";
-            output_(cfg_expanded, "aegpoexp", F);
             
-#if 0
-            // DEBUG: show refs
-            for (NodeRef ref = 0; ref < aegpo_expanded.size(); ++ref) {
-                using namespace output;
-                const auto& node = aegpo_expanded.lookup(ref);
-                llvm::errs() << ref << ": " << node << ": {\n";
-                for (const auto& pair : node.refs) {
-                    llvm::errs() << "  " << *pair.first << ": " << pair.second << ",\n";
-                }
-                std::cerr << "}\n";
+            if (output_graphs) {
+                output_(cfg_expanded, "aegpoexp", F);
             }
-#endif
-            
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
             ProfilerStart(format_graph_path("out/%s.prof", F).c_str());

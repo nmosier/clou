@@ -77,3 +77,8 @@ target_link_libraries(db-test PRIVATE ${LLVM_LIBRARIES})
 if(APPLE)
   target_link_options(db-test PRIVATE -undefined dynamic_lookup)
 endif()
+
+
+add_executable(container-test
+  container-test.cc
+  )

@@ -20,6 +20,7 @@ extern bool witness_executions;
 extern bool partial_executions;
 extern bool fast_mode;
 extern bool batch_mode;
+extern bool output_graphs;
 
 
 struct AliasMode {

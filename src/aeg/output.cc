@@ -248,14 +248,20 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
     
     // add po, tfo edges to exit
     {
+#if 0
         const NodeRef exit = exit_con(eval);
+#else
+        auto arch_it = execution.arch.rbegin();
+        const NodeRef exit = *arch_it++;
+        const NodeRef last_arch = *arch_it++;
+#endif
         
         // find last arch node
-        output_edge(*std::next(execution.arch.rbegin()), exit, Edge::PO);
+        output_edge(last_arch, exit, Edge::PO);
         
         // find last trans node
-        if (execution.arch.back() == execution.spec_gadget && !execution.trans.empty()) {
-            output_edge(execution.trans.back(), exit, Edge::TFO);
+        if (last_arch == execution.spec_gadget && !execution.trans.empty()) {
+            output_edge(execution.trans.back()  , exit, Edge::TFO);
         }
     }
     

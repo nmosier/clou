@@ -7,7 +7,7 @@
 #include "dot.h"
 
 /* TODO
- * [ ] add Compare template parameter
+ * Parameterize the underlying containers.
  */
 
 template <typename T, typename Hash = std::hash<T>>
