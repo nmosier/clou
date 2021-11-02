@@ -7,6 +7,7 @@ add_subdirectory(aeg)
 add_subdirectory(leakage)
 add_subdirectory(util)
 
+
 add_library(lcm MODULE
   lcm.cc           lcm.h
   config.cc        config.h
@@ -27,6 +28,7 @@ add_library(lcm MODULE
   util.h
   xmacro.h
   db.cc db.h
+  profiler.h
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>
@@ -68,17 +70,4 @@ add_executable(tarjan-test
 endif()
 
 
-add_executable(db-test
-  db-test.cc
-  )
-target_compile_options(db-test PRIVATE -fno-rtti)
-target_link_directories(db-test PRIVATE ${LLVM_LIBRARY_DIRS})
-target_link_libraries(db-test PRIVATE ${LLVM_LIBRARIES})
-if(APPLE)
-  target_link_options(db-test PRIVATE -undefined dynamic_lookup)
-endif()
-
-
-add_executable(container-test
-  container-test.cc
-  )
+add_subdirectory(mon)
