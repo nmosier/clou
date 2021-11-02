@@ -61,8 +61,8 @@ void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {
                 expand.transition(task.fork, task.in_dst, succ, std::back_inserter(new_forks));
                 for (const Fork& new_fork : new_forks) {
                     queue.push_front(task_type {
-                        .src = dst,
                         .in_dst = succ,
+                        .src = dst,
                         .fork = new_fork,
                     });
                 }
