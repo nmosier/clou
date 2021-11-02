@@ -305,7 +305,7 @@ int parse_args() {
                 
                 char *value;
                 int idx;
-                while ((idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
+                while (optarg && (idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
                     if (args[idx] && value == nullptr) {
                         error("spectre-v4: suboption missing value");
                     }
@@ -321,7 +321,7 @@ int parse_args() {
                         default: std::abort();
                     }
                 }
-                if (optarg) {
+                if (optarg && *optarg) {
                     error("spectre-v4: invalid suboption");
                 }
                 
