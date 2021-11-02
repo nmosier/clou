@@ -22,6 +22,7 @@ if(DEFINED SANITIZE)
 endif()
 
 add_link_options(-w)
+add_compile_options(-Wno-c++20-designator)
 
 enable_testing()
 
