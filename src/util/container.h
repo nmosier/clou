@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <utility>
 #include <numeric>
+#include <optional>
 
 #include "functional.h"
 
@@ -74,13 +75,11 @@ public:
         iterator() {}
         
         value_type operator*() const {
-            return x;
+            return *x;
         }
         
         iterator& operator++() { return inc(); }
         iterator& operator++(int) { return inc(); }
-        iterator& operator--() { return dec(); }
-        iterator& operator--(int) { return dec(); }
         
         bool operator==(const iterator& other) const { return x == other.x; }
         bool operator!=(const iterator& other) const { return x != other.x; }
@@ -90,34 +89,30 @@ public:
         bool operator>=(const iterator& other) const { return x >= other.x; }
         
     private:
-        Key x;
+        std::optional<Key> x;
         const Vec *v;
         
         iterator(Key x, const Vec& v): x(x), v(&v) {
+            assert(x < v.size());
             advance();
         }
         
-        void advance() {
-            while (x < v->size() && !v->at(x)) {
-                ++x;
-            }
-        }
+        iterator(const Vec& v): x(std::nullopt), v(&v) {}
         
-        void retreat() {
-            while (x != std::numeric_limits<Key>::max() && !v->at(x)) {
-                --x;
+        void advance() {
+            assert(x);
+            while (*x < v->size() && !v->at(*x)) {
+                ++*x;
+            }
+            if (x == v->size()) {
+                x = std::nullopt;
             }
         }
         
         iterator& inc() {
-            ++x;
+            assert(x);
+            ++*x;
             advance();
-            return *this;
-        }
-        
-        iterator& dec() {
-            --x;
-            retreat();
             return *this;
         }
         
@@ -129,7 +124,7 @@ public:
     }
 
     iterator end() const noexcept {
-        return iterator(v.size(), v);
+        return iterator(v);
     }
     
     /* CAPACITY */
