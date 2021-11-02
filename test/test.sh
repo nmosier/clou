@@ -9,7 +9,7 @@ EOF
 }
 
 ARGS="${ARGS-}"
-CLANG='/opt/homebrew/opt/llvm@12/bin/clang-12'
+CLANG="$(which clang-12)"
 DEBUGGER=
 
 while getopts "hO:T:R:L:A:C:g" OPTC; do

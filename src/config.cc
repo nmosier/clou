@@ -321,7 +321,7 @@ int parse_args() {
                         default: std::abort();
                     }
                 }
-                if (idx < 0) {
+                if (optarg) {
                     error("spectre-v4: invalid suboption");
                 }
                 
