@@ -85,7 +85,7 @@ only examine given functions
 --fast <bool>        enable/disable fast mode (default: off)
 --batch              batch mode (when all leakage output is going to one file)
 )=";
-    fprintf(f, s);
+    fprintf(f, "%s", s);
 }
 
 void initialize() {
@@ -236,7 +236,7 @@ int parse_args() {
                     } else if (flag == "lax") {
                         alias_mode.lax = true;
                     } else {
-                        error("bad alias analysis flag '%s", suboptarg);
+                        error("bad alias analysis flag '%s", flag.c_str());
                     }
                 }
                 break;
