@@ -806,7 +806,7 @@ AEG::DependencyMap AEG::construct_dependencies2() {
 AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
     /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
      */
-    std::unordered_map<NodeRef, NodeRefSet> ins, outs;
+    std::unordered_map<NodeRef, NodeRefBitset> ins, outs;
     NodeRefVec order;
     switch (dir) {
         case Direction::IN:
@@ -829,24 +829,28 @@ AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
                 break;
         }
         const auto& preds = *preds_;
-        NodeRefSet& in = ins[ref];
+        NodeRefBitset& in = ins[ref];
         for (auto it = preds.begin(); it != preds.end(); ++it) {
-            const NodeRefSet& pred_out = outs.at(*it);
+            const NodeRefBitset& pred_out = outs.at(*it);
             if (it == preds.begin()) {
                 in = pred_out;
             } else {
-                NodeRefSet intersect;
+#if 0
+                NodeRefBitset intersect;
                 for (const NodeRef x : pred_out) {
                     if (in.find(x) != in.end()) {
                         intersect.insert(x);
                     }
                 }
                 in = std::move(intersect);
+#else
+                in &= pred_out;
+#endif
             }
         }
         
         // out
-        NodeRefSet& out = outs[ref] = in;
+        NodeRefBitset& out = outs[ref] = in;
         out.insert(ref);
     }
     

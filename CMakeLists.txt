@@ -17,8 +17,7 @@ link_directories(${LIBPROFILER_LIBRARY_DIRS})
 # set(SANITIZE undefined)
 add_compile_options(-fsanitize=${SANITIZE})
 add_link_options(-fsanitize=${SANITIZE})
-
-find_library(GDBM_LIBRARIES gdbm)
+add_link_options(-w)
 
 enable_testing()
 

@@ -93,18 +93,15 @@ public:
         const Vec *v;
         
         iterator(Key x, const Vec& v): x(x), v(&v) {
-            assert(x < v.size());
             advance();
         }
         
-        iterator(const Vec& v): x(std::nullopt), v(&v) {}
-        
         void advance() {
-            assert(x);
-            while (*x < v->size() && !v->at(*x)) {
-                ++*x;
+            if (x) {
+                const auto it = std::find(v->begin() + *x, v->end(), true);
+                x = it - v->begin();
             }
-            if (x == v->size()) {
+            if (x >= v->size()) {
                 x = std::nullopt;
             }
         }
@@ -124,7 +121,7 @@ public:
     }
 
     iterator end() const noexcept {
-        return iterator(v);
+        return iterator(v.size(), v);
     }
     
     /* CAPACITY */

@@ -179,7 +179,7 @@ Detector::Mems Detector::get_mems_trans() {
 
     for (const NodeRef ref : order) {
         if (ref == aeg.entry) { continue; }
-        const NodeRefSet& equivs = aeg.control_equivalents[ref];
+        const auto& equivs = aeg.control_equivalents[ref];
         if (equivs.empty()) {
             
             // old fashioned way: merge predecessors using ite
