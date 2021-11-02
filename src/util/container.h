@@ -4,6 +4,7 @@
 #include <limits>
 #include <type_traits>
 #include <utility>
+#include <numeric>
 
 #include "functional.h"
 
@@ -50,11 +51,13 @@ public:
     natural_set& operator=(natural_set&& other) {
         size_ = other.size_; other.size_ = 0;
         v = std::move(other.v);
+        return *this;
     }
     
     natural_set& operator=(const natural_set& other) {
         size_ = other.size_;
         v = other.v;
+        return *this;
     }
     
     /* ITERATORS */
@@ -229,7 +232,9 @@ public:
     }
 
     iterator find(value_type value) const {
-        if (v.at(value)) {
+        if (value >= v.size()) {
+            return end();
+        } else if (v.at(value)) {
             return iterator(value, v);
         } else {
             return end();
@@ -250,6 +255,24 @@ public:
         return !(*this == other);
     }
     
+    /* OPERATORS */
+    
+    natural_set& operator&=(const natural_set& other) {
+        const auto count = std::min(v.size(), other.v.size());
+        v.resize(count);
+        std::transform(v.begin(), v.end(), other.v.begin(), v.begin(), std::logical_and());
+        recompute_size();
+        return *this;
+    }
+    
+    natural_set& operator|=(const natural_set& other) {
+        const auto count = std::max(v.size(), other.v.size());
+        v.resize(count);
+        std::transform(v.begin(), v.begin() + other.v.size(), other.v.begin(), v.begin(), std::logical_or());
+        recompute_size();
+        return *this;
+    }
+    
 private:
     Vec v;
     size_type size_;
@@ -259,6 +282,11 @@ private:
             v.resize(value + 1);
         }
     }
+    
+    void recompute_size() {
+        size_ = std::reduce(v.begin(), v.end());
+    }
 };
+
 
 }
