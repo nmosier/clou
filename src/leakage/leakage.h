@@ -199,26 +199,45 @@ template <typename Leakage>
 void Detector_<Leakage>::run() {
     run_();
     
-    // open file
-    const std::string path = util::to_string(output_dir, "/leakage.txt");
-    std::ofstream ofs {path};
+    const std::ios::openmode openmode = batch_mode ? (std::ios::out | std::ios::app) : (std::ios::out);
     
-    // dump leakage
-    for (const auto& leak : leaks) {
-        leak.print_short(ofs);
-        ofs << " --";
-        leak.print_long(ofs, aeg);
-        ofs << "\n";
+    {
+        // open file
+        const std::string path = util::to_string(output_dir, "/leakage.txt");
+        std::ofstream ofs {
+            path,
+            openmode,
+        };
+        
+        // dump leakage
+        if (batch_mode) {
+            ofs << "\n" << aeg.function_name() << ": \n";
+        }
+        for (const auto& leak : leaks) {
+            leak.print_short(ofs);
+            ofs << " --";
+            leak.print_long(ofs, aeg);
+            ofs << "\n";
+        }
     }
     
-    // print out set of transmitters
-    std::unordered_set<const llvm::Instruction *> transmitters;
-    for (const auto& leak : leaks) {
-        transmitters.insert(aeg.lookup(leak.get_transmitter()).inst->get_inst());
-    }
-    llvm::errs() << "transmitters:\n";
-    for (const auto transmitter : transmitters) {
-        llvm::errs() << *transmitter << "\n";
+    {
+        const std::string path = util::to_string(output_dir, "/transmitters.txt");
+        std::ofstream ofs {
+            path,
+            openmode,
+        };
+        
+        // print out set of transmitters
+        std::unordered_set<const llvm::Instruction *> transmitters;
+        for (const auto& leak : leaks) {
+            transmitters.insert(aeg.lookup(leak.get_transmitter()).inst->get_inst());
+        }
+        llvm::errs() << "transmitters:\n";
+        for (const auto transmitter : transmitters) {
+            llvm::errs() << *transmitter << "\n";
+            ofs << *transmitter << "\n";
+        }
     }
 }
 

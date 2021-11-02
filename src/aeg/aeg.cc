@@ -50,8 +50,10 @@ void AEG::test() {
     });
     std::cerr << "Address edges: " << naddrs << "\n";
     if (naddrs > 0) {
+#if 0
         std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
         ofs << lookup(1).inst->get_inst()->getFunction()->getName().str() << "\n";
+#endif
     } else {
         return;
     }
@@ -268,6 +270,10 @@ AEG::ValueLoc AEG::get_value_loc(NodeRef ref) const {
         *po.lookup(ref).id,
         lookup(ref).get_memory_address_pair().first,
     };
+}
+
+std::string AEG::function_name() const {
+    return po.function_name();
 }
 
 }

@@ -21,7 +21,21 @@ Inst *Inst::Create(const llvm::Instruction *I) {
     } else if (llvm::isa<llvm::StoreInst>(I)) {
         return new StoreInst(I);
     } else {
-        assert(!I->mayReadOrWriteMemory());
+        if (I->mayReadOrWriteMemory()) {
+            llvm::errs() << *I << "\n";
+        }
+        
+        // DEBUG assertions
+        {
+            if (I->mayReadOrWriteMemory()) {
+                if (const auto *C = llvm::dyn_cast<llvm::CallInst>(I)) {
+                    assert(C->getNumArgOperands() == 0);
+                } else {
+                    assert(false);
+                }
+            }
+        }
+
         return new OtherInst(I);
     }
 }

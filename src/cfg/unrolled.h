@@ -56,6 +56,7 @@ private:
     void construct_function(llvm::Function *F, Port& port, IDs& ids);
     void construct_loop_forest(const LoopForest *LF, Port& port, IDs& ids);
     
+#if 0
     using ArgBinding = std::unordered_map<const llvm::Argument *, NodeRefSet>;
     using InstBinding = std::unordered_map<const llvm::Instruction *, NodeRefSet>;
     struct Binding {
@@ -75,6 +76,7 @@ private:
             }
         }
     };
+#endif
     
     template <typename InputIt>
     void connect(InputIt src_begin, InputIt src_end, NodeRef dst) {

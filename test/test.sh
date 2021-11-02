@@ -10,8 +10,9 @@ EOF
 
 ARGS="${ARGS-}"
 CLANG='/opt/homebrew/opt/llvm@12/bin/clang-12'
+DEBUGGER=
 
-while getopts "hO:T:R:L:A:C:" OPTC; do
+while getopts "hO:T:R:L:A:C:g" OPTC; do
     case $OPTC in
 	h)
 	    usage
@@ -35,6 +36,9 @@ while getopts "hO:T:R:L:A:C:" OPTC; do
 	C)
 	    CLANG="$OPTARG"
 	    ;;
+	g)
+	    DEBUGGER="lldb -- "
+	    ;;
 	*)
 	    usage >&2
 	    exit 1
@@ -45,8 +49,9 @@ done
 shift $((OPTIND-1))
 
 mkdir -p "$OUTDIR"
+rm -f "$OUTDIR/functions.txt"
 
-LCM_ARGS="-o$OUTDIR $ARGS" "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
+LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
 
 awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | sort > "$OUTDIR/leakage.txt.tmp"
 sort "$REF" > "$OUTDIR/ref.txt"

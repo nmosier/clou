@@ -3,6 +3,7 @@
 
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Operator.h>
+#include <llvm/IR/CFG.h>
 
 #include "cfg/unrolled.h"
 #include "util.h"
@@ -26,7 +27,6 @@ void CFG_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port,
         if (construct_call(C, port, ids)) {
             return;
         }
-        
     }
     
     const Node node {I, ids.id};
@@ -37,18 +37,7 @@ void CFG_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port,
 bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids) {
     llvm::Function *F = C->getCalledFunction();
     if (F == nullptr || F->isDeclaration()) {
-#if 0
-        llvm::errs() << "error: cannot introspect into function: " << *C << "\n";
-        std::ofstream ofs {"extern.txt", std::ofstream::ios_base::app};
-        std::string s;
-        llvm::raw_string_ostream os {s};
-        os << *C << "\n";
-        ofs << s;
-        ofs.close();
-        throw util::resume("cannot introspect into function");
-#else
         return false;
-#endif
     }
     
     const FuncID caller_id = ids.id.func;
@@ -80,20 +69,35 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
         Translations::Value value {callee_id};
         if (!C->getType()->isVoidTy()) {
             for (const auto& exit : port.exits) {
+                llvm::errs() << exit.first->back() << "\n";
                 const llvm::ReturnInst *R = llvm::cast<llvm::ReturnInst>(&exit.first->back());
+#if 0
                 if (R->getType()->isVoidTy()) {
                     const llvm::Value *V = R->getOperand(0);
                     value.Vs.insert(V);
                 }
+#else
+                if (const llvm::Value *RV = R->getReturnValue()) {
+                    if (llvm::isa<llvm::Instruction>(RV) || llvm::isa<llvm::Argument>(RV)) {
+                        value.Vs.insert(RV);
+                    }
+                }
+#endif
             }
         }
         translations.map.emplace(key, value);
+        
+        
     }
     
     return true;
 }
 
 void CFG_Unrolled::construct_block(const llvm::BasicBlock *B, Port& port, IDs& ids) {
+    if (llvm::predecessors(B).empty() && B != &B->getParent()->getEntryBlock()) {
+        return;
+    }
+    
     std::vector<Port> ports;
     ports.resize(B->size());
     
@@ -259,7 +263,13 @@ void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
     for (const llvm::BasicBlock& B : *F) {
         const llvm::Instruction *T = B.getTerminator();
         if (T->getNumSuccessors() == 0) {
-            LF.exits.push_back(&B);
+            if (llvm::isa<llvm::ReturnInst>(T)) {
+                LF.exits.push_back(&B);
+            } else if (llvm::isa<llvm::UnreachableInst>(T)) {
+            } else {
+                llvm::errs() << "unrecognized terminator instruction: " << *T << "\n";
+                std::abort();
+            }
         }
     }
     std::transform(F->begin(), F->end(), std::back_inserter(LF.blocks),
@@ -271,6 +281,7 @@ void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
     construct_loop_forest(&LF, port, ids);
 }
 
+#if 0
 std::optional<NodeRefSet> CFG_Unrolled::Binding::bind(const llvm::Value *V) const {
     if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
         if (insts.find(I) == insts.end()) {
@@ -289,3 +300,4 @@ std::optional<NodeRefSet> CFG_Unrolled::Binding::bind(const llvm::Value *V) cons
         return std::nullopt;
     }
 }
+#endif

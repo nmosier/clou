@@ -14,7 +14,7 @@ namespace aeg {
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // initialize nodes
     std::transform(po.nodes.begin(), po.nodes.end(), std::back_inserter(nodes),
-                   [&] (const auto& node) {
+                   [&] (const CFG::Node& node) {
         std::unique_ptr<Inst> inst(std::visit([] (const auto& x) {
             return Inst::Create(x);
         }, node.v));
@@ -76,7 +76,16 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     logv(2) << "Constructing comx\n";
     construct_comx();
     logv(2) << "Constructing dependencies\n";
+#if 0
     construct_dependencies();
+    {
+        // DEBUG
+        const auto deps2 = construct_dependencies2();
+        assert(dependencies == deps2);
+    }
+#else
+    dependencies = construct_dependencies2();
+#endif
     logv(2) << "Constructing dominators\n";
     construct_dominators();
     logv(2) << "Constructing postdominators\n";
@@ -137,11 +146,15 @@ void AEG::construct_nodes() {
             
             const auto& exec = po.execs.at(ref);
             const auto apply_exec = [&] (Option opt, const char *name) -> z3::expr {
+#if 1
                 switch (opt) {
                     case Option::MUST: return context.TRUE;
                     case Option::MAY: return context.make_bool(name);
                     case Option::NO: return context.FALSE;
                 }
+#else
+                return context.make_bool(name);
+#endif
             };
             
             node.arch = apply_exec(exec.arch, "arch");
@@ -686,7 +699,7 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
     for (NodeRef ref : xsaccesses) {
         vec.push_back(*lookup(ref).xsaccess_order);
     }
-    constraints(z3::distinct(vec), "xsaccess-order-distinct");
+    constraints(z3::distinct2(vec), "xsaccess-order-distinct");
 #endif
 }
 
@@ -758,6 +771,25 @@ void AEG::construct_dependencies() {
     }
     
     dependencies = res;
+}
+
+AEG::DependencyMap AEG::construct_dependencies2() {
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    DependencyMap map;
+    for (const NodeRef dst : order) {
+        const CFG::Node& node = po.lookup(dst);
+        NodeRefSet& out_set = map[dst];
+        for (const auto& ref_pair : node.refs) {
+            for (const NodeRef ref_ref : ref_pair.second) {
+                out_set.insert(ref_ref);
+                util::copy(map.at(ref_ref), std::inserter(out_set, out_set.end()));
+            }
+        }
+    }
+    
+    return map;
 }
 
 AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {

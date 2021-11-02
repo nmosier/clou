@@ -2,6 +2,7 @@
 #include <string>
 #include <signal.h>
 #include <regex>
+#include <unistd.h>
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -21,6 +22,7 @@
 #include "profiler.h"
 #include "util/llvm.h"
 #include "util/output.h"
+#include "db.h"
 
 using llvm::errs;
 
@@ -41,7 +43,16 @@ struct LCMPass: public llvm::FunctionPass {
     }
     
     virtual bool runOnFunction(llvm::Function& F) override {
+        llvm::errs() << "processing function '" << F.getName() << "'\n";
+        
         try {
+            check_config();
+            
+            if (analyzed_functions.contains(F.getName().str())) {
+                std::cerr << "skipping analyzed function " << F.getName().str() << "\n";
+                return false;
+            }
+            
             if (!function_names.empty()) {
                 bool match = false;
                 for (const std::string& function_regex : function_names) {
@@ -62,6 +73,19 @@ struct LCMPass: public llvm::FunctionPass {
             CFG_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
             
+#if 0
+            // DEBUG
+            for (const CFG::Node& node : aegpo_unrolled.nodes) {
+                if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+                    const llvm::Instruction *I = *Ip;
+                    if (llvm::dyn_cast<llvm::CallBase>(I)) {
+                        llvm::errs() << *I << "\n";
+                        std::abort();
+                    }
+                }
+            }
+#endif
+            
             CFG_Calls cfg_calls {spec_depth};
             cfg_calls.construct(aegpo_unrolled);
             output_(cfg_calls, "calls", F);
@@ -70,18 +94,18 @@ struct LCMPass: public llvm::FunctionPass {
             output_(aegpo_unrolled, "aegpo", F);
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
-            CFG_Expanded aegpo_expanded {spec_depth};
+            CFG_Expanded cfg_expanded {spec_depth};
             {
                 switch (leakage_class) {
                     case LeakageClass::SPECTRE_V1: {
                         Expand_SpectreV1 expand_spectre_v1 {cfg_calls, spec_depth};
-                        aegpo_expanded.construct(cfg_calls, expand_spectre_v1);
+                        cfg_expanded.construct(cfg_calls, expand_spectre_v1);
                         break;
                     }
                         
                     case LeakageClass::SPECTRE_V4: {
                         Expand_SpectreV4 expand_spectre_v4 {cfg_calls, spec_depth};
-                        aegpo_expanded.construct(cfg_calls, expand_spectre_v4);
+                        cfg_expanded.construct(cfg_calls, expand_spectre_v4);
                         break;
                     }
                         
@@ -89,8 +113,8 @@ struct LCMPass: public llvm::FunctionPass {
                 }
             }
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
-            << aegpo_expanded.size() << " (expanded)\n";
-            output_(aegpo_expanded, "aegpoexp", F);
+            << cfg_expanded.size() << " (expanded)\n";
+            output_(cfg_expanded, "aegpoexp", F);
             
 #if 0
             // DEBUG: show refs
@@ -112,7 +136,7 @@ struct LCMPass: public llvm::FunctionPass {
                 ProfilerStop();
                 std::exit(0);
             });
-            aeg::AEG aeg {aegpo_expanded};
+            aeg::AEG aeg {cfg_expanded};
             aeg.construct(AA, rob_size);
 #if 0
             output(aeg, "aeg", F);
@@ -122,6 +146,8 @@ struct LCMPass: public llvm::FunctionPass {
             llvm::errs() << "Testing...\n";
             aeg.test();
             llvm::errs() << "done\n";
+            
+            analyzed_functions.insert(F.getName().str());
             
         } catch (const util::resume& resume) {
             std::cerr << resume.what() << "\n";

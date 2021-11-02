@@ -19,6 +19,7 @@ extern unsigned max_traceback;
 extern bool witness_executions;
 extern bool partial_executions;
 extern bool fast_mode;
+extern bool batch_mode;
 
 
 struct AliasMode {
@@ -67,3 +68,9 @@ constexpr bool should_name_constraints = true;
 extern std::unordered_set<unsigned> include_edges;
 
 extern std::ofstream log_;
+
+
+void check_config();
+
+class SharedDatabaseListSet;
+extern SharedDatabaseListSet analyzed_functions;

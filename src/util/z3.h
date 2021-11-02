@@ -201,6 +201,14 @@ z3::expr_vector transform(const Container& container, Op op) {
     return transform(container.begin(), container.end(), op);
 }
 
+inline z3::expr distinct2(const z3::expr_vector& v) {
+    if (v.empty()) {
+        return v.ctx().bool_val(true);
+    } else {
+        return distinct(v);
+    }
+}
+
 }
 
 namespace std {

@@ -26,6 +26,7 @@ add_library(lcm MODULE
   timer.h
   util.h
   xmacro.h
+  db.cc db.h
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>
@@ -33,7 +34,7 @@ add_library(lcm MODULE
   )
 
 target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)
-target_link_libraries(lcm PRIVATE ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
+target_link_libraries(lcm PRIVATE ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES} ${GDBM_LIBRARIES})
 if(APPLE)
   target_link_options(lcm PRIVATE -undefined dynamic_lookup)
 endif()
@@ -64,4 +65,15 @@ if(0)
 add_executable(tarjan-test
   tarjan-test.cc
   )
+endif()
+
+
+add_executable(db-test
+  db-test.cc
+  )
+target_compile_options(db-test PRIVATE -fno-rtti)
+target_link_directories(db-test PRIVATE ${LLVM_LIBRARY_DIRS})
+target_link_libraries(db-test PRIVATE ${LLVM_LIBRARIES})
+if(APPLE)
+  target_link_options(db-test PRIVATE -undefined dynamic_lookup)
 endif()

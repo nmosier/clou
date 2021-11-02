@@ -109,6 +109,8 @@ public:
         });
     }
     
+    std::string function_name() const;
+    
     std::size_t size() const { return nodes.size(); }
     
     static bool alias_valid(const ID& a, const ID& b);

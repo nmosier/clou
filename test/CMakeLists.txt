@@ -1,4 +1,5 @@
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/test.sh ${CMAKE_CURRENT_BINARY_DIR}/test.sh)
+# configure_file(${CMAKE_CURRENT_SOURCE_DIR}/test.sh ${CMAKE_CURRENT_BINARY_DIR}/test.sh)
+set(TEST_SH ${CMAKE_CURRENT_SOURCE_DIR}/test.sh)
 
 file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c)
 
@@ -14,12 +15,12 @@ foreach(PHT_SRC ${PHT_SRCS})
     list(JOIN PHT_ARGLIST " " PHT_ARGS)
   endif()
   add_test(NAME ${PHT_NAME}
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/test.sh
+    COMMAND ${TEST_SH}
     -O ${CMAKE_CURRENT_BINARY_DIR}/${PHT_NAME}
     -T ${PHT_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo,tfo,addr,rf,co,rfx,cox -d20 -fvictim_function_.* --spectre-v1=mode=classic --aa=transient ${PHT_ARGS}"
+    -A "-Epo,tfo,addr,rf,co,rfx,cox -d20 -fvictim_function_.* --spectre-v1=mode=classic --aa=transient --partial ${PHT_ARGS}"
     )
 endforeach()
 
@@ -37,7 +38,7 @@ foreach(STL ${STLS})
     list(JOIN STL_ARGLIST " " STL_ARGS)
   endif()
   add_test(NAME ${STL_NAME}
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/test.sh
+    COMMAND ${TEST_SH}
     -O ${CMAKE_CURRENT_BINARY_DIR}/${STL_NAME}
     -T ${STL_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.ref

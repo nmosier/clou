@@ -10,6 +10,7 @@
 #include "config.h"
 #include "util.h"
 #include "uhb.h"
+#include "db.h"
 
 /* TODO
  * [ ] Handle function names
@@ -45,8 +46,9 @@ SpectreV4Mode spectre_v4_mode = {
 bool witness_executions = true;
 bool partial_executions = false;
 bool fast_mode = false;
+bool batch_mode = false;
 
-// TODO: add automated way for describing default values
+SharedDatabaseListSet analyzed_functions;
 
 namespace {
 
@@ -80,18 +82,13 @@ only examine given functions
 --witnesses <bool>   enable/disable generation of witness executions (default: on)
 --partial [<bool>]   model partial executions in AEG (default: false)
 --fast <bool>        enable/disable fast mode (default: off)
+--batch              batch mode (when all leakage output is going to one file)
 )=";
     fprintf(f, s);
 }
 
 void initialize() {
     log_.open("log");
-}
-
-void check_config() {
-    if (leakage_class == LeakageClass::INVALID) {
-        error("missing leakage class option (--spectre-v1, --spectre-v4, etc.)");
-    }
 }
 
 template <typename OutputIt, typename Handler>
@@ -123,6 +120,10 @@ bool parse_bool_opt(const char *s) {
     }
 }
 
+void initialize_post() {
+    analyzed_functions = SharedDatabaseListSet(util::to_string(output_dir, "/functions.txt"));
+}
+
 int parse_args() {
     if (char *line = getenv("LCM_ARGS")) {
         while (char *s = strsep(&line, " ")) {
@@ -148,6 +149,7 @@ int parse_args() {
         WITNESSES,
         PARTIAL,
         FAST,
+        BATCH,
     };
     
     struct option opts[] = {
@@ -169,6 +171,7 @@ int parse_args() {
         {"witnesses", optional_argument, nullptr, WITNESSES},
         {"partial", optional_argument, nullptr, PARTIAL},
         {"fast", optional_argument, nullptr, FAST},
+        {"batch", optional_argument, nullptr, BATCH},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -349,6 +352,11 @@ int parse_args() {
                 break;
             }
                 
+            case BATCH: {
+                batch_mode = parse_bool_opt(optarg);
+                break;
+            }
+                
             default:
                 usage();
                 exit(1);
@@ -357,11 +365,18 @@ int parse_args() {
     
     
     // check
-    check_config();
+    // check_config();
+    initialize_post();
     
     return 0;
 }
 
 const int parse_args_force = parse_args();
 
+}
+
+void check_config() {
+    if (leakage_class == LeakageClass::INVALID) {
+        throw util::resume("warning: missing leakage class option (--spectre-v1, --spectre-v4, ...)");
+    }
 }

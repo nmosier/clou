@@ -5,9 +5,10 @@
 #include "cfg/calls.h"
 #include "util.h"
 #include "util/output.h"
+#include "util/algorithm.h"
 
 template <typename Expand>
-void CFG_Expanded::construct(const CFG& in, Expand& expand) {
+void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {
     using Fork = typename Expand::Fork;
     
     /* create entry */
@@ -70,6 +71,32 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
             expansions[task.in_dst].insert(dst);
         }
     }
+}
+
+template <typename Expand>
+void CFG_Expanded::construct_partial(const CFG& in, Expand& expand) {
+    nodes = in.nodes;
+    po    = in.po;
+    entry = in.entry;
+    exits = in.exits;
+
+    for (NodeRef ref = 0; ref < size(); ++ref) {
+        expansions.emplace(ref, NodeRefSet {ref});
+        execs.emplace(ref, Exec {
+            .arch = Option::MAY,
+            .trans = Option::MAY,
+        });
+    }
+}
+
+template <typename Expand>
+void CFG_Expanded::construct(const CFG& in, Expand& expand) {
+    if (partial_executions) {
+        construct_partial(in, expand);
+    } else {
+        construct_full(in, expand);
+    }
+
     
     std::cerr << __FUNCTION__ << ": nodes: " << size() << "\n";
     
@@ -82,29 +109,12 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
     
     /* remaining tasks */
     resolve_refs(in);
-    
-#if 0
-    /* finally, add extra edges*/
-    if (partial_executions && true) {
-        // entry to all other nodes
-        for (NodeRef dst = 0; dst < size(); ++dst) {
-            if (dst == entry) { continue; }
-            add_edge(entry, dst);
-        }
-        
-        // all nodes to exits
-        for (const NodeRef exit : exits) {
-            for (NodeRef src = 0; src < size(); ++src) {
-                if (exits.find(src) != exits.end()) { continue; }
-                add_edge(src, exit);
-            }
-        }
-    }
-#endif
 }
 
 
-void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::unordered_map<NodeRef, RefMap> &maps, CFG::Node &node, NodeRef ref) {
+void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in,
+                                      std::unordered_map<NodeRef, RefMap> &maps,
+                                      CFG::Node &node, NodeRef ref) {
     using Key = Translations::Key;
     using Map = RefMap;
     enum ValueKind {
@@ -159,6 +169,10 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
      * We want to bind all llvm::Argument's and llvm::Instruction's. We should leave other kinds of llvm::Value's alone.
      */
     
+    /*
+     * Optimiaztion idea: remove from map once all successors have been processed
+     */
+    
     std::vector<NodeRef> order;
     reverse_postorder(std::back_inserter(order));
     using Translations = CFG_Unrolled::Translations;
@@ -166,16 +180,29 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
     using Map = std::unordered_map<Key, NodeRefSet, Key::Hash>;
     std::unordered_map<NodeRef, Map> maps;
     
+    NodeRefSet done;
     for (const NodeRef ref : order) {
+        done.insert(ref);
+
         // merge incoming
-        Map map;
+        Map& map = maps[ref];
         for (const NodeRef pred : po.rev.at(ref)) {
+            if (maps.find(pred) == maps.end()) {
+                llvm::errs() << "pred: " <<  lookup(pred) << "\n";
+            }
             const Map& a = maps.at(pred);
             for (const auto& p : a) {
                 map[p.first].insert(p.second.begin(), p.second.end());
             }
+            
+#if 0
+            // check if done
+            if (util::subset(po.fwd.at(pred), done)) {
+                maps.erase(pred);
+            }
+#endif
         }
-        
+
         const Node& node = lookup(ref);
         
         std::visit(util::overloaded {
@@ -188,8 +215,6 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
             [] (Entry) {},
             [] (Exit) {},
         }, node.v);
-        
-        maps[ref] = std::move(map);
     }
     
     /* Now resolve refs */
@@ -199,11 +224,15 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
         std::visit(util::overloaded {
             [&] (const llvm::Instruction *I) {
                 for (const llvm::Value *V : I->operand_values()) {
-                    resolve_single_ref(I, V, in, maps, node, ref);
+                    resolve_single_ref(I, V, in,
+                                       maps,
+                                       node, ref);
                 }
             },
             [&] (const Node::Call& call) {
-                resolve_single_ref(call.C, call.arg, in, maps, node, ref);
+                resolve_single_ref(call.C, call.arg, in,
+                                   maps,
+                                   node, ref);
             },
             [&] (Entry) {},
             [&] (Exit) {},

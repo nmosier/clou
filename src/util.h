@@ -25,8 +25,15 @@ void log(const char *fmt, Args&&... args) {
 
 template <typename... Args>
 [[noreturn]] void error(const char *fmt, Args&&... args) {
+    llvm::errs() << "error: ";
     log(fmt, std::forward<Args>(args)...);
     exit(1);
+}
+
+template <typename... Args>
+void warning(const char *fmt, Args&&... args) {
+    llvm::errs() << "warning: ";
+    log(fmt, std::forward<Args>(args)...);
 }
 
 extern unsigned verbose;

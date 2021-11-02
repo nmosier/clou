@@ -57,6 +57,8 @@ public:
     
     void test();
     
+    std::string function_name() const;
+    
     std::size_t size() const { return nodes.size(); } /*!< Get the number of nodes in the graph */
     
     template <typename Function> void for_each_edge(Function f) { graph.for_each_edge(f); }
@@ -104,6 +106,7 @@ private:
     using DependencyMap = NodeRefMap;
     DependencyMap dependencies;
     void construct_dependencies();
+    DependencyMap construct_dependencies2();
     
     using DominatorMap = NodeRefMap;
     DominatorMap construct_dominators_shared(Direction dir) const;
