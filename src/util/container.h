@@ -6,6 +6,7 @@
 #include <utility>
 #include <numeric>
 #include <optional>
+#include <algorithm>
 
 #include "functional.h"
 
