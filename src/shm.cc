@@ -1,5 +1,6 @@
 #include <string>
 #include <system_error>
+#include <cassert>
 
 #include "shm.h"
 
