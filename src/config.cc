@@ -259,9 +259,9 @@ int parse_args() {
                 
                 char *value;
                 int idx;
-                while ((idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
+                while ((idx = ::getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
                     if (args[idx] && value == nullptr) {
-                        error("spectre-v1: suboption '%s' missing value", suboptarg);
+                        error("spectre-v1: suboption missing value");
                     }
                     switch (idx) {
                         case MODE: {
@@ -307,7 +307,7 @@ int parse_args() {
                 int idx;
                 while ((idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
                     if (args[idx] && value == nullptr) {
-                        error("spectre-v4: suboption '%s' missing value", suboptarg);
+                        error("spectre-v4: suboption missing value");
                     }
                     switch (idx) {
                         case PSF:
@@ -322,7 +322,7 @@ int parse_args() {
                     }
                 }
                 if (suboptarg != nullptr) {
-                    error("spectre-v4: invalid suboption '%s'", suboptarg);
+                    error("spectre-v4: invalid suboption");
                 }
                 
                 break;
