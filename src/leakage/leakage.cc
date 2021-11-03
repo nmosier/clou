@@ -457,7 +457,7 @@ SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
 
 void SpectreV4_Detector::run_() {
     for_each_transmitter(aeg::Edge::ADDR, [&] (const NodeRef transmitter) {
-        std::cerr << "transmitter " << transmitter << "\n";
+        std::cerr << "transmitter " << transmitter << " (" << solver.assertions().size() << " assertions)\n";
         leak.transmitter = transmitter;
         run_load(transmitter);
     });
