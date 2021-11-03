@@ -448,11 +448,11 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
 
 
 SpectreV1_Classic_Detector::DepVec SpectreV1_Classic_Detector::deps() const {
-    return {aeg::Edge::ADDR, aeg::Edge::ADDR};
+    return {aeg::Edge::ADDR_GEP, aeg::Edge::ADDR};
 }
 
 SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
-    return {aeg::Edge::ADDR, aeg::Edge::CTRL};
+    return {aeg::Edge::ADDR_GEP, aeg::Edge::CTRL};
 }
 
 
