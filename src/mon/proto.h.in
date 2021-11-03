@@ -1,0 +1,4 @@
+#pragma once
+
+${PROTO_INCLUDE_STATEMENTS}
+

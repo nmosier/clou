@@ -1,0 +1,23 @@
+syntax = "proto2";
+
+package mon;
+
+message Function {
+  required string name = 1;
+}
+
+message FunctionCompleted {
+  required Function func = 1;
+}
+
+message FunctionStarted {
+  required Function func = 1;
+}
+
+
+message Message {
+    oneof message {
+        FunctionStarted   func_started   = 1;
+        FunctionCompleted func_completed = 2;
+    }
+}
