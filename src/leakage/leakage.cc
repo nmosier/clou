@@ -292,7 +292,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
 #endif
     
     if (traceback_depth == max_traceback) {
-        std::cerr << "backtracking: max traceback depth\n";
+        std::cerr << "backtracking: max traceback depth (" << max_traceback << ")\n";
         return;
     }
     
