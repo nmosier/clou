@@ -95,9 +95,14 @@ private:
     void construct_mem();
     void construct_comx();
     void construct_addr();
+    void construct_addr_gep();
+    static bool construct_addr_gep_nonconst(const llvm::Value *V);
     void construct_data();
     void construct_ctrl();
     void construct_taint();
+    
+    template <typename Func>
+    void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
 
     
     NodeRefSet spectrev4_siblings(NodeRef ref) const;

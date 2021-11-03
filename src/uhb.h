@@ -225,6 +225,7 @@ X(RFX)                                       \
 X(COX)                                       \
 X(FRX) \
 X(ADDR) \
+X(ADDR_GEP) \
 X(CTRL) \
 X(DATA)
     

@@ -175,6 +175,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
             {Edge::COX, "blue"},
             {Edge::FRX, "purple"},
             {Edge::ADDR, "brown"},
+            {Edge::ADDR_GEP, "brown"},
             {Edge::CTRL, "purple"},
             {Edge::DATA, "darkgreen"},
             {Edge::PO, "black"},

@@ -96,6 +96,10 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     // syntactic memory dependencies
     logv(2) << "Constructing addr\n";
     construct_addr();
+#if 1
+    logv(2) << "Constructing addr_gep\n";
+    construct_addr_gep();
+#endif
     logv(2) << "Constructing data\n";
     construct_data();
     logv(2) << "Constructing ctrl\n";
@@ -714,11 +718,137 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
 }
 
 
+template <typename Func>
+void AEG::for_each_dependency(NodeRef ref, const llvm::Value *V, Func func) {
+    const auto& refs = po.lookup(ref).refs;
+    const auto it = refs.find(V);
+    if (it == refs.end()) { return; }
+    for (const NodeRef ref_ref : it->second) {
+        NodeRefSet deps = dependencies.at(ref_ref);
+        deps.insert(ref_ref);
+        for (NodeRef dep : deps) {
+            func(dep);
+        }
+    }
+}
+
 void AEG::construct_addr() {
     /* Address dependencies are from a load to a subsequent access.
      * The address of the access should be dependent on the result of the load.
      * This means that the address operand of the access instruction should be the load or list it as a dependency.
      */
+    
+    for (NodeRef dst : node_range()) {
+        const Node& dst_node = lookup(dst);
+        if (!dst_node.may_access()) { continue; }
+        const MemoryInst *dst_inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get());
+        if (dst_inst == nullptr) { continue; }
+        const llvm::Value *dst_addr = dst_inst->get_memory_operand();
+        for_each_dependency(dst, dst_addr, [&] (const NodeRef src) {
+            const Node& src_node = lookup(src);
+            if (!src_node.may_read()) { return; }
+            add_unidir_edge(src, dst, Edge {
+                Edge::ADDR,
+                (src_node.exec() && src_node.read) && (dst_node.exec() && dst_node.access())
+            });
+        });
+    }
+}
+
+bool construct_addr_gep_nonconst(const llvm::Value *V) {
+    if (llvm::isa<llvm::Instruction>(V)) {
+        return true;
+    } else if (llvm::isa<llvm::Argument>(V)) {
+        return true;
+    } else if (llvm::isa<llvm::Constant>(V)) {
+        if (llvm::isa<llvm::ConstantData>(V)) {
+            return false;
+        } else if (llvm::isa<llvm::ConstantExpr>(V)) {
+            return false;
+        } else if (llvm::isa<llvm::GlobalValue>(V)) {
+            return true;
+        } else if (llvm::isa<llvm::BlockAddress>(V)) {
+            return true;
+        }
+    }
+    llvm::errs() << __FUNCTION__ << ": couldn't categorize as (non)const: " << *V << "\n";
+    std::abort();
+}
+
+void AEG::construct_addr_gep() {
+    
+    std::unordered_map<NodeRefPair, z3::expr> edges;
+    
+    for (NodeRef dst : node_range()) {
+        const Node& dst_node = lookup(dst);
+        if (!dst_node.may_access()) { continue; }
+        const MemoryInst *dst_inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get());
+        if (dst_inst == nullptr) { continue; }
+        const llvm::Value *dst_addr = dst_inst->get_memory_operand();
+        for_each_dependency(dst, dst_addr, [&] (const NodeRef gep) {
+            // gep must be a GetElementPtrInst instruction
+            const Node& gep_node = lookup(gep);
+            const llvm::GetElementPtrInst *gep_I = llvm::dyn_cast_or_null<llvm::GetElementPtrInst>(gep_node.inst->get_inst());
+            if (gep_I == nullptr) { return; }
+            
+            for (const llvm::Value *gep_idx : gep_I->indices()) {
+                for_each_dependency(gep, gep_idx, [&] (const NodeRef src) {
+                    // src must be load
+                    const Node& src_node = lookup(src);
+                    if (!src_node.may_read()) { return; }
+                    
+                    // edges
+                    const z3::expr cond = (src_node.exec() && src_node.read) && (gep_node.exec()) && (dst_node.exec() && dst_node.access());
+                    
+                    z3::expr& val = edges.emplace(NodeRefPair(src, dst), context.FALSE).first->second;
+                    val = val || cond;
+                });
+            }
+        });
+    }
+    
+    for (const auto& p : edges) {
+        add_unidir_edge(p.first.first, p.first.second, Edge {
+            Edge::ADDR_GEP,
+            p.second
+        });
+    }
+}
+
+#if 0
+void AEG::construct_addr_gep() {
+    /* For each possible dst (access), find a GEP on which the dst memory addr depends.
+     * src -dep-> GEP -dep-> dst,
+     * where src is read and dst is access
+     */
+    
+    for (const NodeRef dst : node_range()) {
+        // dst must be access
+        const Node& dst_node = lookup(dst);
+        if (!dst_node.may_access()) { continue; }
+        
+        // dst must be memory instruction
+        const MemoryInst *dst_inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get());
+        if (dst_inst == nullptr) { continue; }
+        
+        // get dependencies of dst's memory operand
+        const llvm::Value *dst_addr = dst_inst->get_memory_operand();
+        const auto& dst_refs = po.lookup(dst).refs;
+        const auto dst_addr_refs_it = dst_refs.find(dst_addr);
+        if (dst_addr_refs_it == dst_refs.end()) { continue; }
+        const auto& dst_addr_refs = dst_addr_refs_it->second;
+        
+        // iterate over GEP candidates
+        for (const NodeRef gep : dst_addr_refs) {
+            // gep must be GetElementPtr instruction
+            const llvm::Instruction *gep_I = lookup(gep).inst->get_inst();
+            if (!llvm::isa<llvm::GetElementPtrInst>(gep_I)) { continue; }
+            
+            // iterate over src candidates
+            depe
+        }
+    }
+    
     for (NodeRef access_ref : node_range()) {
         const Node& access_node = lookup(access_ref);
         if (!access_node.may_access()) { continue; }
@@ -744,6 +874,7 @@ void AEG::construct_addr() {
         }
     }
 }
+#endif
 
 // TODO: rewrite in space-efficient way?
 void AEG::construct_dependencies() {

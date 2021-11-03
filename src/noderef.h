@@ -23,3 +23,4 @@ NodeRefMap& operator+=(NodeRefMap& a, const NodeRefMap& b);
 
 using NodeRefBitset = util::natural_set<NodeRef>;
 using NodeRefBitmap = std::unordered_map<NodeRef, NodeRefBitset>;
+using NodeRefPair = std::pair<NodeRef, NodeRef>;
