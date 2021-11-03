@@ -467,6 +467,9 @@ void SpectreV4_Detector::run_load(NodeRef access) {
     // bind loads
     {
         const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
+        if (addrs.empty()) {
+            std::cerr << "no addrs\n";
+        }
         for (const auto& addr : addrs) {
             z3_scope;
             const NodeRef load = addr.first;
