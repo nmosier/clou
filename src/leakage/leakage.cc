@@ -480,6 +480,8 @@ void SpectreV4_Detector::run_load(NodeRef access) {
             solver.add(aeg.lookup(load).trans, "load.trans");
             if (solver.check() == z3::sat) {
                 run_bypassed_store();
+            } else {
+                std::cerr << "unsat, backtracking\n";
             }
         }
     }
@@ -493,6 +495,7 @@ void SpectreV4_Detector::run_load(NodeRef access) {
 
 
 void SpectreV4_Detector::run_bypassed_store() {
+    std::cerr << __FUNCTION__ << "\n";
     traceback_rf(leak.load, [&] (const NodeRef bypassed_store) {
         z3_scope;
         leak.bypassed_store = bypassed_store;
@@ -507,6 +510,7 @@ void SpectreV4_Detector::run_bypassed_store() {
 
 
 void SpectreV4_Detector::run_sourced_store() {
+    std::cerr << __FUNCTION__ << "\n";
     for (const NodeRef sourced_store : aeg.node_range()) {
         z3_scope;
 
