@@ -1,6 +1,7 @@
 .SUFFIXES:
 
-CLANG = clang
+CLANG ?= clang
+LLVM_DIS ?= llvm-dis
 CFLAGS += -fdeclspec
 
 
@@ -8,7 +9,7 @@ CFLAGS += -fdeclspec
 	$(CLANG) $(CFLAGS) -c -emit-llvm -o $@ $<
 
 %.ll: %.bc
-	llvm-dis < $< > $@
+	$(LLVM_DIS) < $< > $@
 
 
 LIBSODIUM = ../../libsodium/src/libsodium

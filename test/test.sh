@@ -11,8 +11,9 @@ EOF
 ARGS="${ARGS-}"
 CLANG="$(which clang-12)"
 DEBUGGER=
+VALGRIND=
 
-while getopts "hO:T:R:L:A:C:g" OPTC; do
+while getopts "hO:T:R:L:A:C:gV" OPTC; do
     case $OPTC in
 	h)
 	    usage
@@ -39,6 +40,9 @@ while getopts "hO:T:R:L:A:C:g" OPTC; do
 	g)
 	    DEBUGGER="lldb -- "
 	    ;;
+	V)
+	    VALGRIND="valgrind -- "
+	    ;;
 	*)
 	    usage >&2
 	    exit 1
@@ -51,15 +55,31 @@ shift $((OPTIND-1))
 mkdir -p "$OUTDIR"
 rm -f "$OUTDIR/functions.txt"
 
-LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
+LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
 
-awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | sort > "$OUTDIR/leakage.txt.tmp"
-sort "$REF" > "$OUTDIR/ref.txt"
+preprocess() {
+    grep -v '^$' | sort | tr -s ' '
+}
+
+awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | preprocess | awk '
+{
+  for (i = 1; i <= NF; ++i) {
+    if (!($i ~ /#[[:digit:]]+/)) {
+      if (i > 1) {
+        printf " ";
+      }
+      printf "%s", $i;
+    }
+  }
+  printf "\n";
+}
+' > "$OUTDIR/leakage.txt.tmp"
+preprocess < "$REF" > "$OUTDIR/ref.txt"
 echo "ACTUAL:"
 cat "$OUTDIR/leakage.txt.tmp"
 echo "REFERENCE:"
-cat "$REF"
+cat "$OUTDIR/ref.txt"
 echo "COMM:"
-comm -23 "$REF" "$OUTDIR/leakage.txt.tmp"
+comm -23 "$OUTDIR/ref.txt" "$OUTDIR/leakage.txt.tmp"
 COMM=$(comm -23 "$OUTDIR/ref.txt" "$OUTDIR/leakage.txt.tmp")
 ! [[ "$COMM" ]]
