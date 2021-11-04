@@ -8,6 +8,10 @@
 #include <sstream>
 #include <chrono>
 #include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <mutex>
+#include <thread>
 
 #include <curses.h>
 
@@ -20,6 +24,8 @@ const char *prog;
 namespace {
 int argc;
 char **argv;
+
+const char *path;
 
 void perror_exit(const char *s) {
     fprintf(stderr, "%s: %s: %s\n", prog, s, std::strerror(errno));
@@ -73,10 +79,26 @@ int main(int argc, char *argv[]) {
     }
     
     const char *path = nextarg();
+    ::path = path;
     
     int fd;
-    if ((fd = ::open(path, O_RDONLY)) < 0) {
-        perror_exit("open");
+    if ((fd = ::socket(PF_LOCAL, SOCK_STREAM, 0)) < 0) {
+        perror_exit("socket");
+    }
+    
+    // cleanup
+    std::atexit([] () {
+        ::unlink(::path);
+    });
+    
+    struct sockaddr_un addr;
+    addr.sun_family = AF_LOCAL;
+    ::strlcpy(addr.sun_path, path, sizeof(addr.sun_path));
+    if (::bind(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) < 0) {
+        perror_exit("bind");
+    }
+    if (::listen(fd, 16) < 0) {
+        perror_exit("listen");
     }
 
     server(fd);
@@ -160,6 +182,12 @@ struct CompletedJob: Job {
     Duration duration;
     
     CompletedJob(const RunningJob& job): Job(job), duration(job.duration.duration()) {}
+    
+    virtual void display() override {
+        Job::display();
+        ::addstr(" ");
+        duration.display();
+    }
 };
 
 template <typename Subcomponent>
@@ -169,29 +197,42 @@ struct ComponentList: Component {
     
     Vec vec;
     std::string sep = "\n";
+    unsigned limit;
+    
+    ComponentList(unsigned limit): limit(limit) {}
     
     virtual void display() override {
-        for (auto it = vec.begin(); it != vec.end(); ++it) {
-            if (it != vec.begin()) {
+        for (unsigned i = 0; i < std::min<unsigned>(limit, vec.size()); ++i) {
+            if (i != 0) {
                 ::addstr(sep.c_str());
             }
-            it->display();
+            vec[i].display();
         }
     }
 };
 
 struct Monitor: Component {
     /* Control stuff */
-    int fd;
+    std::mutex mutex;
+    int server_sock;
+    std::thread listen_thd;
+    std::vector<std::thread> client_thds;
+    std::thread display_thd;
     std::unordered_set<std::string> analyzed_functions;
 
     /* Display stuff */
-    ComponentList<RunningJob> running_jobs;
-    ComponentList<CompletedJob> completed_jobs;
+    unsigned msgs = 0;
+    ComponentList<RunningJob> running_jobs {16};
+    ComponentList<CompletedJob> completed_jobs {16};
     
-    Monitor(int fd): fd(fd) {}
+    /** NOTE: \p server_sock must already be set to listening. */
+    Monitor(int server_sock): server_sock(server_sock) {}
     
     virtual void display() override {
+        static unsigned i = 0;
+        ::printw("%u\n", i++);
+        ::printw("MESSAGES: %u\n", msgs);
+        ::printw("CLIENTS: %zu\n", client_thds.size());
         ::addstr("RUNNING:\n");
         running_jobs.display();
         ::addstr("\n\nCOMPLETED:\n");
@@ -202,7 +243,7 @@ struct Monitor: Component {
     void run();
     
 private:
-    void run_body();
+    void run_body(int client_sock);
     
     void handle_func_started(const mon::FunctionStarted& msg);
     void handle_func_completed(const mon::FunctionCompleted& msg);
@@ -210,39 +251,84 @@ private:
 
 
 void Monitor::run() {
-    struct pollfd pfd = {
-        .fd = fd,
-        .events = POLLIN,
-    };
-    while (true) {
-        const int poll_res = ::poll(&pfd, 1, 0);
-        if (poll_res < 0) {
-            perror_exit("poll");
-        }
-        if (poll_res > 0) {
-            if (pfd.revents == POLLIN) {
-                run_body();
-            } else {
-                std::cerr << "error: unexpected poll event on fd\n";
-                std::abort();
+    // listen for clients
+    listen_thd = std::thread {
+        [&] () {
+            while (true) {
+                struct sockaddr_un addr;
+                socklen_t addrlen = sizeof(addr);
+                int client_sock;
+                if ((client_sock = ::accept(server_sock, reinterpret_cast<struct sockaddr *>(&addr), &addrlen)) < 0) {
+                    std::perror("accept");
+                } else {
+                    std::unique_lock<std::mutex> lock {mutex};
+                    client_thds.emplace_back([this] (int client_sock) {
+                        while (true) {
+                            struct pollfd pfd = {
+                                .fd = client_sock,
+                                .events = POLLIN,
+                            };
+                            if (::poll(&pfd, 1, -1) < 0) {
+                                perror_exit("poll");
+                            }
+                            
+                            /* check flags */
+                            if ((pfd.revents & POLLIN)) {
+                                this->run_body(pfd.fd);
+                            }
+                            if ((pfd.revents & POLLHUP)) {
+                                ::close(pfd.fd);
+                                return;
+                            }
+                            if ((pfd.revents & POLLNVAL)) {
+                                error("poll: invalid socket");
+                            }
+                            if ((pfd.revents & POLLERR)) {
+                                std::cerr << prog << ": error on socket, closing\n";
+                                ::close(pfd.fd);
+                                return;
+                            }
+                        }
+                    }, client_sock);
+                }
             }
         }
-        
-        // update screen
-        static unsigned i = 0;
-        ::clear();
-        ::printw("%u\n", i++);
-        display();
-        ::refresh();
+    };
+    
+    // display thread
+    display_thd = std::thread {
+        [this] () {
+            while (true) {
+                ::clear();
+                {
+                    std::unique_lock<std::mutex> lock {mutex};
+                    this->display();
+                }
+                ::refresh();
+                ::napms(100);
+            }
+        }
+    };
+    
+    listen_thd.join();
+    for (std::thread& thd : client_thds) {
+        thd.join();
     }
+    display_thd.join();
 }
 
-void Monitor::run_body() {
+void Monitor::run_body(int client_sock) {
+    ++msgs;
     mon::Message msg;
-    if (!msg.ParseFromFileDescriptor(fd)) {
+    
+    if (!msg.ParseFromFileDescriptor(client_sock)) {
         std::cerr << "warning: bad message\n";
         return;
     }
+    
+    ++msgs;
+    
+    std::unique_lock<std::mutex> lock {mutex};
     
     switch (msg.message_case()) {
         case mon::Message::kFuncStarted:
@@ -251,6 +337,9 @@ void Monitor::run_body() {
             
         case mon::Message::kFuncCompleted:
             handle_func_completed(msg.func_completed());
+            break;
+            
+        case mon::Message::MESSAGE_NOT_SET:
             break;
             
         default: std::abort();
@@ -277,9 +366,13 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
 }
 
 
-void server(int fd) {
+void server(int server_sock) {
     ::initscr();
-    Monitor monitor {fd};
+    
+    // listen for incoming connections
+    
+    Monitor monitor {server_sock};
+    
     monitor.run();
     
 }

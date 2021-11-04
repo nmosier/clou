@@ -1,8 +1,10 @@
 #include <fcntl.h>
-#include <sys/file.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include "client.h"
 #include "mon/proto.h"
@@ -17,66 +19,50 @@ inline std::system_error syserr(const std::string& what = "") {
 
 namespace mon {
 
-Client::Client(const char *path) {
-    if ((fd = ::open(path, O_RDWR)) < 0) {
-        throw util::syserr();
-    }
-}
-
-#if 0
-void Client::lock() const {
-    if (::flock(fd, LOCK_EX) < 0) {
-        throw util::syserr();
-    }
-}
-
-void Client::unlock() const {
-    if (::flock(fd, LOCK_UN) < 0) {
-        throw util::syserr();
-    }
-}
-#elif 0
-void Client::lock() const {
-    if (::lockf(fd, F_LOCK, 0) < 0) {
-        throw util::syserr();
-    }
-}
-
-void Client::unlock() const {
-    if (::lockf(fd, F_ULOCK, 0) < 0) {
-        throw util::syserr();
-    }
-}
-#else
-void Client::lock() const {}
-void Client::unlock() const {}
-#endif
+Client::Client(const char *path): path(path) {}
 
 void Client::send(const Message& msg) const {
-    lock();
-    send_locked(msg);
-    unlock();
+    const int sock = connect();
+    msg.SerializeToFileDescriptor(sock);
+    disconnect(sock);
 }
 
-void Client::recv(Message& msg) const {
-    lock();
-    recv_locked(msg);
-    unlock();
+bool Client::recv(Message& msg) const {
+    const int sock = connect();
+    const bool res = msg.ParseFromFileDescriptor(sock);
+    disconnect(sock);
+    return res;
 }
 
-void Client::send_recv(const Message& out, Message& in) const {
-    lock();
-    send_locked(out);
-    recv_locked(in);
-    unlock();
+bool Client::send_then_recv(const Message& out, Message& in) const {
+    const int sock = connect();
+    out.SerializeToFileDescriptor(sock);
+    const bool res = in.ParseFromFileDescriptor(sock);
+    disconnect(sock);
+    return res;
 }
 
-void Client::send_locked(const Message& msg) const {
-    msg.SerializeToFileDescriptor(fd);
+int Client::connect() const {
+    int sock;
+    
+    if ((sock = ::socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
+        throw util::syserr("socket");
+    }
+    
+    struct sockaddr_un addr;
+    addr.sun_family = AF_UNIX;
+    ::strlcpy(addr.sun_path, path, sizeof(addr.sun_path));
+    if (::connect(sock, reinterpret_cast<const struct sockaddr *>(&addr), sizeof(addr)) < 0) {
+        throw util::syserr("connect");
+    }
+    
+    return sock;
 }
 
-void Client::recv_locked(Message& msg) const {
-    msg.ParseFromFileDescriptor(fd);
+void Client::disconnect(int sock) const {
+    if (::close(sock) < 0) {
+        throw util::syserr("close");
+    }
 }
 
 }

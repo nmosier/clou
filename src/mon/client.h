@@ -9,16 +9,14 @@ public:
     Client(const char *path);
     
     void send(const Message& msg) const;
-    void recv(Message& msg) const;
-    void send_recv(const Message& out, Message& in) const;
+    bool recv(Message& msg) const;
+    bool send_then_recv(const Message& out, Message& in) const;
     
 private:
-    int fd;
+    const char *path;
     
-    void lock() const;
-    void unlock() const;
-    void send_locked(const Message& msg) const;
-    void recv_locked(Message& msg) const;
+    int connect() const;
+    void disconnect(int sock) const;
 };
 
 }
