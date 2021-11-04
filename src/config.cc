@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <getopt.h>
 #include <vector>
+#include <csignal>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -51,7 +52,7 @@ bool batch_mode = false;
 
 OutputCFGs output_cfgs;
 
-std::optional<mon::Client> client;
+mon::Client client;
 
 SharedDatabaseListSet analyzed_functions;
 
@@ -128,6 +129,8 @@ bool parse_bool_opt(const char *s) {
 
 void initialize_post() {
     analyzed_functions = SharedDatabaseListSet(util::to_string(output_dir, "/functions.txt"));
+    
+    std::signal(SIGPIPE, SIG_IGN);
 }
 
 int parse_args() {

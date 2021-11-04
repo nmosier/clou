@@ -285,7 +285,7 @@ struct Monitor: Component {
     /* Display stuff */
     unsigned msgs = 0;
     using RunningJobList = ComponentList<RunningJob>;
-    RunningJobList running_jobs {16};
+    RunningJobList running_jobs {48};
     using CompletedJobList = ComponentList<CompletedJob>;
     CompletedJobList completed_jobs {16};
     

@@ -25,7 +25,7 @@ extern bool witness_executions;
 extern bool partial_executions;
 extern bool fast_mode;
 extern bool batch_mode;
-extern std::optional<mon::Client> client;
+extern mon::Client client;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

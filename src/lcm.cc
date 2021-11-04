@@ -53,7 +53,7 @@ struct LCMPass: public llvm::FunctionPass {
         if (client) {
             mon::Message msg;
             msg.mutable_func_started()->mutable_func()->set_name(F.getName().str());
-            client->send(msg);
+            client.send(msg);
         }
         
         
@@ -65,7 +65,7 @@ struct LCMPass: public llvm::FunctionPass {
                 if (client) {
                     mon::Message msg;
                     msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
-                    client->send(msg);
+                    client.send(msg);
                 }
                 
                 return false;
@@ -172,7 +172,7 @@ struct LCMPass: public llvm::FunctionPass {
         if (client) {
             mon::Message msg;
             msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
-            client->send(msg);
+            client.send(msg);
         }
         
         return false;
