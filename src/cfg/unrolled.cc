@@ -184,7 +184,7 @@ void CFG_Unrolled::construct_loop_forest(const LoopForest *LF, Port& port, IDs& 
     for (const auto& loop_pair : loop_to_port) {
         const llvm::Loop *src_L = loop_pair.first;
         const Port& src_port = loop_pair.second;
-        llvm::SmallVector<llvm::BasicBlock *> src_Bs;
+        llvm::SmallVector<llvm::BasicBlock *, 16> src_Bs;
         src_L->getExitingBlocks(src_Bs);
         for (const llvm::BasicBlock *src_B : src_Bs) {
             do_connect(src_port, src_B, src_L);
@@ -205,7 +205,7 @@ void CFG_Unrolled::construct_loop_forest(const LoopForest *LF, Port& port, IDs& 
 void CFG_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
     LoopForest LF;
     LF.entry = L->getHeader();
-    llvm::SmallVector<llvm::BasicBlock *> exits;
+    llvm::SmallVector<llvm::BasicBlock *, 16> exits;
     L->getExitingBlocks(exits);
     std::copy(exits.begin(), exits.end(), std::back_inserter(LF.exits));
     std::copy(L->block_begin(), L->block_end(), std::back_inserter(LF.blocks));

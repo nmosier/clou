@@ -155,7 +155,7 @@ public:
             const llvm::Value *V;
             Key(FuncID id, const llvm::Value *V): id(id), V(V) {}
             struct Hash {
-                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_tuple(key.id, key.V)); }
+                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_pair(key.id, key.V)); }
             };
             bool operator==(const Key& other) const { return id == other.id && V == other.V; }
         };

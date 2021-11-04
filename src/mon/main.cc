@@ -10,6 +10,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <arpa/inet.h>
 #include <mutex>
 #include <thread>
 #include <algorithm>
@@ -94,7 +95,7 @@ int main(int argc, char *argv[]) {
     
     struct sockaddr_un addr;
     addr.sun_family = AF_LOCAL;
-    ::strlcpy(addr.sun_path, path, sizeof(addr.sun_path));
+    std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
     if (::bind(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) < 0) {
         perror_exit("bind");
     }

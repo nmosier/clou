@@ -13,9 +13,9 @@ public:
     bool send_then_recv(const Message& out, Message& in) const;
     
 private:
-    FILE *f;
+  FILE *f;
     
-    int connect(const char *path);
+    void connect(const char *path);
     void disconnect(int sock);
     
     template <typename T>

@@ -28,8 +28,8 @@ public:
     const CFG_Expanded& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
     Context context; /*!<  The context for AEG construction. */
 
-    using Node = Node;
-    using Edge = Edge;
+  using Node = aeg::Node;
+  using Edge = aeg::Edge;
     using graph_type = Graph<NodeRef, Edge, std::hash<NodeRef>, Edge::Hash>;
     
     NodeRef entry; /*!< The unique entry node of the AEG (node has type Inst::Kind::ENTRY) */

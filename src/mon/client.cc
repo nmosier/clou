@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <arpa/inet.h>
 
 #include "client.h"
 #include "mon/proto.h"
@@ -45,7 +46,7 @@ void Client::send(const Message& msg) const {
     write(buf.data(), buf.size());
 }
 
-int Client::connect(const char *path) {
+void Client::connect(const char *path) {
     int sock;
     
     if ((sock = ::socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
@@ -54,7 +55,7 @@ int Client::connect(const char *path) {
     
     struct sockaddr_un addr;
     addr.sun_family = AF_UNIX;
-    ::strlcpy(addr.sun_path, path, sizeof(addr.sun_path));
+    std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
     if (::connect(sock, reinterpret_cast<const struct sockaddr *>(&addr), sizeof(addr)) < 0) {
         throw util::syserr("connect");
     }
