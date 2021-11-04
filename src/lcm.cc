@@ -143,7 +143,26 @@ struct LCMPass: public llvm::FunctionPass {
             aeg.test();
             llvm::errs() << "done\n";
             
+            // add analyzed functions
+#if 0
             analyzed_functions.insert(F.getName().str());
+#else
+            {
+                std::unordered_set<std::string> set;
+                std::transform(aegpo_unrolled.nodes.begin(), aegpo_unrolled.nodes.end(), std::inserter(set, set.end()), [] (const CFG::Node& node) -> std::string {
+                    if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+                        return (**Ip).getFunction()->getName().str();
+                    } else {
+                        return "";
+                    }
+                });
+                set.erase("");
+                
+                for (const std::string& s : set) {
+                    analyzed_functions.insert(s);
+                }
+            }
+#endif
             
         } catch (const util::resume& resume) {
             std::cerr << resume.what() << "\n";

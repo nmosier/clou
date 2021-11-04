@@ -14,6 +14,7 @@
 #include <mutex>
 #include <thread>
 #include <algorithm>
+#include <variant>
 
 #include <curses.h>
 
@@ -176,7 +177,10 @@ struct Job: Component {
     Job(const std::string& name): name(name) {}
 };
 
+using owner_t = int;
+
 struct RunningJob: Job {
+    owner_t owner;
     RunningDuration duration;
     Progress progress;
     
@@ -190,7 +194,7 @@ struct RunningJob: Job {
         Duration(duration.elapsed() / progress.frac - duration.elapsed()).display();
     }
     
-    RunningJob(const std::string& name): Job(name) {}
+    RunningJob(const std::string& name, owner_t owner): Job(name), owner(owner) {}
 };
 
 struct CompletedJob: Job {
@@ -204,6 +208,24 @@ struct CompletedJob: Job {
         duration.display();
     }
 };
+
+#if 0
+template <typename Subcomponent>
+struct OwnedComponent: Component {
+    int owner;
+    Subcomponent comp;
+    
+    const Subcomponent& operator*() const { return comp; }
+    Subcomponent& operator*() { return comp; }
+    const Subcomponent operator->() const { return &comp; }
+    Subcomponent& operator->() { return &comp; }
+    
+    OwnedComponent(int owner, const Subcomponent& comp = Subcomponent()): owner(owner), comp(comp) {}
+    
+    virtual void display() override { comp.display(); }
+    virtual void owner()
+};
+#endif
 
 template <typename Subcomponent>
 struct ComponentList: Component {
@@ -246,6 +268,11 @@ struct ComponentList: Component {
     }
 };
 
+struct Client {
+    FILE *f;
+    std::unordered_set<std::string> running; // functions in progress
+};
+
 struct Monitor: Component {
     /* Control stuff */
     std::mutex mutex;
@@ -280,9 +307,9 @@ struct Monitor: Component {
     void run();
     
 private:
-    void run_body(FILE *client_f);
+    void run_body(FILE *client_f, int owner);
     
-    void handle_func_started(const mon::FunctionStarted& msg);
+    void handle_func_started(const mon::FunctionStarted& msg, int owner);
     void handle_func_completed(const mon::FunctionCompleted& msg);
     void handle_func_progress(const mon::FunctionProgress& msg);
     void handle_connect(const mon::Connect& msg);
@@ -306,6 +333,7 @@ void Monitor::run() {
     // listen for clients
     listen_thd = std::thread {
         [&] () {
+            int id = 0;
             while (true) {
                 struct sockaddr_un addr;
                 socklen_t addrlen = sizeof(addr);
@@ -314,7 +342,7 @@ void Monitor::run() {
                     std::perror("accept");
                 } else {
                     std::unique_lock<std::mutex> lock {mutex};
-                    client_thds.emplace_back([this] (int client_sock) {
+                    client_thds.emplace_back([this] (int client_sock, int id) {
                         FILE *client_f;
                         if ((client_f = ::fdopen(client_sock, "r+")) == nullptr) {
                             perror_exit("fdopen");
@@ -331,11 +359,11 @@ void Monitor::run() {
                             
                             /* check flags */
                             if ((pfd.revents & POLLIN)) {
-                                this->run_body(client_f);
+                                this->run_body(client_f, id);
                             }
                             if ((pfd.revents & POLLHUP)) {
                                 std::fclose(client_f);
-                                return;
+                                break;
                             }
                             if ((pfd.revents & POLLNVAL)) {
                                 error("poll: invalid socket");
@@ -343,10 +371,22 @@ void Monitor::run() {
                             if ((pfd.revents & POLLERR)) {
                                 std::cerr << prog << ": error on socket, closing\n";
                                 std::fclose(client_f);
-                                return;
+                                break;
                             }
                         }
-                    }, client_sock);
+                        
+                        /* cleanup monitor state */
+                        {
+                            std::unique_lock<std::mutex> lock {mutex};
+                            for (auto it = running_jobs.begin(); it != running_jobs.end(); ) {
+                                if (it->owner == id) {
+                                    it = running_jobs.vec.erase(it);
+                                } else {
+                                    ++it;
+                                }
+                            }
+                        }
+                    }, client_sock, id++);
                 }
             }
         }
@@ -374,7 +414,7 @@ void Monitor::run() {
     display_thd.join();
 }
 
-void Monitor::run_body(FILE *client_f) {
+void Monitor::run_body(FILE *client_f, int owner) {
     mon::Message msg;
     
     uint32_t buflen;
@@ -396,7 +436,7 @@ void Monitor::run_body(FILE *client_f) {
     
     switch (msg.message_case()) {
         case mon::Message::kFuncStarted:
-            handle_func_started(msg.func_started());
+            handle_func_started(msg.func_started(), owner);
             break;
             
         case mon::Message::kFuncCompleted:
@@ -414,8 +454,8 @@ void Monitor::run_body(FILE *client_f) {
     }
 }
 
-void Monitor::handle_func_started(const mon::FunctionStarted& msg) {
-    running_jobs.vec.push_back(RunningJob(msg.func().name()));
+void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner) {
+    running_jobs.vec.emplace_back(msg.func().name(), owner);
 }
 
 void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
