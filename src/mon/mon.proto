@@ -14,10 +14,15 @@ message FunctionStarted {
   required Function func = 1;
 }
 
+message FunctionProgress {
+    required Function func = 1;
+    required float frac = 2;
+}
 
 message Message {
     oneof message {
         FunctionStarted   func_started   = 1;
         FunctionCompleted func_completed = 2;
+        FunctionProgress  func_progress  = 3;
     }
 }

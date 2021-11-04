@@ -156,6 +156,14 @@ struct RunningDuration: Component {
     RunningDuration(): start(Duration::Clock::now()) {}
 };
 
+struct Progress: Component {
+    float frac = 0.;
+    
+    virtual void display() override {
+        ::printw("%.1f%%", frac * 100.);
+    }
+};
+
 struct Job: Component {
     std::string name;
     
@@ -168,11 +176,14 @@ struct Job: Component {
 
 struct RunningJob: Job {
     RunningDuration duration;
+    Progress progress;
     
     virtual void display() override {
         Job::display();
         ::addstr(" ");
         duration.display();
+        ::addstr(" ");
+        progress.display();
     }
     
     RunningJob(const std::string& name): Job(name) {}
@@ -202,12 +213,27 @@ struct ComponentList: Component {
     ComponentList(unsigned limit): limit(limit) {}
     
     virtual void display() override {
-        for (unsigned i = 0; i < std::min<unsigned>(limit, vec.size()); ++i) {
+        const unsigned cap = std::min<unsigned>(limit, vec.size());
+        for (unsigned i = 0; i < cap; ++i) {
             if (i != 0) {
                 ::addstr(sep.c_str());
             }
             vec[i].display();
         }
+        if (cap < vec.size()) {
+            if (cap > 0) {
+                ::addstr(sep.c_str());
+            }
+            ::printw("(+%u more)", vec.size() - cap);
+        }
+    }
+    
+    using iterator = typename Vec::iterator;
+    iterator begin() { return vec.begin(); }
+    iterator end() { return vec.end(); }
+    
+    iterator find_if(std::function<bool (const Subcomponent&)> pred) {
+        return std::find_if(begin(), end(), pred);
     }
 };
 
@@ -222,8 +248,10 @@ struct Monitor: Component {
 
     /* Display stuff */
     unsigned msgs = 0;
-    ComponentList<RunningJob> running_jobs {16};
-    ComponentList<CompletedJob> completed_jobs {16};
+    using RunningJobList = ComponentList<RunningJob>;
+    RunningJobList running_jobs {16};
+    using CompletedJobList = ComponentList<CompletedJob>;
+    CompletedJobList completed_jobs {16};
     
     /** NOTE: \p server_sock must already be set to listening. */
     Monitor(int server_sock): server_sock(server_sock) {}
@@ -247,6 +275,7 @@ private:
     
     void handle_func_started(const mon::FunctionStarted& msg);
     void handle_func_completed(const mon::FunctionCompleted& msg);
+    void handle_func_progress(const mon::FunctionProgress& msg);
 };
 
 
@@ -339,6 +368,10 @@ void Monitor::run_body(int client_sock) {
             handle_func_completed(msg.func_completed());
             break;
             
+        case mon::Message::kFuncProgress:
+            handle_func_progress(msg.func_progress());
+            break;
+            
         case mon::Message::MESSAGE_NOT_SET:
             break;
             
@@ -351,11 +384,10 @@ void Monitor::handle_func_started(const mon::FunctionStarted& msg) {
 }
 
 void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
-    const auto end = running_jobs.vec.end();
-    const auto it = std::find_if(running_jobs.vec.begin(), end, [&] (const RunningJob& job) -> bool {
+    const auto it = running_jobs.find_if([&] (const RunningJob& job) -> bool {
         return job.name == msg.func().name();
     });
-    if (it == end) {
+    if (it == running_jobs.end()) {
         std::cerr << "warning: received 'completed job' for job that wasn't running\n";
         return;
     }
@@ -365,6 +397,15 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
     completed_jobs.vec.emplace_back(job);
 }
 
+void Monitor::handle_func_progress(const mon::FunctionProgress& msg) {
+    const auto it = running_jobs.find_if([&] (const RunningJob& job) -> bool {
+        return job.name == msg.func().name();
+    });
+    if (it == running_jobs.end()) {
+        std::cerr << "warning: received 'job progress' for job that wasn't running\n";
+    }
+    it->progress.frac = msg.frac();
+}
 
 void server(int server_sock) {
     ::initscr();

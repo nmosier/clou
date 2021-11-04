@@ -62,6 +62,12 @@ struct LCMPass: public llvm::FunctionPass {
             
             if (analyzed_functions.contains(F.getName().str())) {
                 std::cerr << "skipping analyzed function " << F.getName().str() << "\n";
+                if (client) {
+                    mon::Message msg;
+                    msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
+                    client->send(msg);
+                }
+                
                 return false;
             }
             
@@ -139,14 +145,14 @@ struct LCMPass: public llvm::FunctionPass {
             
             analyzed_functions.insert(F.getName().str());
             
-            if (client) {
-                mon::Message msg;
-                msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
-                client->send(msg);
-            }
-            
         } catch (const util::resume& resume) {
             std::cerr << resume.what() << "\n";
+        }
+        
+        if (client) {
+            mon::Message msg;
+            msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
+            client->send(msg);
         }
         
         return false;

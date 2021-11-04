@@ -12,6 +12,8 @@
 #include "util/output.h"
 #include "util/iterator.h"
 #include "leakage.h"
+#include "mon/client.h"
+#include "mon/proto.h"
 
 /* For each speculative-dst addr edge, find all leakage coming out of it.
  * Any rfx edges, it's leakage, as long as the tail of the rfx edge is a READ.
@@ -355,6 +357,15 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
         std::cerr << ++i << "/" << candidate_transmitters.size() << "\n";
+        
+        if (client) {
+            mon::Message msg;
+            auto *progress = msg.mutable_func_progress();
+            progress->mutable_func()->set_name(aeg.po.function_name());
+            const float frac = static_cast<float>(i) / static_cast<float>(candidate_transmitters.size());
+            progress->set_frac(frac);
+            client->send(msg);
+        }
         
         z3_scope;
         const aeg::Node& transmitter_node = aeg.lookup(transmitter);
