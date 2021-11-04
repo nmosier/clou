@@ -184,6 +184,8 @@ struct RunningJob: Job {
         duration.display();
         ::addstr(" ");
         progress.display();
+        ::addstr(" ");
+        Duration(duration.elapsed() / progress.frac - duration.elapsed()).display();
     }
     
     RunningJob(const std::string& name): Job(name) {}
@@ -271,11 +273,24 @@ struct Monitor: Component {
     void run();
     
 private:
-    void run_body(int client_sock);
+    void run_body(FILE *client_f);
     
     void handle_func_started(const mon::FunctionStarted& msg);
     void handle_func_completed(const mon::FunctionCompleted& msg);
     void handle_func_progress(const mon::FunctionProgress& msg);
+    
+    template <typename T>
+    bool client_read(FILE *f, T *buf, std::size_t count) const {
+        if (std::fread(buf, sizeof(T), count, f) != count) {
+            if (std::feof(f)) {
+                std::cerr << "warning: unexpected client EOF\n";
+            } else {
+                std::perror("fread");
+            }
+            return false;
+        }
+        return true;
+    }
 };
 
 
@@ -292,6 +307,11 @@ void Monitor::run() {
                 } else {
                     std::unique_lock<std::mutex> lock {mutex};
                     client_thds.emplace_back([this] (int client_sock) {
+                        FILE *client_f;
+                        if ((client_f = ::fdopen(client_sock, "r+")) == nullptr) {
+                            perror_exit("fdopen");
+                        }
+                        
                         while (true) {
                             struct pollfd pfd = {
                                 .fd = client_sock,
@@ -303,10 +323,10 @@ void Monitor::run() {
                             
                             /* check flags */
                             if ((pfd.revents & POLLIN)) {
-                                this->run_body(pfd.fd);
+                                this->run_body(client_f);
                             }
                             if ((pfd.revents & POLLHUP)) {
-                                ::close(pfd.fd);
+                                std::fclose(client_f);
                                 return;
                             }
                             if ((pfd.revents & POLLNVAL)) {
@@ -314,7 +334,7 @@ void Monitor::run() {
                             }
                             if ((pfd.revents & POLLERR)) {
                                 std::cerr << prog << ": error on socket, closing\n";
-                                ::close(pfd.fd);
+                                std::fclose(client_f);
                                 return;
                             }
                         }
@@ -346,11 +366,18 @@ void Monitor::run() {
     display_thd.join();
 }
 
-void Monitor::run_body(int client_sock) {
-    ++msgs;
+void Monitor::run_body(FILE *client_f) {
     mon::Message msg;
     
-    if (!msg.ParseFromFileDescriptor(client_sock)) {
+    uint32_t buflen;
+    if (!client_read(client_f, &buflen, 1)) { return; }
+    buflen = ntohl(buflen);
+    
+    std::vector<char> buf;
+    buf.resize(buflen);
+    if (!client_read(client_f, buf.data(), buflen)) { return; }
+    
+    if (!msg.ParseFromArray(buf.data(), buf.size())) {
         std::cerr << "warning: bad message\n";
         return;
     }

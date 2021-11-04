@@ -13,10 +13,13 @@ public:
     bool send_then_recv(const Message& out, Message& in) const;
     
 private:
-    const char *path;
+    FILE *f;
     
-    int connect() const;
-    void disconnect(int sock) const;
+    int connect(const char *path);
+    void disconnect(int sock);
+    
+    template <typename T>
+    void write(const T *buf, std::size_t count) const;
 };
 
 }

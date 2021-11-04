@@ -19,30 +19,33 @@ inline std::system_error syserr(const std::string& what = "") {
 
 namespace mon {
 
-Client::Client(const char *path): path(path) {}
+Client::Client(const char *path) {
+    connect(path);
+}
+
+template <typename T>
+void Client::write(const T *buf, std::size_t count) const {
+    static_assert(std::is_pod<T>());
+    if (std::fwrite(buf, sizeof(T), count, f) != count) {
+        if (std::feof(f)) {
+            std::cerr << "fwrite: unexpected EOF\n";
+            std::exit(EXIT_FAILURE);
+        } else {
+            throw util::syserr("fwrite");
+        }
+    }
+    std::fflush(f);
+}
 
 void Client::send(const Message& msg) const {
-    const int sock = connect();
-    msg.SerializeToFileDescriptor(sock);
-    disconnect(sock);
+    std::string buf;
+    msg.SerializeToString(&buf);
+    const uint32_t buflen = htonl(buf.size());
+    write(&buflen, 1);
+    write(buf.data(), buf.size());
 }
 
-bool Client::recv(Message& msg) const {
-    const int sock = connect();
-    const bool res = msg.ParseFromFileDescriptor(sock);
-    disconnect(sock);
-    return res;
-}
-
-bool Client::send_then_recv(const Message& out, Message& in) const {
-    const int sock = connect();
-    out.SerializeToFileDescriptor(sock);
-    const bool res = in.ParseFromFileDescriptor(sock);
-    disconnect(sock);
-    return res;
-}
-
-int Client::connect() const {
+int Client::connect(const char *path) {
     int sock;
     
     if ((sock = ::socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
@@ -56,13 +59,16 @@ int Client::connect() const {
         throw util::syserr("connect");
     }
     
-    return sock;
+    if ((f = ::fdopen(sock, "r+")) == nullptr) {
+        throw util::syserr("fdopen");
+    }
 }
 
-void Client::disconnect(int sock) const {
-    if (::close(sock) < 0) {
-        throw util::syserr("close");
+void Client::disconnect(int sock) {
+    if (std::fclose(f) < 0) {
+        throw util::syserr();
     }
+    f = nullptr;
 }
 
 }
