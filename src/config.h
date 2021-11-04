@@ -25,9 +25,22 @@ extern bool witness_executions;
 extern bool partial_executions;
 extern bool fast_mode;
 extern bool batch_mode;
-extern bool output_graphs;
 extern std::optional<mon::Client> client;
 
+struct OutputCFGs {
+    bool unrolled, calls, expanded;
+    
+    void clearall() {
+        unrolled = calls = expanded = false;
+    }
+    
+    void setall() {
+        unrolled = calls = expanded = true;
+    }
+    
+    OutputCFGs() { setall(); }
+};
+extern OutputCFGs output_cfgs;
 
 struct AliasMode {
     bool transient; /*!< enable alias analysis on transient instructions too (default: off) */

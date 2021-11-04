@@ -48,7 +48,9 @@ bool witness_executions = true;
 bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
-bool output_graphs = true;
+
+OutputCFGs output_cfgs;
+
 std::optional<mon::Client> client;
 
 SharedDatabaseListSet analyzed_functions;
@@ -83,9 +85,10 @@ only examine given functions
     stb-size=<uint>       store buffer size
 --traceback <uint>   set max traceback via rf * (addr + data) edges.
 --witnesses <bool>   enable/disable generation of witness executions (default: on)
---partial [<bool>]   model partial executions in AEG (default: false)
---fast <bool>        enable/disable fast mode (default: off)
+--partial[=<bool>]   model partial executions in AEG (default: false)
+--fast[=<bool>]      enable/disable fast mode (default: off)
 --batch              batch mode (when all leakage output is going to one file)
+--cfg[=<type>...]    output CFGs. Types: "unrolled", "calls", "expanded"
 )=";
     fprintf(f, "%s", s);
 }
@@ -154,6 +157,7 @@ int parse_args() {
         FAST,
         BATCH,
         MONITOR,
+        CFG,
     };
     
     struct option opts[] = {
@@ -177,6 +181,7 @@ int parse_args() {
         {"fast", optional_argument, nullptr, FAST},
         {"batch", optional_argument, nullptr, BATCH},
         {"monitor", required_argument, nullptr, MONITOR},
+        {"cfg", optional_argument, nullptr, CFG},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -353,7 +358,8 @@ int parse_args() {
                 if (fast_mode) {
                     witness_executions = false;
                     partial_executions = true;
-                    output_graphs = false;
+                    output_cfgs.clearall();
+                    output_cfgs.expanded = true;
                 }
                 break;
             }
@@ -365,6 +371,27 @@ int parse_args() {
                 
             case MONITOR: {
                 client = mon::Client(optarg);
+                break;
+            }
+                
+            case CFG: {
+                if (optarg) {
+                    static const std::unordered_map<std::string, bool OutputCFGs::*> map = {
+                        {"unrolled", &OutputCFGs::unrolled},
+                        {"calls", &OutputCFGs::calls},
+                        {"expanded", &OutputCFGs::expanded},
+                    };
+                    char *tok;
+                    while ((tok = ::strsep(&optarg, ",")) != nullptr) {
+                        const auto it = map.find(tok);
+                        if (it == map.end()) {
+                            error("invalid CFG '%s'", tok);
+                        }
+                        output_cfgs.*it->second = true;
+                    }
+                } else {
+                    output_cfgs.setall();
+                }
                 break;
             }
                 

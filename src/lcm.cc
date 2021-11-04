@@ -94,10 +94,11 @@ struct LCMPass: public llvm::FunctionPass {
             CFG_Calls cfg_calls {spec_depth};
             cfg_calls.construct(aegpo_unrolled);
             
-            if (output_graphs) {
-                std::cerr << "outputting\n";
-                output_(cfg_calls, "calls", F);
-                output_(aegpo_unrolled, "aegpo", F);
+            if (output_cfgs.unrolled) {
+                output_(aegpo_unrolled, "cfg-unrolled", F);
+            }
+            if (output_cfgs.calls) {
+                output_(cfg_calls, "cfg-calls", F);
             }
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
@@ -122,8 +123,8 @@ struct LCMPass: public llvm::FunctionPass {
             logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
             << cfg_expanded.size() << " (expanded)\n";
             
-            if (output_graphs) {
-                output_(cfg_expanded, "aegpoexp", F);
+            if (output_cfgs.expanded) {
+                output_(cfg_expanded, "cfg-expanded", F);
             }
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
