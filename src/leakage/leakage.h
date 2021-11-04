@@ -41,10 +41,12 @@ protected:
     
     aeg::AEG& aeg;
     z3::solver& solver;
+    std::vector<std::string> actions;
 #if 1
     Mems mems;
 #endif
-    Mems mems_arch, mems_trans;
+    Mems mems_arch, mems_trans; // TODO: remove these?
+    NodeRefVec order;
     
     z3::expr mem(NodeRef ref) const {
 #if 0
@@ -61,7 +63,9 @@ protected:
 #if 1
     mems(get_mems()),
 #endif
-    mems_arch(get_mems_arch()), mems_trans(get_mems_trans()), rf_solver(z3::duplicate(solver)) {}
+    mems_arch(get_mems_arch()), mems_trans(get_mems_trans()), rf_solver(z3::duplicate(solver)) {
+        aeg.po.reverse_postorder(std::back_inserter(order));
+    }
     
     z3::context& ctx() { return aeg.context.context; }
     
@@ -71,7 +75,7 @@ protected:
     void traceback(NodeRef load, std::function<void (NodeRef)> func);
     void traceback_rf(NodeRef load, std::function<void (NodeRef)> func);
     
-    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) const;
+    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func);
     
     auto push_edge(const EdgeRef& edge) {
         return util::push(flag_edges, edge);
@@ -118,7 +122,7 @@ protected:
     Detector_(aeg::AEG& aeg, z3::solver& solver): Detector(aeg, solver) {}
     
 private:
-    std::vector<Leakage> leaks;
+    std::vector<std::pair<Leakage, std::string>> leaks;
 };
 
 struct SpectreV1_Leakage: Leakage<SpectreV1_Leakage> {
@@ -214,9 +218,9 @@ void Detector_<Leakage>::run() {
             ofs << "\n" << aeg.function_name() << ": \n";
         }
         for (const auto& leak : leaks) {
-            leak.print_short(ofs);
-            ofs << " --";
-            leak.print_long(ofs, aeg);
+            leak.first.print_short(ofs);
+            ofs << " : " << leak.second << " --";
+            leak.first.print_long(ofs, aeg);
             ofs << "\n";
         }
     }
@@ -231,7 +235,7 @@ void Detector_<Leakage>::run() {
         // print out set of transmitters
         std::unordered_set<const llvm::Instruction *> transmitters;
         for (const auto& leak : leaks) {
-            transmitters.insert(aeg.lookup(leak.get_transmitter()).inst->get_inst());
+            transmitters.insert(aeg.lookup(leak.first.get_transmitter()).inst->get_inst());
         }
         llvm::errs() << "transmitters:\n";
         for (const auto transmitter : transmitters) {
@@ -244,7 +248,14 @@ void Detector_<Leakage>::run() {
 
 template <typename Leakage>
 void Detector_<Leakage>::output_execution(const Leakage& leak) {
-    leaks.push_back(leak);
+    leaks.emplace_back(leak, std::accumulate(actions.rbegin(), actions.rend(), std::string(), [] (const std::string& a, const std::string& b) -> std::string {
+        std::string res = a;
+        if (!res.empty()) {
+            res += "; ";
+        }
+        res += b;
+        return res;
+    }));
         
     std::stringstream ss;
     ss << output_dir << "/" << name();

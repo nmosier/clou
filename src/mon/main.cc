@@ -12,6 +12,7 @@
 #include <sys/un.h>
 #include <mutex>
 #include <thread>
+#include <algorithm>
 
 #include <curses.h>
 
@@ -234,8 +235,13 @@ struct ComponentList: Component {
     iterator begin() { return vec.begin(); }
     iterator end() { return vec.end(); }
     
-    iterator find_if(std::function<bool (const Subcomponent&)> pred) {
+    using Pred = std::function<bool (const Subcomponent&)>;
+    iterator find_if(Pred pred) {
         return std::find_if(begin(), end(), pred);
+    }
+    
+    void remove_if(Pred pred) {
+        std::remove_if(begin(), end(), pred);
     }
 };
 
@@ -278,6 +284,7 @@ private:
     void handle_func_started(const mon::FunctionStarted& msg);
     void handle_func_completed(const mon::FunctionCompleted& msg);
     void handle_func_progress(const mon::FunctionProgress& msg);
+    void handle_connect(const mon::Connect& msg);
     
     template <typename T>
     bool client_read(FILE *f, T *buf, std::size_t count) const {

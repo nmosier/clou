@@ -236,62 +236,29 @@ Detector::Mems Detector::get_mems_trans() {
 }
 
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
-#if 0
-    const z3::expr store_sym = mems.at(load)[aeg.lookup(load).get_memory_address()];
-    std::vector<z3::expr> stores_con;
-    z3::enumerate(solver, store_sym, std::back_inserter(stores_con));
-    
-    for (const z3::expr& store_con : stores_con) {
-        z3_scope;
-        const NodeRef store = store_con.get_numeral_uint();
-        solver.add(store_con == store_sym, util::to_string(store, " -rf-> ", load).c_str());
-        func(store);
-    }
-#elif 0
-    for (const auto& store_pair : rf[load]) {
-        const NodeRef store = store_pair.first;
-        const z3::expr& cond = store_pair.second;
-        z3_scope;
-        solver.add(cond, util::to_string(store, " -rf-> ", load).c_str());
-        func(store);
-    }
-#elif 1
     // Sources new_sources;
     for (const auto& store_pair : rf_sources(load)) {
         const NodeRef store = store_pair.first;
         const z3::expr& cond = store_pair.second;
         z3_scope;
         
-        const std::string desc = util::to_string(store, " -rf-> ", load).c_str();
+        const std::string desc = util::to_string(store, " -rf-> ", load);
         solver.add(cond, desc.c_str());
         if (solver.check() != z3::sat) { continue; }
         // new_sources.insert(store_pair);
         // TODO: need to separately check if this is due to something else
+        const auto action = util::push(actions, desc);
         func(store);
     }
-    // rf_sources(load, std::move(new_sources));
-#else
-    const aeg::Node& load_node = aeg.lookup(load);
-    for (const auto& store_pair : rf_sources(load)) {
-        const NodeRef store = store_pair.first;
-        const aeg::Node& store_node = aeg.lookup(store);
-        
-        z3_scope scope;
-    }
-    
-#endif
 }
 
 
 void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     const aeg::Node& load_node = aeg.lookup(load);
-#if 0
-    assert(load_node.may_read());
-#else
+
     z3_scope;
     solver.add(load_node.exec() &&  load_node.read, util::to_string(load, ".read").c_str());
     if (solver.check() != z3::sat) { return; }
-#endif
     
     if (traceback_depth == max_traceback) {
         std::cerr << "backtracking: max traceback depth (" << max_traceback << ")\n";
@@ -306,6 +273,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
         for (const auto& edge : edges) {
             z3_scope;
             solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
+            const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
             func(edge.first);
         }
         ++num_traced_back;
@@ -348,7 +316,7 @@ void Leakage<Derived>::print_long(std::ostream& os, const aeg::AEG& aeg) const {
 }
 
 
-void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) const {
+void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) {
     NodeRefSet candidate_transmitters;
     aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
         candidate_transmitters.insert(ref);
@@ -366,6 +334,8 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             progress->set_frac(frac);
             client->send(msg);
         }
+        
+        const auto action = util::push(actions, util::to_string("transmitter ", transmitter));
         
         z3_scope;
         const aeg::Node& transmitter_node = aeg.lookup(transmitter);
@@ -443,6 +413,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
                 .kind = aeg::Edge::ADDR,
             });
                 
+            const auto action = util::push(actions, util::to_string(load, " -", dep_kind, "-> ", access));
             std::cerr << __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n";
             run1(transmitter, load);
         }
@@ -491,8 +462,10 @@ void SpectreV4_Detector::run_load(NodeRef access) {
                 .dst = access,
                 .kind = aeg::Edge::ADDR,
             });
-            solver.add(addr.second, util::to_string(load, " -addr-> ", access).c_str());
+            const std::string desc = util::to_string(load, " -addr-> ", access);
+            solver.add(addr.second, desc.c_str());
             solver.add(aeg.lookup(load).trans, "load.trans");
+            const auto action = util::push(actions, desc);
             if (solver.check() == z3::sat) {
                 run_bypassed_store();
             } else {
@@ -526,7 +499,11 @@ void SpectreV4_Detector::run_bypassed_store() {
 
 void SpectreV4_Detector::run_sourced_store() {
     std::cerr << __FUNCTION__ << "\n";
-    for (const NodeRef sourced_store : aeg.node_range()) {
+    
+    // Only process candidate source stores that can possibly appear before the bypassed store in program order
+    for (const NodeRef sourced_store : order) {
+        if (sourced_store == leak.bypassed_store) { break; }
+        
         z3_scope;
 
         const aeg::Node& sourced_store_node = aeg.lookup(sourced_store);
@@ -539,6 +516,8 @@ void SpectreV4_Detector::run_sourced_store() {
         const z3::expr same_addr = aeg::Node::same_addr(sourced_store_node, aeg.lookup(leak.load));
         solver.add(same_addr, "load.addr == sourced_store.addr");
         solver.add(aeg.rfx_exists(sourced_store, leak.load), "load -rfx-> sourced_store");
+        
+        const auto action = util::push(actions, util::to_string("sourced ", sourced_store));
         
         if (solver.check() == z3::sat) {
             const auto edge = push_edge(EdgeRef {
