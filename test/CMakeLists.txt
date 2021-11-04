@@ -3,9 +3,6 @@ set(TEST_SH ${CMAKE_CURRENT_SOURCE_DIR}/test.sh)
 
 file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c)
 
-message("LLVM_DIR=${LLVM_DIR}")
-
-
 foreach(PHT_SRC ${PHT_SRCS})
   get_filename_component(PHT_NAME ${PHT_SRC} NAME_WLE)
   set(PHT_ARGFILE ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.args)

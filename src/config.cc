@@ -11,6 +11,7 @@
 #include "util.h"
 #include "uhb.h"
 #include "db.h"
+#include "mon/client.h"
 
 /* TODO
  * [ ] Handle function names
@@ -48,6 +49,7 @@ bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
 bool output_graphs = true;
+std::optional<mon::Client> client;
 
 SharedDatabaseListSet analyzed_functions;
 
@@ -151,6 +153,7 @@ int parse_args() {
         PARTIAL,
         FAST,
         BATCH,
+        MONITOR,
     };
     
     struct option opts[] = {
@@ -173,6 +176,7 @@ int parse_args() {
         {"partial", optional_argument, nullptr, PARTIAL},
         {"fast", optional_argument, nullptr, FAST},
         {"batch", optional_argument, nullptr, BATCH},
+        {"monitor", required_argument, nullptr, MONITOR},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -356,6 +360,11 @@ int parse_args() {
                 
             case BATCH: {
                 batch_mode = parse_bool_opt(optarg);
+                break;
+            }
+                
+            case MONITOR: {
+                client = mon::Client(optarg);
                 break;
             }
                 

@@ -4,7 +4,6 @@ project(lcm-llvm)
 
 set(CMAKE_CXX_STANDARD 17)
 find_package(LLVM REQUIRED CONFIG)
-message("LLVM_LIBRARY_DIRS=${LLVM_LIBRARY_DIRS}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 find_package(Z3 REQUIRED)
 add_definitions(${LLVM_DEFINITIONS})

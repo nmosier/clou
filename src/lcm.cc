@@ -23,6 +23,8 @@
 #include "util/llvm.h"
 #include "util/output.h"
 #include "db.h"
+#include "mon/proto.h"
+#include "mon/client.h"
 
 // tmp
 #include "util/container.h"
@@ -47,6 +49,13 @@ struct LCMPass: public llvm::FunctionPass {
     
     virtual bool runOnFunction(llvm::Function& F) override {
         llvm::errs() << "processing function '" << F.getName() << "'\n";
+        
+        if (client) {
+            mon::Message msg;
+            msg.mutable_func_started()->mutable_func()->set_name(F.getName().str());
+            client->send(msg);
+        }
+        
         
         try {
             check_config();
@@ -75,19 +84,6 @@ struct LCMPass: public llvm::FunctionPass {
             logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
             CFG_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
-            
-#if 0
-            // DEBUG
-            for (const CFG::Node& node : aegpo_unrolled.nodes) {
-                if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
-                    const llvm::Instruction *I = *Ip;
-                    if (llvm::dyn_cast<llvm::CallBase>(I)) {
-                        llvm::errs() << *I << "\n";
-                        std::abort();
-                    }
-                }
-            }
-#endif
             
             CFG_Calls cfg_calls {spec_depth};
             cfg_calls.construct(aegpo_unrolled);
@@ -142,6 +138,12 @@ struct LCMPass: public llvm::FunctionPass {
             llvm::errs() << "done\n";
             
             analyzed_functions.insert(F.getName().str());
+            
+            if (client) {
+                mon::Message msg;
+                msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
+                client->send(msg);
+            }
             
         } catch (const util::resume& resume) {
             std::cerr << resume.what() << "\n";

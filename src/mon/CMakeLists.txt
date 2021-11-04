@@ -8,16 +8,15 @@ endforeach()
 
 configure_file(proto.h.in proto.h)
 
-message(PROTO_HDRS="${PROTO_HDRS}")
-message(PROTO_SRCS="${PROTO_SRCS}")
-
 add_library(proto OBJECT
   ${CMAKE_CURRENT_BINARY_DIR}/proto.h
   ${PROTO_HDRS}
   ${PROTO_SRCS}
   mon.proto
+  client.h
+  client.cc
   )
-target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/..)
 target_link_libraries(proto PUBLIC ${Protobuf_LIBRARIES})
 
 find_package(Curses REQUIRED)

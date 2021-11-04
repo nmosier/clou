@@ -11,7 +11,7 @@
 
 #include <curses.h>
 
-#include "proto.h"
+#include "mon/proto.h"
 
 const char *prog;
 
@@ -120,7 +120,7 @@ struct RunningDuration: Component {
     Duration::TimePoint start;
     
     float elapsed() const {
-        return std::chrono::duration_cast<std::chrono::seconds>(Duration::Clock::now() - start).count();
+        return std::chrono::duration_cast<std::chrono::milliseconds>(Duration::Clock::now() - start).count() / 1e3;
     }
     
     Duration duration() const {
@@ -220,10 +220,18 @@ void Monitor::run() {
             perror_exit("poll");
         }
         if (poll_res > 0) {
-            run_body();
+            if (pfd.revents == POLLIN) {
+                run_body();
+            } else {
+                std::cerr << "error: unexpected poll event on fd\n";
+                std::abort();
+            }
         }
         
         // update screen
+        static unsigned i = 0;
+        ::clear();
+        ::printw("%u\n", i++);
         display();
         ::refresh();
     }
@@ -270,6 +278,8 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
 
 
 void server(int fd) {
+    ::initscr();
     Monitor monitor {fd};
     monitor.run();
+    
 }

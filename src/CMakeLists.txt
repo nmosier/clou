@@ -6,6 +6,7 @@ add_subdirectory(cfg)
 add_subdirectory(aeg)
 add_subdirectory(leakage)
 add_subdirectory(util)
+add_subdirectory(mon)
 
 
 add_library(lcm MODULE
@@ -33,10 +34,10 @@ add_library(lcm MODULE
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>
   $<TARGET_OBJECTS:leakage_objs>
+  $<TARGET_OBJECTS:proto>
   )
-
 target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)
-target_link_libraries(lcm PRIVATE ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
+target_link_libraries(lcm PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
 if(APPLE)
   target_link_options(lcm PRIVATE -undefined dynamic_lookup)
 endif()
@@ -70,4 +71,3 @@ add_executable(tarjan-test
 endif()
 
 
-add_subdirectory(mon)

@@ -5,6 +5,11 @@
 #include <fstream>
 #include <optional>
 
+/* FORWARD DECLARATIONS */
+namespace mon {
+class Client;
+}
+
 struct SpeculationPrimitive;
 
 extern std::string output_dir;
@@ -21,6 +26,7 @@ extern bool partial_executions;
 extern bool fast_mode;
 extern bool batch_mode;
 extern bool output_graphs;
+extern std::optional<mon::Client> client;
 
 
 struct AliasMode {
