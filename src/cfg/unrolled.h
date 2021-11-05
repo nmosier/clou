@@ -22,18 +22,15 @@ public:
 private:
     struct IDs {
         ID id;
-        std::vector<FuncID> callstack;
         FuncID next_func = 0;
         LoopID next_loop = 0;
         
         void push() {
-            callstack.push_back(id.func);
-            id.func = next_func++;
+            id.func.push_back(next_func++);
         }
         
         void pop() {
-            id.func = callstack.back();
-            callstack.pop_back();
+            id.func.pop_back();
         }
     };
     

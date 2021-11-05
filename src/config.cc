@@ -409,6 +409,8 @@ int parse_args() {
     // check_config();
     initialize_post();
     
+    std::cerr << "llvm is multithreaded: " << llvm::llvm_is_multithreaded() << "\n";
+    
     return 0;
 }
 

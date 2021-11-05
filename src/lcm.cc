@@ -88,20 +88,27 @@ struct LCMPass: public llvm::FunctionPass {
             
             /* Construct AEG */
             logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
+            client.send_step("cfg-unrolled", F.getName().str());
             CFG_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
-            
-            CFG_Calls cfg_calls {spec_depth};
-            cfg_calls.construct(aegpo_unrolled);
             
             if (output_cfgs.unrolled) {
                 output_(aegpo_unrolled, "cfg-unrolled", F);
             }
+            for (const auto& node : aegpo_unrolled.nodes) {
+                //std::cerr << "func: " << node.id->func << "\n";
+            }
+            
+            client.send_step("cfg-calls", F.getName().str());
+            CFG_Calls cfg_calls {spec_depth};
+            cfg_calls.construct(aegpo_unrolled);
+            
             if (output_cfgs.calls) {
                 output_(cfg_calls, "cfg-calls", F);
             }
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
+            client.send_step("cfg-expanded", F.getName().str());
             CFG_Expanded cfg_expanded {spec_depth};
             {
                 switch (leakage_class) {
@@ -128,6 +135,7 @@ struct LCMPass: public llvm::FunctionPass {
             }
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
+            client.send_step("aeg", F.getName().str());
             ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
             signal(SIGINT, [] (int sig) {
                 ProfilerStop();
@@ -140,6 +148,7 @@ struct LCMPass: public llvm::FunctionPass {
 #endif
             ProfilerStop();
             
+            client.send_step("leakage", F.getName().str());
             llvm::errs() << "Testing...\n";
             aeg.test();
             llvm::errs() << "done\n";
@@ -158,9 +167,17 @@ struct LCMPass: public llvm::FunctionPass {
                     }
                 });
                 set.erase("");
-                
+
                 for (const std::string& s : set) {
                     analyzed_functions.insert(s);
+                }
+                
+                {
+                    mon::Message msg;
+                    for (const std::string& s : set) {
+                        msg.mutable_funcs_analyzed()->add_funcs()->set_name(s);
+                    }
+                    client.send(msg);
                 }
             }
 #endif

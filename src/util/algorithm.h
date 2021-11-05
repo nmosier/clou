@@ -1,5 +1,7 @@
 #pragma once
 
+#include <numeric>
+
 namespace util {
 
 
@@ -90,6 +92,11 @@ OutputIt copy(const Container& container, OutputIt out) {
     return std::copy(container.begin(), container.end(), out);
 }
 
+template <typename Container, typename OutputIt, typename UnaryOp>
+OutputIt transform(const Container& container, OutputIt out, UnaryOp op) {
+    return std::transform(container.begin(), container.end(), out, op);
+}
+
 template <typename A, typename B>
 bool subset(const A& a, const B& b) {
     for (const auto& x : a) {
@@ -98,6 +105,15 @@ bool subset(const A& a, const B& b) {
         }
     }
     return true;
+}
+
+
+template <typename T>
+bool prefix(const std::vector<T>& a, const std::vector<T>& b) {
+    if (a.size() > b.size()) {
+        return prefix(b, a);
+    }
+    return std::equal(a.begin(), a.end(), b.begin());
 }
 
 

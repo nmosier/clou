@@ -19,6 +19,7 @@
 #include <curses.h>
 
 #include "mon/proto.h"
+#include "util/algorithm.h"
 
 const char *prog;
 
@@ -183,6 +184,7 @@ struct RunningJob: Job {
     owner_t owner;
     RunningDuration duration;
     Progress progress;
+    std::string step;
     
     virtual void display() override {
         Job::display();
@@ -192,6 +194,9 @@ struct RunningJob: Job {
         progress.display();
         ::addstr(" ");
         Duration(duration.elapsed() / progress.frac - duration.elapsed()).display();
+        if (!step.empty()) {
+            ::printw(" %s", step.c_str());
+        }
     }
     
     RunningJob(const std::string& name, owner_t owner): Job(name), owner(owner) {}
@@ -302,6 +307,7 @@ struct Monitor: Component {
         ::addstr("\n\nCOMPLETED:\n");
         completed_jobs.display();
         ::addstr("\n");
+        ::printw("ANALYZED: %zu\n", analyzed_functions.size());
     }
     
     void run();
@@ -312,7 +318,8 @@ private:
     void handle_func_started(const mon::FunctionStarted& msg, int owner);
     void handle_func_completed(const mon::FunctionCompleted& msg);
     void handle_func_progress(const mon::FunctionProgress& msg);
-    void handle_connect(const mon::Connect& msg);
+    void handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg);
+    void handle_func_step(const mon::FunctionStep& msg);
     
     template <typename T>
     bool client_read(FILE *f, T *buf, std::size_t count) const {
@@ -447,6 +454,14 @@ void Monitor::run_body(FILE *client_f, int owner) {
             handle_func_progress(msg.func_progress());
             break;
             
+        case mon::Message::kFuncsAnalyzed:
+            handle_funcs_analyzed(msg.funcs_analyzed());
+            break;
+            
+        case mon::Message::kFuncStep:
+            handle_func_step(msg.func_step());
+            break;
+            
         case mon::Message::MESSAGE_NOT_SET:
             break;
             
@@ -473,13 +488,25 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
 }
 
 void Monitor::handle_func_progress(const mon::FunctionProgress& msg) {
-    const auto it = running_jobs.find_if([&] (const RunningJob& job) -> bool {
-        return job.name == msg.func().name();
-    });
-    if (it == running_jobs.end()) {
-        std::cerr << "warning: received 'job progress' for job that wasn't running\n";
+    for (RunningJob& job : running_jobs.vec) {
+        if (job.name == msg.func().name()) {
+            job.progress.frac = msg.frac();
+        }
     }
-    it->progress.frac = msg.frac();
+}
+
+void Monitor::handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg) {
+    util::transform(msg.funcs(), std::inserter(analyzed_functions, analyzed_functions.end()), [] (const mon::Function& func) -> std::string {
+        return func.name();
+    });
+}
+
+void Monitor::handle_func_step(const mon::FunctionStep& msg) {
+    for (RunningJob& job : running_jobs.vec) {
+        if (job.name == msg.func().name()) {
+            job.step = msg.step();
+        }
+    }
 }
 
 void server(int server_sock) {

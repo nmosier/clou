@@ -14,13 +14,8 @@ llvm::AliasResult AEG::check_alias(NodeRef ref1, NodeRef ref2) const {
         return llvm::AliasResult::MustAlias;
     }
     
-#if 0
-    const ValueLoc vl1 {*po.lookup(ref1).id, node1.get_memory_address_pair().first};
-    const ValueLoc vl2 {*po.lookup(ref2).id, node2.get_memory_address_pair().first};
-#else
     const ValueLoc vl1 = get_value_loc(ref1);
     const ValueLoc vl2 = get_value_loc(ref2);
-#endif
     
     const auto it = alias_rel.find(std::make_pair(vl1, vl2));
     if (it == alias_rel.end()) {

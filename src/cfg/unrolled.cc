@@ -20,6 +20,9 @@ void CFG_Unrolled::construct() {
         add_edge(exit_pair.second, exit);
     }
     prune();
+    for (const auto& node : nodes) {
+        std::cerr << "func: " << node.id->func << "\n";
+    }
 }
 
 void CFG_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
@@ -40,9 +43,9 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
         return false;
     }
     
-    const FuncID caller_id = ids.id.func;
+    const std::vector<FuncID> caller_id = ids.id.func;
     ids.push();
-    const FuncID callee_id = ids.id.func;
+    const std::vector<FuncID> callee_id = ids.id.func;
     
     /* add parameter translations */
     {

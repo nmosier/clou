@@ -2,6 +2,8 @@
 #include "cfg/cfg.h"
 #include "util.h"
 #include "util/algorithm.h"
+#include "util/output.h"
+
 
 /* Construction Algorithm
  * We will construct functions recursively. Constructing a function should return the
@@ -21,11 +23,9 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node) {
        },
       }, node());
    if (node.id) {
+       using output::operator<<;
       os << " F" << node.id->func;
-      os << " L";
-      for (auto loop_id : node.id->loop) {
-         os << loop_id << ",";
-      }
+       os << " L" << node.id->loop;
    }
    return os;
 }
@@ -73,7 +73,7 @@ void CFG::prune() {
    for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
       const auto it = refmap.find(old_ref);
       if (it != refmap.end()) {
-         nodes[it->second] = std::move(nodes[it->first]);
+          nodes[it->second] = nodes[it->first];
          new_po.add_node(it->second);
       }
    }
@@ -89,7 +89,7 @@ void CFG::prune() {
    po = std::move(new_po);
 }
 
-bool CFG::alias_valid(const ID& a, const ID& b) {
+bool CFG::llvm_alias_valid(const ID& a, const ID& b) {
    if (a.func != b.func) {
       return false;
    }
@@ -102,11 +102,11 @@ bool CFG::alias_valid(const ID& a, const ID& b) {
    return true;
 }
 
-bool CFG::alias_valid(const Node& a, const Node& b) {
+bool CFG::llvm_alias_valid(const Node& a, const Node& b) {
    if (!(a.id && b.id)) {
       return false;
    }
-   return alias_valid(*a.id, *b.id);
+   return llvm_alias_valid(*a.id, *b.id);
 }
 
 bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
@@ -240,4 +240,19 @@ std::string CFG::function_name() const {
         }
     }
     std::abort();
+}
+
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Key& key) {
+    using output::operator<<;
+    os << "{.id = " << key.id << ", V = " << *key.V << "}";
+    return os;
+}
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Value& value) {
+    using output::operator<<;
+    os << "{.id = " << value.id << ", Vs = {";
+    output::container(os, value.Vs, ", ", [] (const auto *ptr) -> const llvm::Value& { return *ptr; });
+    os << "}";
+    return os;
 }

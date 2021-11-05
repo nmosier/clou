@@ -335,6 +335,10 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             client.send(msg);
         }
         
+        if (transmitters.find(aeg.lookup(transmitter).inst->get_inst()) != transmitters.end()) {
+            continue;
+        }
+        
         const auto action = util::push(actions, util::to_string("transmitter ", transmitter));
         
         z3_scope;

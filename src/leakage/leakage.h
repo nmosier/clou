@@ -29,6 +29,7 @@ public:
     }
     
 protected:
+    std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};
     
     struct EdgeRef {
@@ -87,7 +88,7 @@ protected:
     using RF = std::unordered_map<NodeRef, Sources>;
     const Sources& rf_sources(NodeRef load);
     void rf_sources(NodeRef load, Sources&& sources);
-    
+        
 private:
     unsigned traceback_depth = 0;
     
@@ -96,10 +97,11 @@ private:
     Mems get_mems_arch();
     Mems get_mems_trans();
     
-    RF rf;
-    z3::solver rf_solver;
+    RF rf; // TODO: remove?
+    z3::solver rf_solver; // TODO: remove
     
     // DEBUG members
+    // TODO: remove
     std::unordered_map<NodeRef, unsigned> rf_source_count;
 };
 
@@ -277,6 +279,12 @@ void Detector_<Leakage>::output_execution(const Leakage& leak) {
     std::transform(flag_edges.begin(), flag_edges.end(), std::back_inserter(flag_edges_), [] (const EdgeRef& e) {
         return std::make_tuple(e.src, e.dst, e.kind);
     });
+    
+    // add to detector's transmitters list
+    {
+        const aeg::Node& transmitter_node = aeg.lookup(leak.get_transmitter());
+        transmitters.insert(transmitter_node.inst->get_inst());
+    }
     
     if (witness_executions) {
         aeg.output_execution(path, eval, flag_edges_);

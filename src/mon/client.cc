@@ -72,4 +72,12 @@ void Client::disconnect() {
     f = nullptr;
 }
 
+void Client::send_step(const std::string& step, const std::string& func) {
+    Message msg;
+    FunctionStep *fs = msg.mutable_func_step();
+    fs->set_step(step);
+    fs->mutable_func()->set_name(func);
+    send(msg);
+}
+
 }

@@ -218,6 +218,16 @@ private:
 public:
     llvm::AliasResult check_alias(NodeRef ref1, NodeRef ref2) const;
 private:
+    struct AddrInfo {
+        CFG::ID id;
+        const llvm::Value *V;
+        z3::expr e;
+        std::optional<NodeRef> ref;
+        
+        ValueLoc vl() const { return {id, V}; }
+    };
+    
+    std::optional<llvm::AliasResult> compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const;
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     
     friend class Taint;

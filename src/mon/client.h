@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdio>
+#include <string>
 
 namespace mon {
 
@@ -27,6 +28,8 @@ public:
     
     bool good() const { return f != nullptr; }
     operator bool() const { return good(); }
+    
+    void send_step(const std::string& step, const std::string& func);
     
 private:
     FILE *f;

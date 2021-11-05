@@ -428,17 +428,30 @@ void AEG::construct_tfo() {
     }
 }
 
+std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const {
+    /* check if LLVM's built-in alias analysis is valid */
+    if (po.llvm_alias_valid(a.id, b.id)) {
+        return AA.alias(a.V, b.V);
+    }
+    
+    /* check whether both values are allocated in nested scopes */
+    {
+        // if a is a prefix of b or b is a prefix of a
+        if (util::prefix(a.id.func, b.id.func)) {
+            // check if both alloca
+            if (llvm::isa<llvm::AllocaInst>(a.V) && llvm::isa<llvm::AllocaInst>(b.V)) {
+                return llvm::AliasResult::NoAlias;
+            }
+        }
+    }
+    
+    return std::nullopt;
+}
+
 void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     using ID = CFG::ID;
-    struct Info {
-        ID id;
-        const llvm::Value *V;
-        z3::expr e;
-        std::optional<NodeRef> ref;
-        
-        ValueLoc vl() const { return {id, V}; }
-    };
-    std::vector<Info> addrs;
+    
+    std::vector<AddrInfo> addrs;
     std::unordered_map<std::pair<ID, const llvm::Value *>, NodeRef> seen;
     for (NodeRef i : node_range()) {
         const Node& node = lookup(i);
@@ -479,14 +492,20 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     unsigned nos, musts, mays;
     nos = musts = mays = 0;
     
+#if 0
     // TODO: pointers are sketchy, but can't use iterators.
     using InfoSet = std::unordered_set<const Info *>;
     using InfoRel = std::unordered_map<const Info *, InfoSet>;
+#endif
     
+#if 0
     InfoRel no_map; // TODO: currently unused
+#endif
 
+#if 0
     using MustRel = std::unordered_map<ValueLoc, std::unordered_set<ValueLoc>>;
     MustRel must_rel;
+#endif
     
     using ValueLocSet = std::unordered_set<ValueLoc>;
     ValueLocSet skip_vls; // skip because already saw 'must alias'
@@ -495,12 +514,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         const ValueLoc vl1 = it1->vl();
         if (util::contains(skip_vls, vl1)) { continue; }
         for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
-            if (po.alias_valid(it1->id, it2->id)) {
-                const auto alias_res = AA.alias(it1->V, it2->V);
+            if (const auto alias_res = compute_alias(*it1, *it2, AA)) {
                 const ValueLoc vl2 = it2->vl();
                 if (util::contains(skip_vls, vl2)) { continue; }
 
-                const auto is_arch = [&] (const Info& x) -> z3::expr {
+                const auto is_arch = [&] (const AddrInfo& x) -> z3::expr {
                     if (x.ref) {
                         return lookup(*x.ref).arch;
                     } else {
@@ -512,10 +530,12 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 const z3::expr arch2 = is_arch(*it2);
                 const z3::expr precond = alias_mode.transient ? context.TRUE : (arch1 && arch2);
                 
-                switch (alias_res) {
+                switch (*alias_res) {
                     case llvm::AliasResult::NoAlias: {
+#if 0
                         no_map[&*it1].insert(&*it2);
                         no_map[&*it2].insert(&*it1);
+#endif
                         constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
@@ -530,8 +550,10 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                     }
                         
                     case llvm::AliasResult::MustAlias: {
+#if 0
                         must_rel[vl1].insert(vl2);
                         must_rel[vl2].insert(vl1);
+#endif
                         skip_vls.insert(vl2);
                         constraints(z3::implies(precond, it1->e == it2->e), "must-alias");
                         ++musts;
@@ -541,7 +563,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                     default: std::abort();
                 }
                 
-                add_alias_result(vl1, vl2, alias_res);
+                add_alias_result(vl1, vl2, *alias_res);
                 
             }
         }

@@ -2,10 +2,6 @@ syntax = "proto2";
 
 package mon;
 
-message Connect {
-    required uint32 pid = 1;
-}
-
 message Function {
   required string name = 1;
 }
@@ -23,11 +19,21 @@ message FunctionProgress {
     required float frac = 2;
 }
 
+message FunctionsAnalyzed {
+    repeated Function funcs = 1;
+}
+
+message FunctionStep {
+    required Function func = 1;
+    required string step = 2;
+}
+
 message Message {
     oneof message {
         FunctionStarted   func_started   = 1;
         FunctionCompleted func_completed = 2;
         FunctionProgress  func_progress  = 3;
-        Connect           connect        = 4;
+        FunctionsAnalyzed funcs_analyzed = 4;
+        FunctionStep      func_step      = 5;
     }
 }

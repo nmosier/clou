@@ -14,6 +14,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/LoopInfo.h>
+#include <llvm/Analysis/AliasAnalysis.h>
 
 #include "binrel.h"
 #include "lcm.h"
@@ -44,7 +45,7 @@ public:
      * This identifier is essential to correctly interpret the results of some LLVM analysis, e.g. LLVM alias analysis.
      */
     struct ID {
-        FuncID func = 0;
+        std::vector<FuncID> func;
         std::vector<LoopID> loop;
         bool operator==(const ID& other) const {
             return func == other.func && loop == other.loop;
@@ -113,9 +114,9 @@ public:
     
     std::size_t size() const { return nodes.size(); }
     
-    static bool alias_valid(const ID& a, const ID& b);
-    static bool alias_valid(const Node& a, const Node& b);
-    bool alias_valid(NodeRef a, NodeRef b) const { return alias_valid(lookup(a), lookup(b)); }
+    static bool llvm_alias_valid(const ID& a, const ID& b);
+    static bool llvm_alias_valid(const Node& a, const Node& b);
+    bool llvm_alias_valid(NodeRef a, NodeRef b) const { return llvm_alias_valid(lookup(a), lookup(b)); }
     
     template <typename OutputIt>
     void reverse_postorder(OutputIt out) const;
@@ -151,21 +152,21 @@ protected:
 public:
     struct Translations {
         struct Key {
-            FuncID id;
+            std::vector<FuncID> id;
             const llvm::Value *V;
-            Key(FuncID id, const llvm::Value *V): id(id), V(V) {}
+            Key(const std::vector<FuncID>& id, const llvm::Value *V): id(id), V(V) {}
             struct Hash {
-                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_pair(key.id, key.V)); }
+                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_pair(std::hash<std::vector<FuncID>>()(key.id), key.V)); }
             };
             bool operator==(const Key& other) const { return id == other.id && V == other.V; }
         };
         
         struct Value {
-            FuncID id;
+            std::vector<FuncID> id;
             using ValueSet = std::unordered_set<const llvm::Value *>;
             ValueSet Vs;
-            Value(FuncID id): id(id) {}
-            Value(FuncID id, const ValueSet& Vs): id(id), Vs(Vs) {}
+            Value(const std::vector<FuncID>& id): id(id) {}
+            Value(const std::vector<FuncID>& id, const ValueSet& Vs): id(id), Vs(Vs) {}
             bool operator==(const Value& other) const {
                 return id == other.id && Vs == other.Vs;
             }
@@ -287,14 +288,5 @@ inline CFG::partial_order CFG::make_partial_order() const {
 
 
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Key& key) {
-    os << "{.id = " << key.id << ", V = " << *key.V << "}";
-    return os;
-}
-
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Value& value) {
-    os << "{.id = " << value.id << ", Vs = {";
-    output::container(os, value.Vs, ", ", [] (const auto *ptr) -> const llvm::Value& { return *ptr; });
-    os << "}";
-    return os;
-}
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Key& key);
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Value& value);

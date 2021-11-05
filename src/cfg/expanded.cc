@@ -141,6 +141,13 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
                 const auto it = map.find(source);
                 if (kind == INST) {
                     if (!llvm::isa<llvm::PHINode>(I)) {
+                        if (it == map.end()) {
+                            llvm::errs() << "source: " << *source.V << "\n";
+                            std::cerr << "map: ";
+                            for (const auto& p : map) {
+                                llvm::errs() << p.first << "\n";
+                            }
+                        }
                         assert(it != map.end());
                     }
                 }
