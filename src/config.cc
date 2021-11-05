@@ -34,10 +34,7 @@ unsigned max_traceback = 1;
 std::ofstream log_;
 LeakageClass leakage_class = LeakageClass::INVALID;
 std::optional<unsigned> max_transient_nodes;
-AliasMode alias_mode = {
-    .transient = false,
-    .lax = false,
-};
+AliasMode alias_mode;
 SpectreV1Mode spectre_v1_mode = {
     .mode = SpectreV1Mode::CLASSIC,
 };
@@ -77,7 +74,7 @@ only examine given functions
 --max-transient <num>
                      set maximum number of transient nodes (default: no limit)
 --aa <flag>[,<flag>...]
-                     set alias analysis flags. Accepted flags: "transient", "lax"
+                     set alias analysis flags. Accepted flags: "transient", "llvm-only"
 --spectre-v1 <subopts>
                      set Spectre-v1 options. Suboptions:
     mode={classic|branch-predicate}
@@ -235,20 +232,19 @@ int parse_args() {
                 break;
                 
             case AA_FLAGS: {
-                alias_mode = {
-                    .transient = false,
-                    .lax = false,
-                };
+                alias_mode.clear_all();
                 
-                std::vector<std::string> flags;
-                parse_list(optarg, std::back_inserter(flags), [] (const char *s) -> std::string { return s; });
-                for (const std::string& flag : flags) {
-                    if (flag == "transient") {
-                        alias_mode.transient = true;
-                    } else if (flag == "lax") {
-                        alias_mode.lax = true;
+                static const std::unordered_map<std::string, bool AliasMode::*> map = {
+                    {"transient", &AliasMode::transient},
+                    {"llvm-only", &AliasMode::llvm_only},
+                };
+                char *tok;
+                while ((tok = ::strsep(&optarg, ",")) != nullptr) {
+                    const auto it = map.find(tok);
+                    if (it == map.end()) {
+                        error("bad alias analysis flag '%s'", tok);
                     } else {
-                        error("bad alias analysis flag '%s", flag.c_str());
+                        alias_mode.*it->second = true;
                     }
                 }
                 break;
@@ -374,6 +370,7 @@ int parse_args() {
                 
             case MONITOR: {
                 client = mon::Client(optarg);
+                client.send_connect();
                 break;
             }
                 

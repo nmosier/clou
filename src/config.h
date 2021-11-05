@@ -43,8 +43,12 @@ struct OutputCFGs {
 extern OutputCFGs output_cfgs;
 
 struct AliasMode {
-    bool transient; /*!< enable alias analysis on transient instructions too (default: off) */
-    bool lax; /*!< relax the alias analysis, converting llvm::MayAlias -> llvm::NoAlias. This is less complete but produces more intuitive results. */
+    bool transient = true; /*!< enable alias analysis on transient instructions too (default: off) */
+    bool llvm_only = false; /*!< only use LLVM alias analysis; disable all additional rules */
+    
+    void clear_all() {
+        transient = llvm_only = false;
+    }
 };
 extern AliasMode alias_mode;
 

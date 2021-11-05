@@ -213,6 +213,8 @@ public:
     
     struct partial_order;
     partial_order make_partial_order() const;
+    
+    bool may_introduce_speculation(NodeRef ref) const;
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node);

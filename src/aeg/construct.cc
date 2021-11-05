@@ -392,9 +392,14 @@ void AEG::construct_tfo() {
         for (const NodeRef dst : po.po.fwd.at(src)) {
             // add optional edge
             const Node& dst_node = lookup(dst);
+            z3::expr_vector cond {context.context};
+            if (po.may_introduce_speculation(src)) {
+                cond.push_back(src_node.arch && dst_node.exec());
+            }
+            cond.push_back(src_node.trans && dst_node.trans);
             const z3::expr exists = add_optional_edge(src, dst, Edge {
                 Edge::TFO,
-                (src_node.arch && dst_node.exec()) || (src_node.trans && dst_node.trans)
+                z3::mk_or(cond)
             }, "tfo");
             ++nedges;
             tfos.push_back(exists);
@@ -434,16 +439,20 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
         return AA.alias(a.V, b.V);
     }
     
+    if (alias_mode.llvm_only) {
+        return std::nullopt;
+    }
+    
     /* check whether both values are allocated in nested scopes */
     {
         // if a is a prefix of b or b is a prefix of a
-        if (util::prefix(a.id.func, b.id.func)) {
+        if (util::prefix(a.id.func, b.id.func) || util::prefix(b.id.func, a.id.func)) {
             // check if both alloca
             if (llvm::isa<llvm::AllocaInst>(a.V) && llvm::isa<llvm::AllocaInst>(b.V)) {
                 return llvm::AliasResult::NoAlias;
             }
         }
-    }
+    }    
     
     return std::nullopt;
 }
@@ -542,9 +551,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                     }
                         
                     case llvm::AliasResult::MayAlias: {
-                        if (alias_mode.lax) {
-                            constraints(z3::implies(precond, it1->e != it2->e), "may-alias");
-                        }
                         ++mays;
                         break;
                     }

@@ -28,6 +28,10 @@ message FunctionStep {
     required string step = 2;
 }
 
+message ClientConnect {
+    required uint32 pid = 1;
+}
+
 message Message {
     oneof message {
         FunctionStarted   func_started   = 1;

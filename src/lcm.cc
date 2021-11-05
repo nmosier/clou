@@ -95,9 +95,6 @@ struct LCMPass: public llvm::FunctionPass {
             if (output_cfgs.unrolled) {
                 output_(aegpo_unrolled, "cfg-unrolled", F);
             }
-            for (const auto& node : aegpo_unrolled.nodes) {
-                //std::cerr << "func: " << node.id->func << "\n";
-            }
             
             client.send_step("cfg-calls", F.getName().str());
             CFG_Calls cfg_calls {spec_depth};

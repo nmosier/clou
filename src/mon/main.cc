@@ -182,11 +182,13 @@ using owner_t = int;
 
 struct RunningJob: Job {
     owner_t owner;
+    pid_t pid;
     RunningDuration duration;
     Progress progress;
     std::string step;
     
     virtual void display() override {
+        ::printw("%8d ", pid);
         Job::display();
         ::addstr(" ");
         duration.display();
@@ -199,7 +201,7 @@ struct RunningJob: Job {
         }
     }
     
-    RunningJob(const std::string& name, owner_t owner): Job(name), owner(owner) {}
+    RunningJob(const std::string& name, owner_t owner, pid_t pid): Job(name), owner(owner), pid(pid) {}
 };
 
 struct CompletedJob: Job {
@@ -313,9 +315,9 @@ struct Monitor: Component {
     void run();
     
 private:
-    void run_body(FILE *client_f, int owner);
+    void run_body(FILE *client_f, int owner, ::pid_t pid);
     
-    void handle_func_started(const mon::FunctionStarted& msg, int owner);
+    void handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid);
     void handle_func_completed(const mon::FunctionCompleted& msg);
     void handle_func_progress(const mon::FunctionProgress& msg);
     void handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg);
@@ -331,6 +333,22 @@ private:
             }
             return false;
         }
+        return true;
+    }
+    
+    template <typename Msg>
+    bool parse(FILE *client_f, Msg& msg) {
+        uint32_t buflen;
+        if (!client_read(client_f, &buflen, 1)) { return false; }
+        buflen = ntohl(buflen);
+        std::vector<char> buf;
+        buf.resize(buflen);
+        if (!client_read(client_f, buf.data(), buflen)) { return false; }
+        if (!msg.ParseFromArray(buf.data(), buf.size())) {
+            std::cerr << "warning: bad message\n";
+            return false;
+        }
+        ++msgs;
         return true;
     }
 };
@@ -355,6 +373,14 @@ void Monitor::run() {
                             perror_exit("fdopen");
                         }
                         
+                        // read client connect packet
+                        pid_t pid;
+                        {
+                            mon::ClientConnect msg;
+                            if (!parse(client_f, msg)) { goto cleanup; }
+                            pid = msg.pid();
+                        }
+                        
                         while (true) {
                             struct pollfd pfd = {
                                 .fd = client_sock,
@@ -366,7 +392,7 @@ void Monitor::run() {
                             
                             /* check flags */
                             if ((pfd.revents & POLLIN)) {
-                                this->run_body(client_f, id);
+                                this->run_body(client_f, id, pid);
                             }
                             if ((pfd.revents & POLLHUP)) {
                                 std::fclose(client_f);
@@ -381,6 +407,10 @@ void Monitor::run() {
                                 break;
                             }
                         }
+                        
+                        cleanup:
+                            
+                        std::fclose(client_f);
                         
                         /* cleanup monitor state */
                         {
@@ -421,29 +451,15 @@ void Monitor::run() {
     display_thd.join();
 }
 
-void Monitor::run_body(FILE *client_f, int owner) {
+void Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
     mon::Message msg;
-    
-    uint32_t buflen;
-    if (!client_read(client_f, &buflen, 1)) { return; }
-    buflen = ntohl(buflen);
-    
-    std::vector<char> buf;
-    buf.resize(buflen);
-    if (!client_read(client_f, buf.data(), buflen)) { return; }
-    
-    if (!msg.ParseFromArray(buf.data(), buf.size())) {
-        std::cerr << "warning: bad message\n";
-        return;
-    }
-    
-    ++msgs;
+    if (!parse(client_f, msg)) { return; }
     
     std::unique_lock<std::mutex> lock {mutex};
     
     switch (msg.message_case()) {
         case mon::Message::kFuncStarted:
-            handle_func_started(msg.func_started(), owner);
+            handle_func_started(msg.func_started(), owner, pid);
             break;
             
         case mon::Message::kFuncCompleted:
@@ -469,8 +485,8 @@ void Monitor::run_body(FILE *client_f, int owner) {
     }
 }
 
-void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner) {
-    running_jobs.vec.emplace_back(msg.func().name(), owner);
+void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid) {
+    running_jobs.vec.emplace_back(msg.func().name(), owner, pid);
 }
 
 void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {

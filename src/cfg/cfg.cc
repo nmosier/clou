@@ -3,6 +3,7 @@
 #include "util.h"
 #include "util/algorithm.h"
 #include "util/output.h"
+#include "config.h"
 
 
 /* Construction Algorithm
@@ -255,4 +256,40 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Va
     output::container(os, value.Vs, ", ", [] (const auto *ptr) -> const llvm::Value& { return *ptr; });
     os << "}";
     return os;
+}
+
+
+bool CFG::may_introduce_speculation(NodeRef ref) const {
+    const Node& node = lookup(ref);
+    
+    switch (leakage_class) {
+        case LeakageClass::SPECTRE_V1:
+            return po.fwd.at(ref).size() > 1;
+
+        case LeakageClass::SPECTRE_V4:
+            if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+                const llvm::Instruction *I = *Ip;
+                bool res = (**Ip).mayReadFromMemory();
+                if (llvm::isa<llvm::CallBase>(I) || llvm::isa<llvm::LoadInst>(I)) {
+                    assert(res);
+                } else if (const llvm::StoreInst *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
+                    if (SI->isVolatile()) {
+                        assert(res);
+                        res = false; // don't handle volatile instructions for now
+                    } else {
+                        assert(!res);
+                    }
+                } else {
+                    if (res) {
+                        llvm::errs() << node << "\n";
+                    }
+                    assert(!res);
+                }
+                return res;
+            } else {
+                return false;
+            }
+            
+        default: std::abort();
+    }
 }

@@ -110,18 +110,6 @@ void AEG::test() {
     // add main constraints
     constraints.add_to(solver);
     
-#if 0
-    // limits: transient nodes
-    if (max_transient_nodes) {
-        z3::expr_vector trans {context.context};
-        for (NodeRef ref : node_range()) {
-            trans.push_back(lookup(ref).trans);
-        }
-        solver.add(z3::atmost(trans, *max_transient_nodes));
-    }
-    // NOTE: now do this in construct.cc
-#endif
-    
     std::cerr << solver.statistics() << "\n";
     
     std::optional<Timer> timer = Timer();
@@ -130,26 +118,6 @@ void AEG::test() {
     
     // TODO: clean this crap up
     {
-#if 0
-        fol::Context<z3::expr, fol::SymEval> fol_ctx {fol::Logic<z3::expr>(context.context), fol::SymEval(context.context), *this};
-        const auto addr_rel = fol_ctx.edge_rel(Edge::ADDR);
-        const auto trans_rel = fol_ctx.node_rel_if([&] (NodeRef, const Node& node) -> z3::expr {
-            return node.trans;
-        });
-        const auto addr_expr = fol::some(fol::join(addr_rel, trans_rel));
-        solver.push();
-        solver.add(addr_expr);
-        if (solver.check() == z3::sat) {
-            z3::eval eval {solver.get_model()};
-            output_execution("addr.dot", eval);
-        } else {
-            const auto exprs = solver.unsat_core();
-            std::cerr << exprs << "\n";
-            throw util::resume("no addr edges");
-        }
-        solver.pop();
-#endif
-        
         Timer timer;
         leakage(solver);
     }

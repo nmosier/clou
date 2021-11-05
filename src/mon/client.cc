@@ -28,15 +28,6 @@ void Client::write(const T *buf, std::size_t count) {
     }
 }
 
-void Client::send(const Message& msg) {
-    if (!good()) { return; }
-    std::string buf;
-    msg.SerializeToString(&buf);
-    const uint32_t buflen = htonl(buf.size());
-    write(&buflen, 1);
-    write(buf.data(), buf.size());
-}
-
 void Client::connect(const char *path) {
     assert(!good());
     
@@ -77,6 +68,12 @@ void Client::send_step(const std::string& step, const std::string& func) {
     FunctionStep *fs = msg.mutable_func_step();
     fs->set_step(step);
     fs->mutable_func()->set_name(func);
+    send(msg);
+}
+
+void Client::send_connect() {
+    ClientConnect msg;
+    msg.set_pid(::getpid());
     send(msg);
 }
 

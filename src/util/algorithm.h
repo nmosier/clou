@@ -108,10 +108,20 @@ bool subset(const A& a, const B& b) {
 }
 
 
+/** Check whether \p a is a proper prefix of \p b. */
 template <typename T>
 bool prefix(const std::vector<T>& a, const std::vector<T>& b) {
+    if (a.size() >= b.size()) {
+        return false;
+    }
+    return std::equal(a.begin(), a.end(), b.begin());
+}
+
+/** Check whether \p a is a prefix of or equal to \p b. */
+template <typename T>
+bool prefixeq(const std::vector<T>& a, const std::vector<T>& b) {
     if (a.size() > b.size()) {
-        return prefix(b, a);
+        return false;
     }
     return std::equal(a.begin(), a.end(), b.begin());
 }
