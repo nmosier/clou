@@ -20,9 +20,6 @@ void CFG_Unrolled::construct() {
         add_edge(exit_pair.second, exit);
     }
     prune();
-    for (const auto& node : nodes) {
-        std::cerr << "func: " << node.id->func << "\n";
-    }
 }
 
 void CFG_Unrolled::construct_instruction(const llvm::Instruction *I, Port& port, IDs& ids) {;
