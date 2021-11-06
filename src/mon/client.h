@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <arpa/inet.h>
 
 namespace mon {
 

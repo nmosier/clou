@@ -142,7 +142,9 @@ inline bool always_true(z3::solver& solver, const z3::expr& pred) {
 inline z3::solver duplicate(const z3::solver& orig) {
     z3::context& ctx = orig.ctx();
     z3::solver dup {ctx};
-    dup.add(orig.assertions());
+    for (const z3::expr& e : orig.assertions()) {
+        dup.add(e);
+    }
     return dup;
 }
 
