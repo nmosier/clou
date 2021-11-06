@@ -16,3 +16,9 @@ out/
 make/
 xcode/
 build/
+.DS_Store
+SCRATCH
+TODO
+presentation/
+latex/
+COMMANDS
