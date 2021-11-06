@@ -574,6 +574,14 @@ void Detector::precompute_rf(NodeRef load) {
         }
 #endif
         
+        if (stb_size) {
+            if (aeg.lookup(ref).stores_in > aeg.lookup(load).stores_in + *stb_size) {
+                /* must exceed to store buffer size */
+                std::cerr << "skipping rf due to stb size\n";
+                continue;
+            }
+        }
+        
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.check_alias(load, ref)) {
                 case llvm::NoAlias: break;

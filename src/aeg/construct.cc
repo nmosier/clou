@@ -8,6 +8,7 @@
 #include "util/algorithm.h"
 #include "util/iterator.h"
 #include "util/output.h"
+#include "config.h"
 
 namespace aeg {
 
@@ -59,33 +60,16 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_addr_refs();
     logv(2) << "Constructing aliases\n";
     construct_aliases(AA);
-#if 0
-    logv(2) << "Constructing arch order\n";
-    construct_arch_order();
-#endif
+
     logv(2) << "Constructing com\n";
     construct_com();
-#if 0
-    logv(2) << "Constructing exec order\n";
-    construct_exec_order();
-#endif
-#if 0
-    logv(2) << "Constructing trans group\n";
-    construct_trans_group();
-#endif
+
     logv(2) << "Constructing comx\n";
     construct_comx();
     logv(2) << "Constructing dependencies\n";
-#if 0
-    construct_dependencies();
-    {
-        // DEBUG
-        const auto deps2 = construct_dependencies2();
-        assert(dependencies == deps2);
-    }
-#else
+
     dependencies = construct_dependencies2();
-#endif
+
     logv(2) << "Constructing dominators\n";
     construct_dominators();
     logv(2) << "Constructing postdominators\n";
@@ -104,14 +88,10 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_data();
     logv(2) << "Constructing ctrl\n";
     construct_ctrl();
-#if 0
-    logv(2) << "Constructing mem\n";
-    construct_mem();
-#endif
-
-#if USE_TAINT
-    construct_taint();
-#endif
+    
+    if (partial_executions || stb_size) {
+        compute_min_store_paths();
+    }
 }
 
 void AEG::construct_nodes() {
@@ -1139,6 +1119,33 @@ void AEG::construct_com() {
         node.read = f(node.inst->may_read(), "read");
         node.write = f(node.inst->may_write(), "write");
     }
+}
+
+void AEG::compute_min_store_paths() {
+    assert(partial_executions);
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    for (const NodeRef ref : order) {
+        const NodeRefSet& preds = po.po.rev.at(ref);
+        const unsigned min = std::transform_reduce(preds.begin(), preds.end(), std::numeric_limits<unsigned>::max(), [] (unsigned a, unsigned b) -> unsigned {
+            return std::min(a, b);
+        }, [&] (const NodeRef ref) -> unsigned {
+            return lookup(ref).stores_out;
+        });
+        Node& node = lookup(ref);
+        node.stores_out = node.stores_in = min;
+        if (node.read.is_true()) {
+            ++node.stores_out;
+        }
+    }
+    
+    std::cerr << __FUNCTION__ << ": " << size() << " nodes, min stores at exits:";
+    for (const NodeRef exit : exits) {
+        std::cerr << " " << lookup(exit).stores_out;
+    }
+    std::cerr << "\n";
 }
 
 

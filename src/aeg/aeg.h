@@ -105,6 +105,8 @@ private:
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
 
     
+    void compute_min_store_paths();
+    
     NodeRefSet spectrev4_siblings(NodeRef ref) const;
     
     // TODO: unify this, so that it just returns a NodeRefMap for in, out.

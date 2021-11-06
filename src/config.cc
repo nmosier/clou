@@ -46,6 +46,7 @@ bool witness_executions = true;
 bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
+std::optional<unsigned> stb_size;
 
 OutputCFGs output_cfgs;
 
@@ -87,6 +88,7 @@ only examine given functions
 --fast[=<bool>]      enable/disable fast mode (default: off)
 --batch              batch mode (when all leakage output is going to one file)
 --cfg[=<type>...]    output CFGs. Types: "unrolled", "calls", "expanded"
+--stb <value>        store buffer size (default: "unlimited")
 )=";
     fprintf(f, "%s", s);
 }
@@ -158,6 +160,7 @@ int parse_args() {
         BATCH,
         MONITOR,
         CFG,
+        STB,
     };
     
     struct option opts[] = {
@@ -182,6 +185,7 @@ int parse_args() {
         {"batch", optional_argument, nullptr, BATCH},
         {"monitor", required_argument, nullptr, MONITOR},
         {"cfg", optional_argument, nullptr, CFG},
+        {"stb", required_argument, nullptr, STB},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -391,6 +395,15 @@ int parse_args() {
                     }
                 } else {
                     output_cfgs.setall();
+                }
+                break;
+            }
+                
+            case STB: {
+                if (std::string(optarg) == "unlimited") {
+                    stb_size = std::nullopt;
+                } else {
+                    stb_size = std::stoul(optarg);
                 }
                 break;
             }

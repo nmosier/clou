@@ -26,6 +26,7 @@ extern bool partial_executions;
 extern bool fast_mode;
 extern bool batch_mode;
 extern mon::Client client;
+extern std::optional<unsigned> stb_size;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;
