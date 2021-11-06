@@ -41,7 +41,7 @@ RUN mkdir lcm
 WORKDIR "$LCM_BUILD/libsodium-ll"
 RUN autoreconf -i
 RUN ./configure CC="$LCM_DIR/scripts/mycc.sh" CFLAGS="-Wno-cpp"
-RUN make -j$(nproc)
+# RUN make -j$(nproc)
 
 # Set up debugserver
 EXPOSE 11100/tcp
