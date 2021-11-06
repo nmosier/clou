@@ -395,7 +395,6 @@ void Monitor::run() {
                                 this->run_body(client_f, id, pid);
                             }
                             if ((pfd.revents & POLLHUP)) {
-                                std::fclose(client_f);
                                 break;
                             }
                             if ((pfd.revents & POLLNVAL)) {
@@ -403,7 +402,6 @@ void Monitor::run() {
                             }
                             if ((pfd.revents & POLLERR)) {
                                 std::cerr << prog << ": error on socket, closing\n";
-                                std::fclose(client_f);
                                 break;
                             }
                         }
