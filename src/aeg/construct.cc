@@ -471,9 +471,15 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             }
             
             // EXPERIMENTAL: try inter-procedural alias analysis
-            // return AA.alias(a.V, b.V);
+            if (!compatible_types(a.V->getType(), b.V->getType())) {
+                static unsigned tbaa = 0;
+                std::cerr << "tbaa: " << tbaa++ << "\n";
+                return llvm::AliasResult::NoAlias;
+            }
         }
     }
+    
+    /* check whether pointers point to different address spaces */
     
     return std::nullopt;
 }

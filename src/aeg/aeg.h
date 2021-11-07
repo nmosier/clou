@@ -236,6 +236,9 @@ private:
     
     std::optional<llvm::AliasResult> compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const;
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
+    static bool compatible_types(const llvm::Type *P1, const llvm::Type *P2);
+    static bool compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2);
+    static bool compatible_struct(const llvm::Type *T1, const llvm::Type *T2);
     
     friend class Taint;
     friend class Taint_Array;

@@ -127,6 +127,10 @@ bool parse_bool_opt(const char *s) {
 void initialize_post() {
     analyzed_functions = SharedDatabaseListSet(util::to_string(output_dir, "/functions.txt"));
     
+    if (partial_executions) {
+        spec_depth = std::numeric_limits<decltype(spec_depth)>::max();
+    }
+    
     std::signal(SIGPIPE, SIG_IGN);
 }
 
