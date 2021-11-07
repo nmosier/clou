@@ -39,6 +39,8 @@ inline z3::expr atmost2(const z3::expr_vector& exprs, unsigned count) {
 inline z3::expr atleast2(const z3::expr_vector& exprs, unsigned count) {
     if (exprs.size() < count) {
         return exprs.ctx().bool_val(false);
+    } else if (exprs.size() == count) {
+        return z3::mk_and(exprs);
     } else {
         return z3::atleast(exprs, count);
     }

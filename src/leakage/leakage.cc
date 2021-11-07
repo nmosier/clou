@@ -244,7 +244,10 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
         
         const std::string desc = util::to_string(store, " -rf-> ", load);
         solver.add(cond, desc.c_str());
+#if 0
+        // NOTE: not checking actually speeds up execution by 0.5X
         if (solver.check() != z3::sat) { continue; }
+#endif
         // new_sources.insert(store_pair);
         // TODO: need to separately check if this is due to something else
         const auto action = util::push(actions, desc);
@@ -257,7 +260,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     const aeg::Node& load_node = aeg.lookup(load);
 
     z3_scope;
-    solver.add(load_node.exec() &&  load_node.read, util::to_string(load, ".read").c_str());
+    solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
     if (solver.check() != z3::sat) { return; }
     
     if (traceback_depth == max_traceback) {
@@ -373,13 +376,25 @@ void SpectreV1_Detector::run_() {
 
 void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
+
+#define OPTIMIZED_CHECK 1
     
+#if !OPTIMIZED_CHECK
     if (solver.check() != z3::sat) {
         trace("backtrack: unsat");
         return;
     }
-    
+#endif
+
+        
     if (loads.size() == deps().size()) {
+#if OPTIMIZED_CHECK
+        if (solver.check() != z3::sat) {
+            trace("backtrack: unsat");
+            return;
+        }
+#endif
+
         z3_eval;
         
         const SpectreV1_Leakage leak = {
@@ -404,8 +419,19 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
         const std::string dep_str = util::to_string(dep_kind);
         const auto deps = aeg.get_nodes(Direction::IN, access, dep_kind);
         
+        if (deps.empty()) {
+            goto label;
+        }
+        
+#if OPTIMIZED_CHECK
+        if (solver.check() != z3::sat) {
+            trace("backtrack: unsat");
+            return;
+        }
+#endif
+        
         trace("trying to commit %lu (%zu deps)", access, deps.size());
-
+        
         for (const auto& dep : deps) {
             z3_scope;
             const NodeRef load = dep.first;
@@ -422,6 +448,8 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
             run1(transmitter, load);
         }
     }
+    
+    label:
     
     /* traceback */
     if (access != transmitter) {
@@ -596,6 +624,8 @@ void Detector::precompute_rf(NodeRef load) {
         }
 
         util::copy(aeg.po.po.rev.at(ref), std::back_inserter(todo));
+        
+        // how to check when 
     }
     
 }

@@ -411,6 +411,26 @@ void AEG::construct_tfo() {
             lookup(entry).constraints(!z3::mk_or(v), util::to_string("entry-no-out-", kind));
         }
     }
+    
+    // exactly one arch with trans succ, no arch succ
+    // TODO: could rephrase requirements more specifically
+    if (partial_executions) {
+        z3::expr_vector vec {context.context};
+        for (const NodeRef ref : node_range()) {
+            if (ref == entry) { continue; }
+            
+            const auto pos = get_nodes(Direction::OUT, ref, Edge::PO);
+            const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
+            
+            const auto op = [] (const auto& p) -> z3::expr {
+                return p.second;
+            };
+            const auto no_po = z3::exactly(z3::transform(context.context, pos, op), 0);
+            const auto one_tfo = z3::exactly(z3::transform(context.context, tfos, op), 1);
+            vec.push_back(lookup(ref).arch && no_po && one_tfo);
+        }
+        constraints(z3::exactly(vec, 1), "partial-po-end");
+    }
 }
 
 std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const {
@@ -431,8 +451,11 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             if (llvm::isa<llvm::AllocaInst>(a.V) && llvm::isa<llvm::AllocaInst>(b.V)) {
                 return llvm::AliasResult::NoAlias;
             }
+            
+            // EXPERIMENTAL: try inter-procedural alias analysis
+            // return AA.alias(a.V, b.V);
         }
-    }    
+    }
     
     return std::nullopt;
 }
@@ -478,8 +501,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     std::cerr << addrs.size() << " addrs\n";
     
     // add constraints
-    unsigned nos, musts, mays;
-    nos = musts = mays = 0;
+    unsigned nos, musts, mays, invalid;
+    nos = musts = mays = invalid = 0;
     
 #if 0
     // TODO: pointers are sketchy, but can't use iterators.
@@ -551,12 +574,15 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 
                 add_alias_result(vl1, vl2, *alias_res);
                 
+            } else {
+                ++invalid;
             }
         }
     }
     std::cerr << "NoAlias: " << nos << "\n"
     << "MustAlias: " << musts << "\n"
-    << "MayAlias: " << mays << "\n";
+    << "MayAlias: " << mays << "\n"
+    << "InvalidAlias: " << invalid << "\n";
     
 #if 0
     // NOTE: This only improves assertions by 2x.

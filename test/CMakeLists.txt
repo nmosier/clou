@@ -52,3 +52,11 @@ add_test(NAME spectre-v1-medium
   -x "-Epo,tfo,rf,rfx,addr,data -d20 --spectre-v1=mode=classic --fast --aa=transient -fpoly1305_blocks"
   ${LIBSODIUM}/crypto_onetimeauth/poly1305/donna/poly1305_donna.c -I ${LIBSODIUM}/include/sodium
   )
+
+add_test(NAME spectre-v1-large
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
+  -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-large
+  -L $<TARGET_FILE:lcm>
+  -x "--spectre-v1=mode=classic --fast --aa=transient -f_sodium_blake2b_init_key --stb=56"
+  ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
+  )
