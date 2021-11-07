@@ -111,7 +111,7 @@ Detector::Mems Detector::get_mems() {
         if (cur == aeg.entry) { continue; }
         const auto& cur_node = aeg.lookup(cur);
         
-        const auto tfos = aeg.get_nodes(Direction::IN, cur, aeg::Edge::TFO);
+        auto tfos = aeg.get_nodes(Direction::IN, cur, aeg::Edge::TFO);
         assert(!tfos.empty());
         
         z3::expr mem {ctx};
@@ -135,105 +135,26 @@ Detector::Mems Detector::get_mems() {
     return ins;
 }
 
-
-Detector::Mems Detector::get_mems_arch() {
-    z3::context& ctx = this->ctx();
-
+Detector::Mems Detector::get_mems1() {
     NodeRefVec order;
     aeg.po.reverse_postorder(std::back_inserter(order));
     
-    const z3::expr init_mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<uint64_t>(aeg.entry)));
-    
+    const z3::expr init_mem = z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)));
     Mems ins;
-    Mems outs = {{aeg.entry, init_mem}};
     z3::expr mem = init_mem;
     for (const NodeRef ref : order) {
         if (ref == aeg.entry) { continue; }
-        const aeg::Node& node = aeg.lookup(ref);
+        
         ins.emplace(ref, mem);
-        
-        if (node.may_write()) {
-            mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<uint64_t>(ref)), node.arch && node.write);
-        }
-        
-        outs.emplace(ref, mem);
-    }
-    
-    return ins;
-}
-
-Detector::Mems Detector::get_mems_trans() {
-    z3::context& ctx = this->ctx();
-    
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    
-    const z3::expr init_mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<uint64_t>(aeg.entry)));
-    
-    const auto apply_write = [&] (const NodeRef ref, z3::expr& mem) {
         const aeg::Node& node = aeg.lookup(ref);
-        if (!node.may_write()) { return; }
-        mem = z3::conditional_store(mem, node.get_memory_address(), ctx.int_val(static_cast<uint64_t>(ref)), node.exec() && node.write);
-    };
-    
-    Mems ins;
-    Mems outs = {{aeg.entry, init_mem}};
-
-    for (const NodeRef ref : order) {
-        if (ref == aeg.entry) { continue; }
-        const auto& equivs = aeg.control_equivalents[ref];
-        if (equivs.empty()) {
-            
-            // old fashioned way: merge predecessors using ite
-            const auto tfos = aeg.get_nodes(Direction::IN, ref, aeg::Edge::TFO);
-            assert(!tfos.empty());
-            auto it = tfos.begin();
-            z3::expr mem = outs.at(it->first);
-            for (++it; it != tfos.end(); ++it) {
-                mem = z3::ite(it->second, outs.at(it->first), mem);
-            }
-            ins.emplace(ref, mem);
-            apply_write(ref, mem);
-            outs.emplace(ref, mem);
-
-        } else {
-            // get closest control-equivalent ancestor and set of intervening nodes
-            NodeRefVec todo = {ref};
-            NodeRefSet seen;
-            std::optional<NodeRef> equiv; // nearest equiv, initially unknown
-            while (!todo.empty()) {
-                const NodeRef cur = todo.back();
-                todo.pop_back();
-                
-                // check if found control-equivalent node
-                if (equivs.find(cur) != equivs.end()) {
-                    equiv = cur;
-                    continue;
-                }
-                
-                // check if seen
-                if (!seen.insert(cur).second) { continue; }
-                
-                // explore predecessors
-                util::copy(aeg.po.po.rev.at(cur), std::back_inserter(todo));
-            }
-            assert(equiv);
-            
-            // apply writes
-            z3::expr mem = outs.at(*equiv);
-            
-            for (auto it = order.begin(); *it != ref; ++it) {
-                apply_write(*it, mem);
-            }
-            ins.emplace(ref, mem);
-            apply_write(ref, mem);
-            outs.emplace(ref, mem);
+        if (node.may_write()) {
+            mem = z3::conditional_store(mem, node.get_memory_address(), ctx().int_val(static_cast<unsigned>(ref)), node.write && node.exec());
         }
-        
     }
     
     return ins;
 }
+
 
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
     // Sources new_sources;
@@ -517,6 +438,9 @@ void SpectreV4_Detector::run_load(NodeRef access) {
 void SpectreV4_Detector::run_bypassed_store() {
     std::cerr << __FUNCTION__ << "\n";
     traceback_rf(leak.load, [&] (const NodeRef bypassed_store) {
+        // store can't be bypased if older than stb_size
+        if (bypassed_store != aeg.entry && !aeg.may_source_stb(leak.load, bypassed_store)) { return; }
+        
         z3_scope;
         leak.bypassed_store = bypassed_store;
         const auto edge = push_edge({
@@ -534,7 +458,15 @@ void SpectreV4_Detector::run_sourced_store() {
     
     // Only process candidate source stores that can possibly appear before the bypassed store in program order
     for (const NodeRef sourced_store : order) {
-        if (sourced_store == leak.bypassed_store) { break; }
+        if (sourced_store == leak.bypassed_store) { break; } // stores must be distinct
+        
+        // NOTE: Is this a sound assumption to make?
+        if (sourced_store != aeg.entry && !aeg.may_source_stb(leak.load, sourced_store)) { continue; } // would be outside of store buffer
+        
+        // Another approximation of is_ancestor()
+        if (aeg.lookup(sourced_store).stores_in > aeg.lookup(leak.bypassed_store).stores_in) {
+            continue;
+        }
         
         z3_scope;
 
@@ -602,6 +534,7 @@ void Detector::precompute_rf(NodeRef load) {
         }
 #endif
         
+#if 0
         if (stb_size) {
             if (aeg.lookup(ref).stores_in > aeg.lookup(load).stores_in + *stb_size) {
                 /* must exceed to store buffer size */
@@ -609,6 +542,8 @@ void Detector::precompute_rf(NodeRef load) {
                 continue;
             }
         }
+        // TODO: this isn't correct.
+#endif
         
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.check_alias(load, ref)) {

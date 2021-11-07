@@ -373,8 +373,9 @@ void AEG::construct_tfo() {
             // add optional edge
             const Node& dst_node = lookup(dst);
             z3::expr_vector cond {context.context};
+            cond.push_back(src_node.arch && dst_node.arch);
             if (po.may_introduce_speculation(src)) {
-                cond.push_back(src_node.arch && dst_node.exec());
+                cond.push_back(src_node.arch && dst_node.trans);
             }
             cond.push_back(src_node.trans && dst_node.trans);
             const z3::expr exists = add_optional_edge(src, dst, Edge {
@@ -412,6 +413,22 @@ void AEG::construct_tfo() {
         }
     }
     
+    // if node introduces speculation, it has no arch successor in tfo
+    if (partial_executions) {
+        z3::expr_vector vec {context.context};
+        for (const NodeRef ref : node_range()) {
+            const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
+            const auto some_trans_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
+                return p.second && lookup(p.first).trans;
+            }));
+            const auto no_arch_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
+                return p.second && lookup(p.first).arch;
+            }));
+            vec.push_back(lookup(ref).arch && some_trans_succ && no_arch_succ);
+        }
+    }
+    
+#if 0
     // exactly one arch with trans succ, no arch succ
     // TODO: could rephrase requirements more specifically
     if (partial_executions) {
@@ -431,6 +448,7 @@ void AEG::construct_tfo() {
         }
         constraints(z3::exactly(vec, 1), "partial-po-end");
     }
+#endif
 }
 
 std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const {
@@ -1154,18 +1172,30 @@ void AEG::compute_min_store_paths() {
     po.reverse_postorder(std::back_inserter(order));
     
     for (const NodeRef ref : order) {
-        const NodeRefSet& preds = po.po.rev.at(ref);
-        const unsigned min = std::transform_reduce(preds.begin(), preds.end(), std::numeric_limits<unsigned>::max(), [] (unsigned a, unsigned b) -> unsigned {
-            return std::min(a, b);
-        }, [&] (const NodeRef ref) -> unsigned {
-            return lookup(ref).stores_out;
-        });
         Node& node = lookup(ref);
-        node.stores_out = node.stores_in = min;
-        if (node.read.is_true()) {
-            ++node.stores_out;
+        
+        if (ref == entry) {
+            
+            node.stores_out = 0;
+            
+        } else {
+            
+            const NodeRefSet& preds = po.po.rev.at(ref);
+            const auto min = std::transform_reduce(preds.begin(), preds.end(), std::numeric_limits<decltype(node.stores_in)>::max(), [] (auto a, auto b) {
+                return std::min(a, b);
+            }, [&] (const NodeRef ref) {
+                return lookup(ref).stores_out;
+            });
+            node.stores_out = node.stores_in = min;
+            if (node.read.is_true()) {
+                ++node.stores_out;
+            }
+            
         }
     }
+    
+    Node& entry_node = lookup(entry);
+    entry_node.stores_in = entry_node.stores_out = std::numeric_limits<decltype(entry_node.stores_in)>::min();
     
     std::cerr << __FUNCTION__ << ": " << size() << " nodes, min stores at exits:";
     for (const NodeRef exit : exits) {

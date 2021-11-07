@@ -46,25 +46,17 @@ protected:
 #if 1
     Mems mems;
 #endif
-    Mems mems_arch, mems_trans; // TODO: remove these?
     NodeRefVec order;
     
     z3::expr mem(NodeRef ref) const {
-#if 0
-        const aeg::Node& node = aeg.lookup(ref);
-        return z3::ite(node.arch, mems_arch.at(ref), mems_trans.at(ref));
-#else
         return mems.at(ref);
-#endif
     }
     
     EdgeVec flag_edges;
     
     Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver),
-#if 1
     mems(get_mems()),
-#endif
-    mems_arch(get_mems_arch()), mems_trans(get_mems_trans()), rf_solver(z3::duplicate(solver)) {
+    rf_solver(z3::duplicate(solver)) {
         aeg.po.reverse_postorder(std::back_inserter(order));
     }
     
@@ -93,9 +85,7 @@ private:
     unsigned traceback_depth = 0;
     
     Mems get_mems();
-    
-    Mems get_mems_arch();
-    Mems get_mems_trans();
+    Mems get_mems1();
     
     RF rf; // TODO: remove?
     z3::solver rf_solver; // TODO: remove

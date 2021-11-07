@@ -35,18 +35,14 @@ std::ofstream log_;
 LeakageClass leakage_class = LeakageClass::INVALID;
 std::optional<unsigned> max_transient_nodes;
 AliasMode alias_mode;
-SpectreV1Mode spectre_v1_mode = {
-    .mode = SpectreV1Mode::CLASSIC,
-};
-SpectreV4Mode spectre_v4_mode = {
-    .psf = false,
-    .stb_size = 0,
-};
+SpectreV1Mode spectre_v1_mode;
+SpectreV4Mode spectre_v4_mode;
 bool witness_executions = true;
 bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
 std::optional<unsigned> stb_size;
+SyntacticDependencies respect_syntactic_dependencies;
 
 OutputCFGs output_cfgs;
 
@@ -89,6 +85,8 @@ only examine given functions
 --batch              batch mode (when all leakage output is going to one file)
 --cfg[=<type>...]    output CFGs. Types: "unrolled", "calls", "expanded"
 --stb <value>        store buffer size (default: "unlimited")
+--respect-syntactic-deps[=<dep>...]
+                     respect syntactic dependencies (options: "addr", "data"). Assign empty string to respect none.
 )=";
     fprintf(f, "%s", s);
 }
@@ -161,6 +159,7 @@ int parse_args() {
         MONITOR,
         CFG,
         STB,
+        SYNTACTIC_DEPS,
     };
     
     struct option opts[] = {
@@ -186,6 +185,7 @@ int parse_args() {
         {"monitor", required_argument, nullptr, MONITOR},
         {"cfg", optional_argument, nullptr, CFG},
         {"stb", required_argument, nullptr, STB},
+        {"respect-syntactic-deps", optional_argument, nullptr, SYNTACTIC_DEPS},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -326,10 +326,6 @@ int parse_args() {
                             spectre_v4_mode.psf = true;
                             break;
                             
-                        case STB_SIZE:
-                            spectre_v4_mode.stb_size = std::stoul(value);
-                            break;
-
                         default: std::abort();
                     }
                 }

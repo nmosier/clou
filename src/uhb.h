@@ -146,8 +146,9 @@ struct Node {
     z3::expr taint_mem; // int -> bool
     z3::expr taint_trans;
     Constraints constraints;
-    unsigned stores_in = 0;
-    unsigned stores_out;
+    
+    int stores_in;
+    int stores_out;
     
     z3::context& ctx() const { return arch.ctx(); }
 

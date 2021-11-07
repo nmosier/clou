@@ -104,7 +104,12 @@ private:
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
 
+public:
+    bool may_source_stb(NodeRef load, NodeRef store) const {
+        return !stb_size || lookup(load).stores_in < lookup(store).stores_in + *stb_size;
+    }
     
+private:
     void compute_min_store_paths();
     
     NodeRefSet spectrev4_siblings(NodeRef ref) const;

@@ -66,15 +66,30 @@ struct SpectreV1Mode {
     enum Mode {
         CLASSIC,
         BRANCH_PREDICATE, // TODO: rename to 'CONTROL'
-    } mode;
+    } mode = Mode::CLASSIC;
 };
 extern SpectreV1Mode spectre_v1_mode;
 
 struct SpectreV4Mode {
-    bool psf; /// whether to allow psf
-    unsigned stb_size; /// store buffer size
+    bool psf = false; /// whether to allow psf
 };
 extern SpectreV4Mode spectre_v4_mode;
+
+struct SyntacticDependencies {
+    bool addr = true;
+    bool data = true;
+    
+    void set_all() {
+        addr = true;
+        data = true;
+    }
+    
+    void clear_all() {
+        addr = false;
+        data = false;
+    }
+};
+extern SyntacticDependencies respect_syntactic_dependencies;
 
 inline bool g_psf() {
     return leakage_class == LeakageClass::SPECTRE_V4 && spectre_v4_mode.psf;
