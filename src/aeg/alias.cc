@@ -34,22 +34,26 @@ void AEG::add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::Alias
 
 bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
     const std::array<const llvm::Type *, 2> Ts = {T1, T2};
+
+    const auto report = [] () -> llvm::raw_ostream& {
+        return logv(1);
+    };
     
     // types are compatible if they are equal
     if (T1 == T2) {
-        std::cerr << "query: equal-yes\n";
+        report() << "query: equal-yes\n";
         return true;
     }
     
     if (T1->isVoidTy() || T2->isVoidTy()) {
-        std::cerr << "query: void-yes\n";
+        report() << "query: void-yes\n";
         return true;
     }
     
     for (const llvm::Type *T : Ts) {
         if (const llvm::IntegerType *IT = llvm::dyn_cast<llvm::IntegerType>(T)) {
             if (IT->getBitWidth() == 8) {
-                std::cerr << "query: char-yes\n";
+                report() << "query: char-yes\n";
                 return true;
             }
         }
@@ -57,7 +61,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
     
     // check if function types
     if (T1->isFunctionTy() || T2->isFunctionTy()) {
-        std::cerr << "query: function-no\n";
+        report() << "query: function-no\n";
         return false;
     }
     
@@ -66,10 +70,10 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
         std::swap(T1, T2);
     }
     if (const llvm::StructType *S1 = llvm::dyn_cast<llvm::StructType>(T1)) {
-        std::cerr << "query: struct\n";
+        report() << "query: struct\n";
         
         if (T2->isStructTy()) {
-            std::cerr << "query: struct-unk\n";
+            report() << "query: struct-unk\n";
             return true;
         }
         // ASSUME: T2 isn't a struct
@@ -79,7 +83,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
         }
         
         const bool res = compatible_types_pointee(S1->getElementType(0), T2);
-        std::cerr << "query: struct-" << (res ? "yes" : "no") << "\n";
+        report() << "query: struct-" << (res ? "yes" : "no") << "\n";
         return res;
     }
     
@@ -88,7 +92,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
         std::swap(T1, T2);
     }
     if (const llvm::ArrayType *AT = llvm::dyn_cast<llvm::ArrayType>(T1)) {
-        std::cerr << "query: array\n";
+        report() << "query: array\n";
         
 #if 0
         if (const llvm::ArrayType *AT2 = llvm::dyn_cast<llvm::ArrayType>(T2)) {
@@ -99,23 +103,23 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
 #endif
 
         const bool res = compatible_types_pointee(AT->getElementType(), T2);
-        std::cerr << "query: array-" << (res ? "yes" : "no") << "\n";
+        report() << "query: array-" << (res ? "yes" : "no") << "\n";
         return res;
     }
     
     // if vector
     if (T1->isVectorTy() || T2->isVectorTy()) {
-        std::cerr << "query: vector-unk\n";
+        report() << "query: vector-unk\n";
         return true;
     }
     
     // if integer
     if (T1->isIntegerTy() && T2->isIntegerTy()) {
-        std::cerr << "query: integer\n";
+        report() << "query: integer\n";
         const llvm::IntegerType *IT1 = llvm::cast<llvm::IntegerType>(T1);
         const llvm::IntegerType *IT2 = llvm::cast<llvm::IntegerType>(T2);
         const bool res = IT1->getBitWidth() == IT2->getBitWidth();
-        std::cerr << "query: integer-" << (res ? "yes" : "no") << "\n";
+        report() << "query: integer-" << (res ? "yes" : "no") << "\n";
         return res;
     }
     
@@ -124,13 +128,13 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
         std::swap(T1, T2);
     }
     if (const llvm::PointerType *P1 = llvm::dyn_cast<llvm::PointerType>(T1)) {
-        std::cerr << "query: pointer\n";
+        report() << "query: pointer\n";
         const bool res = T2->isPointerTy();
-        std::cerr << "query: pointer-" << (res ? "yes" : "no") << "\n";
+        report() << "query: pointer-" << (res ? "yes" : "no") << "\n";
         return res;
     }
     
-    llvm::errs() << "query: unknown: " << *T1 << ": " << *T2 << "\n";
+    report() << "query: unknown: " << *T1 << ": " << *T2 << "\n";
     return true;
 }
 
