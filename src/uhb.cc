@@ -44,7 +44,7 @@ Edge::Kind Edge::kind_fromstr(const std::string& s_) {
  * TFO must be at most n hops away from a po.
  * OR all nodes exactly distance n away together (or TOP, in the edge case).
  */
-Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arch(c), trans(c), introduces_trans(c), read(c), write(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), trans_group_min(c), trans_group_max(c), mem(c), taint(c), taint_mem(c), taint_trans(c), constraints() {}
+Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arch(c), trans(c), introduces_trans(c), read(c), write(c), xsread(c), xswrite(c), arch_order(c), exec_order(c), constraints() {}
 
 Context::Context(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
