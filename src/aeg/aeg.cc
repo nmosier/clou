@@ -10,10 +10,8 @@
 #include "fol.h"
 #include "progress.h"
 #include "timer.h"
-#include "taint.h"
 #include "fork_work_queue.h"
 #include "shm.h"
-#include "taint_bv.h"
 #include "cfg/expanded.h"
 #include "util/iterator.h"
 

@@ -16,7 +16,6 @@
 #include "uhb.h"
 #include "noderef.h"
 #include "progress.h"
-#include "taint.h"
 
 class Taint_Array;
 class CFG_Expanded;
@@ -106,7 +105,7 @@ private:
 
 public:
     bool may_source_stb(NodeRef load, NodeRef store) const {
-        return !stb_size || lookup(load).stores_in < lookup(store).stores_in + *stb_size;
+        return !stb_size || lookup(load).stores_in < lookup(store).stores_in + static_cast<int>(*stb_size);
     }
     
 private:
@@ -246,11 +245,6 @@ private:
     };
     std::unordered_map<const llvm::Value *, AddressKind> addr_kinds;
     AddressKind get_addr_kind(const llvm::Value *V);
-    
-    
-    friend class Taint;
-    friend class Taint_Array;
-    std::unique_ptr<Taint> tainter;
     
     ValueLoc get_value_loc(NodeRef ref) const;
 };
