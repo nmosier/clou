@@ -234,11 +234,19 @@ private:
         ValueLoc vl() const { return {id, V}; }
     };
     
-    std::optional<llvm::AliasResult> compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const;
+    std::optional<llvm::AliasResult> compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA);
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     static bool compatible_types(const llvm::Type *P1, const llvm::Type *P2);
     static bool compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2);
-    static bool compatible_struct(const llvm::Type *T1, const llvm::Type *T2);
+    
+    enum class AddressKind {
+        UNKNOWN,
+        STACK,
+        CONST,
+    };
+    std::unordered_map<const llvm::Value *, AddressKind> addr_kinds;
+    AddressKind get_addr_kind(const llvm::Value *V);
+    
     
     friend class Taint;
     friend class Taint_Array;

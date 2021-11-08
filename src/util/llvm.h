@@ -4,7 +4,7 @@
 #include <ostream>
 
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
 
 namespace llvm {
 template <typename T>
@@ -14,6 +14,19 @@ std::string to_string(const T& x) {
     ss << x;
     return s;
 }
+
+#if 1
+inline bool getelementptr_can_zero(const llvm::GetElementPtrInst *GEP) {
+    for (const llvm::Value *V : GEP->indices()) {
+        if (const llvm::ConstantInt *CI = llvm::dyn_cast<llvm::ConstantInt>(V)) {
+            if (CI->getValue().getLimitedValue() != 0) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+#endif
 }
 
 template <typename T>
@@ -26,33 +39,3 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Instruction& I) {
 }
 
 
-#if 0
-namespace detail {
-
-template <typename InputIt>
-
-template <typename Container>
-llvm::raw_ostream& print_container_impl(llvm::raw_ostream& os, const Container& container)
-
-}
-
-
-template <typename T>
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const std::unordered_set<T>& set) {
-    os << "{";
-    for (auto it = set.begin(); it != set.end(); ++it) {
-        if (it != set.begin()) {
-            os << ", ";
-        }
-        os << *it;
-    }
-    os << "}";
-    return os;
-}
-
-template <typename T>
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const std::vector<T>& vec) {
-    os << "{";
-    for (auto it = vec.begin(); )
-}
-#endif

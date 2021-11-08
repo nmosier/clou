@@ -9,6 +9,7 @@
 #include "util/iterator.h"
 #include "util/output.h"
 #include "config.h"
+#include "util/llvm.h"
 
 namespace aeg {
 
@@ -451,7 +452,10 @@ void AEG::construct_tfo() {
 #endif
 }
 
-std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) const {
+std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) {
+    const AddrInfo *x = &a;
+    const AddrInfo *y = &b;
+    
     /* check if LLVM's built-in alias analysis is valid */
     if (po.llvm_alias_valid(a.id, b.id)) {
         return AA.alias(a.V, b.V);
@@ -461,6 +465,7 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
         return std::nullopt;
     }
     
+#if 0
     /* check whether both values are allocated in nested scopes */
     {
         // if a is a prefix of b or b is a prefix of a
@@ -469,12 +474,121 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             if (llvm::isa<llvm::AllocaInst>(a.V) && llvm::isa<llvm::AllocaInst>(b.V)) {
                 return llvm::AliasResult::NoAlias;
             }
+        }
+    }
+#endif
+    
+    // EXPERIMENTAL: try inter-procedural alias analysis
+    if (!compatible_types(a.V->getType(), b.V->getType())) {
+        static unsigned tbaa = 0;
+        std::cerr << "tbaa: " << tbaa++ << "\n";
+        return llvm::AliasResult::NoAlias;
+    }
+    
+    /* unless alloca's scope is a prefix of another scope, it can't alias */
+    {
+        if (!util::prefixeq(y->id.func, x->id.func)) {
+            std::swap(x, y);
+        }
+        if (!util::prefixeq(x->id.func, y->id.func)) {
+            if (llvm::isa<llvm::AllocaInst>(x->V)) {
+                return llvm::NoAlias;
+            }
+        }
+    }
+    
+#if 1
+    /* check if address kinds differ */
+    {
+        const AddressKind k1 = get_addr_kind(a.V);
+        const AddressKind k2 = get_addr_kind(b.V);
+        if (k1 != AddressKind::UNKNOWN && k2 != AddressKind::UNKNOWN && k1 != k2) {
+            static unsigned i = 0;
+            std::cerr << "alias-kind: " << ++i << "\n";
+            return llvm::AliasResult::NoAlias;
+        }
+    }
+#endif
+    
+    {
+        if (llvm::isa<llvm::Argument>(x->V)) {
+            std::swap(x, y);
+        }
+        if (llvm::isa<llvm::Argument>(x->V) && llvm::isa<llvm::AllocaInst>(y->V)) {
+            return llvm::AliasResult::NoAlias;
+        }
+    }
+    
+    {
+        /*
+         * If the types of the alloca and the getelementptr base aren't equal, then we know that the getelementptr result can't alias.
+         */
+        if (llvm::isa<llvm::AllocaInst>(y->V)) {
+            std::swap(x, y);
+        }
+        if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(x->V)) {
+            const llvm::Type *T1 = AI->getType()->getPointerElementType();
+            if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(y->V)) {
+                if (!llvm::getelementptr_can_zero(GEP)) {
+                    std::cerr << "gep-alloca-nonzero:\n";
+                    return llvm::AliasResult::NoAlias;
+                }
+                
+                const llvm::Type *T2 = GEP->getPointerOperand()->getType()->getPointerElementType();
+                if (T1 != T2) {
+                    std::cerr << "gep-alloca-zero:\n";
+                    return llvm::AliasResult::NoAlias;
+                }
+            }
             
-            // EXPERIMENTAL: try inter-procedural alias analysis
-            if (!compatible_types(a.V->getType(), b.V->getType())) {
-                static unsigned tbaa = 0;
-                std::cerr << "tbaa: " << tbaa++ << "\n";
+            const llvm::Type *T2 = y->V->getType()->getPointerElementType();
+            if (!T1->isStructTy() && T2->isStructTy()) {
+                llvm::errs() << "Baba: " << *T1 << " " << *T2 << "\n";
                 return llvm::AliasResult::NoAlias;
+            }
+        }
+    }
+    
+    
+    {
+        /* if the types of alloca and any other instruction*/
+    }
+    
+    const auto f = [] (const llvm::Type *T) {
+        llvm::errs() << "type: " << *T << "\n";
+    };
+    f(a.V->getType());
+    f(b.V->getType());
+    
+    const auto g = [] (const llvm::Value *V) -> bool {
+        if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(V)) {
+            const llvm::Type *PT = GEP->getPointerOperand()->getType();
+            if (PT->getPointerElementType()->isStructTy()) {
+                return true;
+            }
+        }
+        return false;
+    };
+    
+    if (g(a.V) || g(b.V)) {
+        std::cerr << "two-gep-struct\n";
+    }
+    
+    
+    {
+        llvm::errs() << "alias-fail: " << *a.V << " -- " << *b.V << "\n";
+    }
+    
+    if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(a.V)) {
+        for (const llvm::Value *I : GEP->indices()) {
+            if (const llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(I)) {
+                llvm::errs() << "constant: " << *C << "\n";
+                if (llvm::isa<llvm::ConstantExpr>(C)) {
+                    std::cerr << "constant expr\n";
+                }
+                if (llvm::isa<llvm::ConstantData>(C)) {
+                    std::cerr << "constant data\n";
+                }
             }
         }
     }
@@ -507,7 +621,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         const CFG::Node& po_node = po.lookup(i);
         if (const auto *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
             for (const llvm::Value *V : inst->addr_refs) {
+#if 1
+                if (llvm::isa<llvm::Argument>(V) || llvm::isa<llvm::Constant>(V)) {
+#else
                 if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+#endif
                     const ID id {po_node.id->func, {}};
                     if (seen.emplace(std::make_pair(id, V), i).second) {
                         const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),

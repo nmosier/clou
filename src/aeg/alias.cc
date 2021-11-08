@@ -37,19 +37,19 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
     
     // types are compatible if they are equal
     if (T1 == T2) {
-        std::cerr << "query: equal\n";
+        std::cerr << "query: equal-yes\n";
         return true;
     }
     
     if (T1->isVoidTy() || T2->isVoidTy()) {
-        std::cerr << "query: void\n";
+        std::cerr << "query: void-yes\n";
         return true;
     }
     
     for (const llvm::Type *T : Ts) {
         if (const llvm::IntegerType *IT = llvm::dyn_cast<llvm::IntegerType>(T)) {
             if (IT->getBitWidth() == 8) {
-                std::cerr << "query: char\n";
+                std::cerr << "query: char-yes\n";
                 return true;
             }
         }
@@ -57,7 +57,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
     
     // check if function types
     if (T1->isFunctionTy() || T2->isFunctionTy()) {
-        std::cerr << "query: function\n";
+        std::cerr << "query: function-no\n";
         return false;
     }
     
@@ -69,7 +69,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
         std::cerr << "query: struct\n";
         
         if (T2->isStructTy()) {
-            std::cerr << "query: struct-struct\n";
+            std::cerr << "query: struct-unk\n";
             return true;
         }
         // ASSUME: T2 isn't a struct
@@ -89,6 +89,14 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
     }
     if (const llvm::ArrayType *AT = llvm::dyn_cast<llvm::ArrayType>(T1)) {
         std::cerr << "query: array\n";
+        
+#if 0
+        if (const llvm::ArrayType *AT2 = llvm::dyn_cast<llvm::ArrayType>(T2)) {
+            if (AT->getNumElements() != AT2->getNumElements()) {
+                return false;
+            }
+        }
+#endif
 
         const bool res = compatible_types_pointee(AT->getElementType(), T2);
         std::cerr << "query: array-" << (res ? "yes" : "no") << "\n";
@@ -97,7 +105,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
     
     // if vector
     if (T1->isVectorTy() || T2->isVectorTy()) {
-        std::cerr << "query: vector\n";
+        std::cerr << "query: vector-unk\n";
         return true;
     }
     
@@ -106,7 +114,9 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
         std::cerr << "query: integer\n";
         const llvm::IntegerType *IT1 = llvm::cast<llvm::IntegerType>(T1);
         const llvm::IntegerType *IT2 = llvm::cast<llvm::IntegerType>(T2);
-        return IT1->getBitWidth() == IT2->getBitWidth();
+        const bool res = IT1->getBitWidth() == IT2->getBitWidth();
+        std::cerr << "query: integer-" << (res ? "yes" : "no") << "\n";
+        return res;
     }
     
     // if pointer
@@ -129,6 +139,29 @@ bool AEG::compatible_types(const llvm::Type *P1, const llvm::Type *P2) {
     std::cerr << "query: type\n";
     assert(P1->isPointerTy() && P2->isPointerTy());
     return compatible_types_pointee(P1->getPointerElementType(), P2->getPointerElementType());
+}
+
+AEG::AddressKind AEG::get_addr_kind(const llvm::Value *V) {
+    // check cache
+    const auto it = addr_kinds.find(V);
+    if (it != addr_kinds.end()) {
+        return it->second;
+    }
+    
+    // classify
+    AddressKind kind;
+    if (llvm::isa<llvm::AllocaInst>(V)) {
+        kind = AddressKind::STACK;
+    } else if (llvm::isa<llvm::Constant>(V)) {
+        kind = AddressKind::CONST;
+    } else if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(V)) {
+        kind = get_addr_kind(GEP->getPointerOperand());
+    } else {
+        kind = AddressKind::UNKNOWN;
+    }
+    
+    addr_kinds.emplace(V, kind);
+    return kind;
 }
 
 }
