@@ -7,6 +7,7 @@
 
 #include "cfg/unrolled.h"
 #include "util.h"
+#include "config.h"
 
 void CFG_Unrolled::construct() {
     entry = add_node(Node::make_entry());
@@ -255,6 +256,12 @@ void CFG_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
 
 // NOTE: A function may be constructed multiple times.
 void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
+    const auto push = util::push(callstack, F);
+    // check if this function has already been called more than twice
+    if (std::count(callstack.begin(), callstack.end(), F) > recursive_call_limit) {
+        return;
+    }
+    
     const llvm::DominatorTree dom_tree {*F};
     const llvm::LoopInfo loop_info {dom_tree};
     LoopForest LF;
@@ -280,24 +287,3 @@ void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
     NodeRefSet func_nodes;
     construct_loop_forest(&LF, port, ids);
 }
-
-#if 0
-std::optional<NodeRefSet> CFG_Unrolled::Binding::bind(const llvm::Value *V) const {
-    if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
-        if (insts.find(I) == insts.end()) {
-            llvm::errs() << "Binding error for instruction " << *I << "\n";
-            std::abort();
-        }
-        return insts.at(I);
-    } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
-        const auto arg_it = args.find(A);
-        if (arg_it == args.end()) {
-            return std::nullopt;
-        } else {
-            return arg_it->second;
-        }
-    } else {
-        return std::nullopt;
-    }
-}
-#endif

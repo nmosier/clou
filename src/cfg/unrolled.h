@@ -20,6 +20,8 @@ public:
     void construct();
     
 private:
+    std::vector<const llvm::Function *> callstack;
+    
     struct IDs {
         ID id;
         FuncID next_func = 0;
