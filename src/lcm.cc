@@ -25,6 +25,7 @@
 #include "db.h"
 #include "mon/proto.h"
 #include "mon/client.h"
+#include "cfg/block.h"
 
 // tmp
 #include "util/container.h"
@@ -129,6 +130,17 @@ struct LCMPass: public llvm::FunctionPass {
             
             if (output_cfgs.expanded) {
                 output_(cfg_expanded, "cfg-expanded", F);
+            }
+            
+            // DEBUG: show block CFG information
+            {
+                const BlockCFG bcfg {cfg_expanded};
+
+                std::size_t block_size = 0.;
+                for (const auto& p : bcfg.blocks) {
+                    block_size += p.second.size();
+                }
+                std::cerr << "average block size in cfg-expanded: " << block_size / bcfg.blocks.size() << "\n";
             }
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
