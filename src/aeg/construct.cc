@@ -2,8 +2,6 @@
 #include "progress.h"
 #include "timer.h"
 #include "util/z3.h"
-#include "taint.h"
-#include "taint_bv.h"
 #include "cfg/expanded.h"
 #include "util/algorithm.h"
 #include "util/iterator.h"
@@ -307,6 +305,36 @@ void AEG::construct_trans() {
         }
         constraints(z3::atmost(trans, max), "trans-limit-max");
     }
+    
+    // calculate min distance to speculation gadget
+    if (max_transient_nodes) {
+        NodeRefVec order;
+        po.reverse_postorder(std::back_inserter(order));
+        
+        std::unordered_map<NodeRef, unsigned> min_specs_in, min_specs_out;
+        for (NodeRef ref : order) {
+            const auto& preds = po.po.rev.at(ref);
+            unsigned min = std::transform_reduce(preds.begin(), preds.end(), *max_transient_nodes, [] (unsigned a, unsigned b) -> unsigned {
+                return std::min(a, b);
+            }, [&] (const NodeRef ref) -> unsigned {
+                return min_specs_out.at(ref);
+            });
+
+            min_specs_in.emplace(ref, min);
+            
+            if (min >= *max_transient_nodes) {
+                lookup(ref).trans = context.FALSE;
+            }
+            
+            if (po.may_introduce_speculation(ref)) {
+                min = 0;
+            } else {
+                min = std::min(*max_transient_nodes, min + 1);
+            }
+            
+            min_specs_out.emplace(ref, min);
+        }
+    }
 } 
 
 void AEG::construct_po() {
@@ -481,7 +509,7 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
     // EXPERIMENTAL: try inter-procedural alias analysis
     if (!compatible_types(a.V->getType(), b.V->getType())) {
         static unsigned tbaa = 0;
-        std::cerr << "tbaa: " << tbaa++ << "\n";
+        logv(1) << "tbaa: " << tbaa++ << "\n";
         return llvm::AliasResult::NoAlias;
     }
     
@@ -504,7 +532,7 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
         const AddressKind k2 = get_addr_kind(b.V);
         if (k1 != AddressKind::UNKNOWN && k2 != AddressKind::UNKNOWN && k1 != k2) {
             static unsigned i = 0;
-            std::cerr << "alias-kind: " << ++i << "\n";
+            logv(1) << "alias-kind: " << ++i << "\n";
             return llvm::AliasResult::NoAlias;
         }
     }
@@ -530,35 +558,23 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             const llvm::Type *T1 = AI->getType()->getPointerElementType();
             if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(y->V)) {
                 if (!llvm::getelementptr_can_zero(GEP)) {
-                    std::cerr << "gep-alloca-nonzero:\n";
+                    logv(1) << "gep-alloca-nonzero:\n";
                     return llvm::AliasResult::NoAlias;
                 }
                 
                 const llvm::Type *T2 = GEP->getPointerOperand()->getType()->getPointerElementType();
                 if (T1 != T2) {
-                    std::cerr << "gep-alloca-zero:\n";
+                    logv(1) << "gep-alloca-zero:\n";
                     return llvm::AliasResult::NoAlias;
                 }
             }
             
             const llvm::Type *T2 = y->V->getType()->getPointerElementType();
             if (!T1->isStructTy() && T2->isStructTy()) {
-                llvm::errs() << "Baba: " << *T1 << " " << *T2 << "\n";
                 return llvm::AliasResult::NoAlias;
             }
         }
     }
-    
-    
-    {
-        /* if the types of alloca and any other instruction*/
-    }
-    
-    const auto f = [] (const llvm::Type *T) {
-        llvm::errs() << "type: " << *T << "\n";
-    };
-    f(a.V->getType());
-    f(b.V->getType());
     
     const auto g = [] (const llvm::Value *V) -> bool {
         if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(V)) {
@@ -571,23 +587,23 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
     };
     
     if (g(a.V) || g(b.V)) {
-        std::cerr << "two-gep-struct\n";
+        logv(1) << "two-gep-struct\n";
     }
     
     
     {
-        llvm::errs() << "alias-fail: " << *a.V << " -- " << *b.V << "\n";
+        logv(1) << "alias-fail: " << *a.V << " -- " << *b.V << "\n";
     }
     
     if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(a.V)) {
         for (const llvm::Value *I : GEP->indices()) {
             if (const llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(I)) {
-                llvm::errs() << "constant: " << *C << "\n";
+                logv(1) << "constant: " << *C << "\n";
                 if (llvm::isa<llvm::ConstantExpr>(C)) {
-                    std::cerr << "constant expr\n";
+                    logv(1) << "constant expr\n";
                 }
                 if (llvm::isa<llvm::ConstantData>(C)) {
-                    std::cerr << "constant data\n";
+                    logv(1) << "constant data\n";
                 }
             }
         }
