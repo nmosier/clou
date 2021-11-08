@@ -121,13 +121,14 @@ struct Duration: Component {
     using Clock = std::chrono::system_clock;
     using TimePoint = std::chrono::time_point<Clock>;
     
+    float secs;
     std::string desc;
     
     virtual void display() override {
         ::addstr(desc.c_str());
     }
     
-    Duration(float s) {
+    Duration(float s): secs(s) {
         float t = s;
         const char *unit = "s";
         if (t < 1) {
@@ -307,6 +308,9 @@ struct Monitor: Component {
         ::addstr("RUNNING:\n");
         running_jobs.display();
         ::addstr("\n\nCOMPLETED:\n");
+        std::sort(completed_jobs.vec.begin(), completed_jobs.vec.end(), [] (const CompletedJob& a, const CompletedJob& b) -> bool {
+            return a.duration.secs > b.duration.secs;
+        });
         completed_jobs.display();
         ::addstr("\n");
         ::printw("ANALYZED: %zu\n", analyzed_functions.size());
