@@ -15,8 +15,6 @@ add_library(lcm MODULE
   inst.cc          inst.h   
   uhb.cc           uhb.h
   fol.h
-  taint.h
-  taint_bv.cc      taint_bv.h
   shm.cc           shm.h
   binrel.h
   dot.h
