@@ -55,7 +55,7 @@ ARGS+=" -j$JOBS "
 
 ASAN_VARS="DYLD_INSERT_LIBRARIES=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/lib/darwin/libclang_rt.asan_osx_dynamic.dylib"
 
-LCM_ARGS="-o$OUTDIR -vvv $ARGS" $DEBUGGER $CLANG -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LIBLCM" -c "$@"
+LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $CLANG -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LIBLCM" -c "$@"
 
 
 if [[ "$OPEN" ]]; then
