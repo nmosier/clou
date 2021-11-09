@@ -199,7 +199,6 @@ void AEG::construct_addr_refs() {
                 if (defs_it == po_node.refs.end()) {
                     if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
                         if (CD->isNullValue()) {
-                            const auto zero = context.context.int_val(0);
                             e = Address {context.context.int_val(0)};
                         } else {
                             llvm::errs() << "unhandled constant data: " << *CD << "\n";
@@ -456,28 +455,6 @@ void AEG::construct_tfo() {
             vec.push_back(lookup(ref).arch && some_trans_succ && no_arch_succ);
         }
     }
-    
-#if 0
-    // exactly one arch with trans succ, no arch succ
-    // TODO: could rephrase requirements more specifically
-    if (partial_executions) {
-        z3::expr_vector vec {context.context};
-        for (const NodeRef ref : node_range()) {
-            if (ref == entry) { continue; }
-            
-            const auto pos = get_nodes(Direction::OUT, ref, Edge::PO);
-            const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
-            
-            const auto op = [] (const auto& p) -> z3::expr {
-                return p.second;
-            };
-            const auto no_po = z3::exactly(z3::transform(context.context, pos, op), 0);
-            const auto one_tfo = z3::exactly(z3::transform(context.context, tfos, op), 1);
-            vec.push_back(lookup(ref).arch && no_po && one_tfo);
-        }
-        constraints(z3::exactly(vec, 1), "partial-po-end");
-    }
-#endif
 }
 
 std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) {
@@ -492,19 +469,6 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
     if (alias_mode.llvm_only) {
         return std::nullopt;
     }
-    
-#if 0
-    /* check whether both values are allocated in nested scopes */
-    {
-        // if a is a prefix of b or b is a prefix of a
-        if (util::prefix(a.id.func, b.id.func) || util::prefix(b.id.func, a.id.func)) {
-            // check if both alloca
-            if (llvm::isa<llvm::AllocaInst>(a.V) && llvm::isa<llvm::AllocaInst>(b.V)) {
-                return llvm::AliasResult::NoAlias;
-            }
-        }
-    }
-#endif
     
     // EXPERIMENTAL: try inter-procedural alias analysis
     if (!compatible_types(a.V->getType(), b.V->getType())) {
@@ -662,21 +626,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     unsigned nos, musts, mays, invalid;
     nos = musts = mays = invalid = 0;
     
-#if 0
-    // TODO: pointers are sketchy, but can't use iterators.
-    using InfoSet = std::unordered_set<const Info *>;
-    using InfoRel = std::unordered_map<const Info *, InfoSet>;
-#endif
-    
-#if 0
-    InfoRel no_map; // TODO: currently unused
-#endif
-
-#if 0
-    using MustRel = std::unordered_map<ValueLoc, std::unordered_set<ValueLoc>>;
-    MustRel must_rel;
-#endif
-    
     using ValueLocSet = std::unordered_set<ValueLoc>;
     ValueLocSet skip_vls; // skip because already saw 'must alias'
     
@@ -702,10 +651,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 
                 switch (*alias_res) {
                     case llvm::AliasResult::NoAlias: {
-#if 0
-                        no_map[&*it1].insert(&*it2);
-                        no_map[&*it2].insert(&*it1);
-#endif
                         constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
@@ -717,10 +662,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                     }
                         
                     case llvm::AliasResult::MustAlias: {
-#if 0
-                        must_rel[vl1].insert(vl2);
-                        must_rel[vl2].insert(vl1);
-#endif
                         skip_vls.insert(vl2);
                         constraints(z3::implies(precond, it1->e == it2->e), "must-alias");
                         ++musts;
@@ -741,44 +682,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     << "MustAlias: " << musts << "\n"
     << "MayAlias: " << mays << "\n"
     << "InvalidAlias: " << invalid << "\n";
-    
-#if 0
-    // NOTE: This only improves assertions by 2x.
-    std::vector<std::unordered_set<const Info *>> no_subgraphs;
-    util::complete_subgraphs<const Info *>{no_map}(std::back_inserter(no_subgraphs));
-    std::cerr << "NoAlias subgraphs: " << no_subgraphs.size() << "\n";
-#endif
-    
-#if 0
-    // analyze 'must alias'
-    using ValueLocSet = std::unordered_set<ValueLoc>;
-    std::vector<ValueLocSet> must_parts;
-    util::complete_subgraphs<ValueLoc>{must_rel}(std::back_inserter(must_parts));
-    std::cerr << "Must partitions: " << must_parts.size() << "\n";
-    
-    // get map from Info pointer to part
-    std::unordered_map<ValueLoc, const ValueLocSet *> info_to_part;
-    for (const Info& info : addrs) {
-        const ValueLoc vl = info.vl();
-        const auto it = std::find_if(must_parts.begin(), must_parts.end(), [&] (const ValueLocSet& set) -> bool {
-            return static_cast<bool>(util::contains(set, vl));
-        });
-        assert(it != must_parts.end());
-        info_to_part[vl] = &*it;
-    }
-    
-    // rewrite alias rel to be minimal
-    std::unordered_map<std::pair<const ValueLocSet *, const ValueLocSet *>, llvm::AliasResult> new_alias_rel;
-    for (const auto& p : alias_rel) {
-        const ValueLocSet *a = info_to_part.at(p.first.first);
-        const ValueLocSet *b = info_to_part.at(p.first.second);
-        new_alias_rel[std::make_pair(a, b)] = p.second;
-    }
-    
-    // now add assertions
-    
-#endif
-    
 }
 
 void AEG::construct_comx() {
@@ -810,80 +713,8 @@ void AEG::construct_comx() {
         process(i, node, node.inst->may_xsread(), node.inst->may_xswrite());
     }
     
-    // connect xstate and addr
-    const bool psf = g_psf();
-    for (NodeRef ref : xsaccesses) {
-        Node& node = lookup(ref);
-        
-        // sibling instructions always have the same address
-        
-        
-        if (g_psf()) {
-            
-        } else {
-            
-        }
-    }
-    
     logv(3) << "constructing xsaccess order...\n";
     construct_xsaccess_order(xsaccesses);
-}
-
-// TODO: need to come up with definitive po edges. Then we can reference these directly.
-
-void AEG::construct_arch_order() {
-    // add variables
-    for (NodeRef ref : node_range()) {
-        Node& node = lookup(ref);
-        if (ref == entry) {
-            node.arch_order = context.context.int_val(0);
-        } else {
-            node.arch_order = context.make_int("arch_order");
-        }
-    }
-    
-    // add constraints
-    for (NodeRef ref : node_range()) {
-        if (ref == entry) { continue; }
-        const auto& preds = po.po.rev.at(ref);
-        Node& node = lookup(ref);
-        
-        z3::expr lower = context.TRUE;
-        z3::expr exact = context.FALSE;
-        for (NodeRef pred : preds) {
-            Node& pred_node = lookup(pred);
-            lower = lower && z3::implies(pred_node.arch, node.arch_order > pred_node.arch_order);
-            exact = exact || (pred_node.arch && node.arch_order == pred_node.arch_order + 1);
-        }
-        node.constraints(z3::implies(node.arch, lower), "arch-order-lower");
-        node.constraints(z3::implies(node.arch, exact), "arch-order-exact");
-    }
-}
-
-void AEG::construct_exec_order() {
-    // add variable
-    for (NodeRef ref : node_range()) {
-        Node& node = lookup(ref);
-        if (ref == entry) {
-            node.exec_order = context.context.int_val(0);
-        } else {
-            node.exec_order = context.make_int("exec_order");
-        }
-    }
-    
-    // add constraints
-    for (NodeRef ref : node_range()) {
-        Node& node = lookup(ref);
-        const auto preds = get_nodes(Direction::IN, ref, Edge::TFO);
-        for (const auto& pred_pair : preds) {
-            const NodeRef pred = pred_pair.first;
-            const z3::expr& cond = pred_pair.second;
-            const Node& pred_node = lookup(pred);
-            
-            const z3::expr f = z3::implies(node.exec() && pred_node.exec() && cond, node.exec_order > pred_node.exec_order);
-            node.constraints(f, "exec-order");
-        }
-    }
 }
 
 void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
@@ -897,16 +728,6 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
     for (auto it1 = exits.begin(), it2 = std::next(it1); it2 != exits.end(); ++it1, ++it2) {
         constraints(lookup(*it1).xsread == lookup(*it2).xsread, "xswrite-exits-eq");
     }
-    
-
-#if 1
-    // DEBUG: make them all distinct
-    z3::expr_vector vec {context.context};
-    for (NodeRef ref : xsaccesses) {
-        vec.push_back(*lookup(ref).xsaccess_order);
-    }
-    constraints(z3::distinct2(vec), "xsaccess-order-distinct");
-#endif
 }
 
 
@@ -1006,67 +827,6 @@ void AEG::construct_addr_gep() {
         });
     }
 }
-
-#if 0
-void AEG::construct_addr_gep() {
-    /* For each possible dst (access), find a GEP on which the dst memory addr depends.
-     * src -dep-> GEP -dep-> dst,
-     * where src is read and dst is access
-     */
-    
-    for (const NodeRef dst : node_range()) {
-        // dst must be access
-        const Node& dst_node = lookup(dst);
-        if (!dst_node.may_access()) { continue; }
-        
-        // dst must be memory instruction
-        const MemoryInst *dst_inst = dynamic_cast<const MemoryInst *>(dst_node.inst.get());
-        if (dst_inst == nullptr) { continue; }
-        
-        // get dependencies of dst's memory operand
-        const llvm::Value *dst_addr = dst_inst->get_memory_operand();
-        const auto& dst_refs = po.lookup(dst).refs;
-        const auto dst_addr_refs_it = dst_refs.find(dst_addr);
-        if (dst_addr_refs_it == dst_refs.end()) { continue; }
-        const auto& dst_addr_refs = dst_addr_refs_it->second;
-        
-        // iterate over GEP candidates
-        for (const NodeRef gep : dst_addr_refs) {
-            // gep must be GetElementPtr instruction
-            const llvm::Instruction *gep_I = lookup(gep).inst->get_inst();
-            if (!llvm::isa<llvm::GetElementPtrInst>(gep_I)) { continue; }
-            
-            // iterate over src candidates
-            depe
-        }
-    }
-    
-    for (NodeRef access_ref : node_range()) {
-        const Node& access_node = lookup(access_ref);
-        if (!access_node.may_access()) { continue; }
-        const MemoryInst *access_inst = dynamic_cast<const MemoryInst *>(access_node.inst.get());
-        if (access_inst == nullptr) { continue; }
-        const llvm::Value *V = access_inst->get_memory_operand();
-        const auto& access_po_node = po.lookup(access_ref);
-        const auto addr_refs_it = access_po_node.refs.find(V);
-        if (addr_refs_it == access_po_node.refs.end()) { continue; }
-        const auto& addr_refs = addr_refs_it->second;
-        for (const NodeRef addr_ref : addr_refs) {
-            NodeRefSet candidate_srcs = dependencies.at(addr_ref);
-            candidate_srcs.insert(addr_ref);
-            for (NodeRef candidate_src : candidate_srcs) {
-                const Node& candidate_node = lookup(candidate_src);
-                if (candidate_node.may_read()) {
-                    add_unidir_edge(candidate_src, access_ref, Edge {
-                        Edge::ADDR,
-                        (access_node.exec() && access_node.access()) && (candidate_node.exec() && candidate_node.read)
-                    });
-                }
-            }
-        }
-    }
-}
-#endif
 
 // TODO: rewrite in space-efficient way?
 void AEG::construct_dependencies() {
