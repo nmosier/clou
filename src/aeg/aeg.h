@@ -87,9 +87,6 @@ private:
     void construct_addr_refs();
     void construct_aliases(llvm::AliasAnalysis& AA);
     void construct_com();
-    void construct_arch_order();
-    void construct_exec_order();
-    void construct_trans_group();
     void construct_xsaccess_order(const NodeRefSet& xsaccesses);
     void construct_mem();
     void construct_comx();
@@ -103,6 +100,8 @@ private:
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
 
+    z3::solver make_solver();
+    
 public:
     bool may_source_stb(NodeRef load, NodeRef store) const {
         return !stb_size || lookup(load).stores_in < lookup(store).stores_in + static_cast<int>(*stb_size);
