@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "util/output.h"
+#include "cfg/block.h"
 
 // TODO: shouldn't need to include "aeg.h"
 
@@ -55,7 +56,7 @@ protected:
     EdgeVec flag_edges;
     
     Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver),
-    mems(get_mems()),
+    mems(get_mems()), partial_order(aeg.po),
     rf_solver(z3::duplicate(solver)) {
         aeg.po.reverse_postorder(std::back_inserter(order));
     }
@@ -83,6 +84,8 @@ protected:
         
 private:
     unsigned traceback_depth = 0;
+    CFGOrder partial_order;
+    
     
     Mems get_mems();
     Mems get_mems1();
