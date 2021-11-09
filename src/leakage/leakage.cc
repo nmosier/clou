@@ -135,26 +135,6 @@ Detector::Mems Detector::get_mems() {
     return ins;
 }
 
-Detector::Mems Detector::get_mems1() {
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    
-    const z3::expr init_mem = z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)));
-    Mems ins;
-    z3::expr mem = init_mem;
-    for (const NodeRef ref : order) {
-        if (ref == aeg.entry) { continue; }
-        
-        ins.emplace(ref, mem);
-        const aeg::Node& node = aeg.lookup(ref);
-        if (node.may_write()) {
-            mem = z3::conditional_store(mem, node.get_memory_address(), ctx().int_val(static_cast<unsigned>(ref)), node.write && node.exec());
-        }
-    }
-    
-    return ins;
-}
-
 
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
     // Sources new_sources;
@@ -284,6 +264,10 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             } catch (const next_transmitter& e) {
                 // continue
             }
+        } else {
+            std::cerr << "skipping transmitter\n";
+            std::cerr << "access: " << transmitter_node.access() << "\n";
+            std::cerr << "trans: " << transmitter_node.trans << "\n";
         }
     }
 }
@@ -375,6 +359,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     /* traceback */
     if (access != transmitter) {
         traceback(access, [&] (const NodeRef load) {
+            Timer timer;
             std::cerr << name() << ": traceback " << access << " to " << load << "\n";
             run1(transmitter, load);
         });
@@ -496,6 +481,8 @@ void SpectreV4_Detector::run_sourced_store() {
 
 
 void Detector::precompute_rf(NodeRef load) {
+    // TODO: only use partial order, not ref2order
+    
     std::cerr << "precomputing rf " << load << "\n";
     
     auto& out = rf[load];
@@ -531,6 +518,11 @@ void Detector::precompute_rf(NodeRef load) {
             std::cerr << "skipping rf " << ref << " " << load << "\n";
             continue;
             
+        }
+        
+        if (!partial_order(ref, load)) {
+            std::cerr << "skipping rf due to partial order\n";
+            continue;
         }
 #endif
         
