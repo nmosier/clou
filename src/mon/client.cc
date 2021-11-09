@@ -77,4 +77,15 @@ void Client::send_connect() {
     send(msg);
 }
 
+void Client::send_properties(const std::string& func, const std::unordered_map<std::string, std::string>& props) {
+    Message msg;
+    FunctionProperties *fp = msg.mutable_func_props();
+    fp->mutable_func()->set_name(func);
+    auto *map = fp->mutable_properties();
+    for (const auto& p : props) {
+        (*map)[p.first] = p.second;
+    }
+    send(msg);
+}
+
 }

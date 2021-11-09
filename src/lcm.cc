@@ -143,6 +143,8 @@ struct LCMPass: public llvm::FunctionPass {
                 std::cerr << "average block size in cfg-expanded: " << block_size / bcfg.blocks.size() << "\n";
             }
             
+            client.send_property(F.getName().str(), "nodes", cfg_expanded.size());
+            
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
             client.send_step("aeg", F.getName().str());
             ProfilerStart(format_graph_path("out/%s.prof", F).c_str());

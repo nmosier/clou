@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <string>
+#include <sstream>
+#include <unordered_map>
 #include <arpa/inet.h>
 
 namespace mon {
@@ -33,6 +35,14 @@ public:
     
     void send_connect();
     void send_step(const std::string& step, const std::string& func);
+    void send_properties(const std::string& func, const std::unordered_map<std::string, std::string>& props);
+    
+    template <typename T>
+    void send_property(const std::string& func, const std::string& key, const T& value) {
+        std::stringstream ss;
+        ss << value;
+        send_properties(func, {{key, ss.str()}});
+    }
     
 private:
     FILE *f;

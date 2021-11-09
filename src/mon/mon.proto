@@ -28,6 +28,11 @@ message FunctionStep {
     required string step = 2;
 }
 
+message FunctionProperties {
+    required Function func = 1;
+    map<string, string> properties = 2;
+}
+
 message ClientConnect {
     required uint32 pid = 1;
 }
@@ -39,5 +44,6 @@ message Message {
         FunctionProgress  func_progress  = 3;
         FunctionsAnalyzed funcs_analyzed = 4;
         FunctionStep      func_step      = 5;
+        FunctionProperties func_props    = 6;
     }
 }

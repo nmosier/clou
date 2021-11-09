@@ -171,9 +171,20 @@ struct Progress: Component {
 
 struct Job: Component {
     std::string name;
+    std::unordered_map<std::string, std::string> properties;
     
     virtual void display() override {
         ::addstr(name.c_str());
+        std::stringstream ss;
+        ss << "{";
+        for (auto it = properties.begin(); it != properties.end(); ++it) {
+            if (it != properties.begin()) {
+                ss << ", ";
+            }
+            ss << it->first << ": " << it->second;
+        }
+        ss << "}";
+        ::printw(" %s", ss.str().c_str());
     }
     
     Job(const std::string& name): name(name) {}
@@ -216,24 +227,6 @@ struct CompletedJob: Job {
         duration.display();
     }
 };
-
-#if 0
-template <typename Subcomponent>
-struct OwnedComponent: Component {
-    int owner;
-    Subcomponent comp;
-    
-    const Subcomponent& operator*() const { return comp; }
-    Subcomponent& operator*() { return comp; }
-    const Subcomponent operator->() const { return &comp; }
-    Subcomponent& operator->() { return &comp; }
-    
-    OwnedComponent(int owner, const Subcomponent& comp = Subcomponent()): owner(owner), comp(comp) {}
-    
-    virtual void display() override { comp.display(); }
-    virtual void owner()
-};
-#endif
 
 template <typename Subcomponent>
 struct ComponentList: Component {
@@ -326,6 +319,7 @@ private:
     void handle_func_progress(const mon::FunctionProgress& msg);
     void handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg);
     void handle_func_step(const mon::FunctionStep& msg);
+    void handle_func_properties(const mon::FunctionProperties& msg);
     
     template <typename T>
     bool client_read(FILE *f, T *buf, std::size_t count) const {
@@ -480,6 +474,10 @@ void Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
             handle_func_step(msg.func_step());
             break;
             
+        case mon::Message::kFuncProps:
+            handle_func_properties(msg.func_props());
+            break;
+            
         case mon::Message::MESSAGE_NOT_SET:
             break;
             
@@ -526,6 +524,17 @@ void Monitor::handle_func_step(const mon::FunctionStep& msg) {
         }
     }
 }
+
+void Monitor::handle_func_properties(const mon::FunctionProperties& msg) {
+    for (RunningJob& job : running_jobs.vec) {
+        if (job.name == msg.func().name()) {
+            for (const auto& p : msg.properties()) {
+                job.properties[p.first] = p.second;
+            }
+        }
+    }
+}
+
 
 void server(int server_sock) {
     ::initscr();
