@@ -137,10 +137,13 @@ void initialize_post() {
 }
 
 int parse_args() {
-    if (char *line = getenv("LCM_ARGS")) {
-        while (char *s = strsep(&line, " ")) {
-            if (*s) {
-                args.push_back(s);
+    const char *envvars[] = {"LCM_ARGS", "LCM_EXTRA_ARGS"};
+    for (const char *envvar : envvars) {
+        if (char *line = std::getenv(envvar)) {
+            while (char *s = ::strsep(&line, " ")) {
+                if (*s) {
+                    args.push_back(s);
+                }
             }
         }
     }
