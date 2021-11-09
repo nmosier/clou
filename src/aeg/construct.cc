@@ -173,11 +173,16 @@ void AEG::construct_nodes() {
 }
 
 void AEG::construct_addr_defs() {
+    unsigned alloca_counter = 1;
     for (Node& node : nodes) {
         if (auto *RI = dynamic_cast<RegularInst *>(node.inst.get())) {
             // TODO: this is fragmented. Try to unify addr_defs
             if (RI->addr_def) {
-                node.addr_def = Address {context};
+                if (llvm::isa<llvm::AllocaInst>(RI->get_inst())) {
+                    node.addr_def = Address(context.context.int_val(alloca_counter++));
+                } else {
+                    node.addr_def = Address {context};
+                }
             }
         }
     }
@@ -621,6 +626,23 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     }
     
     std::cerr << addrs.size() << " addrs\n";
+        
+        
+        // DEBUG
+        {
+            for (const auto& addr : addrs) {
+                if (llvm::isa<llvm::Constant>(addr.V)) {
+                    llvm::errs() << "constant: " << *addr.V << ":";
+#define check(type) if (llvm::isa<llvm::type>(addr.V)) std::cerr << " " #type
+                    check(GlobalValue);
+                    check(ConstantData);
+                    check(ConstantExpr);
+                }
+                std::cerr << "\n";
+            }
+        }
+        
+        
     
     // add constraints
     unsigned nos, musts, mays, invalid;
