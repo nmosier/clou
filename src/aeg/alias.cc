@@ -140,7 +140,7 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
 
 
 bool AEG::compatible_types(const llvm::Type *P1, const llvm::Type *P2) {
-    std::cerr << "query: type\n";
+    logv(1) << "query: type\n";
     assert(P1->isPointerTy() && P2->isPointerTy());
     return compatible_types_pointee(P1->getPointerElementType(), P2->getPointerElementType());
 }
