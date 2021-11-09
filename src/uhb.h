@@ -89,7 +89,7 @@ struct Address {
     z3::expr addr;
     
     operator const z3::expr& () const { return addr; }
-    
+
     Address(Context& ctx): addr(ctx.make_int("addr")) {}
     Address(const z3::expr& addr): addr(addr) {}
     
@@ -128,7 +128,6 @@ struct Node {
     std::unique_ptr<Inst> inst;
     z3::expr arch;  // bool: program order variable
     z3::expr trans; // bool: transient fetch order variable
-    z3::expr introduces_trans; // bool: introduces transient execution
     std::optional<Address> addr_def;
     std::optional<z3::expr> xstate;
     std::unordered_map<const llvm::Value *, Address> addr_refs;
@@ -136,8 +135,6 @@ struct Node {
     z3::expr write;
     z3::expr xsread;
     z3::expr xswrite;
-    z3::expr arch_order; // int
-    z3::expr exec_order; // int
     std::optional<z3::expr> xsaccess_order; // int (atomic xread and/or xswrite)
     Constraints constraints;
     
