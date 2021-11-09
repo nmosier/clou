@@ -2,6 +2,7 @@
 
 #include <string>
 #include <ostream>
+#include <optional>
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
@@ -15,18 +16,9 @@ std::string to_string(const T& x) {
     return s;
 }
 
-#if 1
-inline bool getelementptr_can_zero(const llvm::GetElementPtrInst *GEP) {
-    for (const llvm::Value *V : GEP->indices()) {
-        if (const llvm::ConstantInt *CI = llvm::dyn_cast<llvm::ConstantInt>(V)) {
-            if (CI->getValue().getLimitedValue() != 0) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-#endif
+bool getelementptr_can_zero(const llvm::GetElementPtrInst *GEP);
+std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP);
+
 }
 
 template <typename T>

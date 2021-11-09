@@ -1,5 +1,5 @@
 add_library(util_objs OBJECT
-  llvm.h
+  llvm.h llvm.cc
   tuple.h
   z3.h
   output.h
