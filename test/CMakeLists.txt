@@ -53,12 +53,17 @@ add_test(NAME spectre-v1-medium
   ${LIBSODIUM}/crypto_onetimeauth/poly1305/donna/poly1305_donna.c -I ${LIBSODIUM}/include/sodium
   )
 
+set(SPECTRE_V1_LARGE_FILE crypto_core/ed25519/core_h2c.c)
+set(SPECTRE_V1_LARGE_FUNC _sodium_core_h2c_string_to_hash)
+# set(SPECTRE_V1_LARGE_FILE crypto_shorthash/siphash24/ref/shorthash_siphashx24_ref.c)
+# set(SPECTRE_V1_LARGE_FUNC crypto_shorthash_siphashx24)
+
 add_test(NAME spectre-v1-large
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
   -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-large
   -L $<TARGET_FILE:lcm>
-  -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient -f_sodium_blake2b_init_key --stb=56"
-  ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
+  -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient -f${SPECTRE_V1_LARGE_FUNC} --stb=56"
+  ${LIBSODIUM}/${SPECTRE_V1_LARGE_FILE} -I ${LIBSODIUM}/include/sodium
   )
 
 add_test(NAME spectre-v4-large
@@ -67,4 +72,12 @@ add_test(NAME spectre-v4-large
   -L $<TARGET_FILE:lcm>
   -x "--spectre-v4 --fast --max-transient=25 --aa=transient  -f_sodium_blake2b_init_key --stb=56"
   ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
+  )
+
+add_test(NAME spectre-v1-xl
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
+  -O ${CMAKE_CURRENT_SOURCE_DIR}/spectre-v1-xl
+  -L $<TARGET_FILE:lcm>
+  -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient --stb=56"
+  ${LIBSODIUM}/crypto_core/ed25519/core_h2c.c -I ${LIBSODIUM}/include/sodium
   )
