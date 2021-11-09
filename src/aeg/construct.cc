@@ -173,16 +173,41 @@ void AEG::construct_nodes() {
 }
 
 void AEG::construct_addr_defs() {
-    unsigned alloca_counter = 1;
-    for (Node& node : nodes) {
+    unsigned stack_counter = 1;
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    for (NodeRef ref : order) {
+        Node& node = lookup(ref);
         if (auto *RI = dynamic_cast<RegularInst *>(node.inst.get())) {
             // TODO: this is fragmented. Try to unify addr_defs
             if (RI->addr_def) {
-                if (llvm::isa<llvm::AllocaInst>(RI->get_inst())) {
-                    node.addr_def = Address(context.context.int_val(alloca_counter++));
-                } else {
-                    node.addr_def = Address {context};
+                
+                if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(RI->get_inst())) {
+                    // TODO: lift out datalayout
+                    llvm::DataLayout layout {AI->getParent()->getParent()->getParent()};
+                    node.addr_def = Address(context.context.int_val(stack_counter));
+                    stack_counter += layout.getTypeSizeInBits(AI->getType());
+                    continue;
                 }
+                
+                if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(RI->get_inst())) {
+                    if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
+                        if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(GEP->getPointerOperand())) {
+                            const auto& refs = po.lookup(ref).refs.at(I);
+                            if (refs.size() == 1) {
+                                const NodeRef base_ref = *refs.begin();
+                                node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset).simplify());
+                                llvm::errs() << "GEP address: " << util::to_string(node.addr_def->addr) << ": " << *GEP << "\n";
+                                continue;
+                            }
+                        }
+                    }
+                }
+                
+                node.addr_def = Address {context};
+                
             }
         }
     }
@@ -627,10 +652,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     
     std::cerr << addrs.size() << " addrs\n";
         
-        
+
         // DEBUG
         {
             for (const auto& addr : addrs) {
+#if 0
                 if (llvm::isa<llvm::Constant>(addr.V)) {
                     llvm::errs() << "constant: " << *addr.V << ":";
 #define check(type) if (llvm::isa<llvm::type>(addr.V)) std::cerr << " " #type
@@ -639,6 +665,14 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                     check(ConstantExpr);
                 }
                 std::cerr << "\n";
+#endif
+                if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(addr.V)) {
+                    if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
+                        llvm::errs() << "GEP constant offset " << *offset << ": " << *GEP << "\n";
+                    } else {
+                        llvm::errs() << "GEP non-constant offset: " << *GEP << "\n";
+                    }
+                }
             }
         }
         
@@ -673,6 +707,19 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 
                 switch (*alias_res) {
                     case llvm::AliasResult::NoAlias: {
+#if 0
+                        // DEBUG
+                        {
+                            z3::solver solver {context.context};
+                            solver.add(it1->e != it2->e);
+                            if (solver.check() != z3::sat) {
+                                std::cerr << it1->e << " != " << it2->e << "\n";
+                                llvm::errs() << *it1->V << "\n" << *it2->V << "\n";
+                                std::exit(1);
+                            }
+                        }
+#endif
+                        
                         constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
                         ++nos;
                         break;
