@@ -23,6 +23,44 @@
 
 namespace aeg {
 
+z3::solver AEG::make_solver() {
+    z3::context& c = context.context;
+    
+    if (std::getenv("VERBOSE")) {
+        z3::set_param("verbose", 10);
+    }
+    
+    if (const char *s = std::getenv("PARALLEL")) {
+        z3::set_param("parallel.enable", true);
+        z3::set_param("parallel.threads.max", std::stoi(s));
+    }
+
+    std::vector<z3::tactic> tactics;
+    
+    z3::tactic acc {c, "skip"};
+    const auto add = util::overloaded {
+        [&] (const char *s) {
+            acc = acc & z3::tactic(c, s);
+        },
+        [&] (const char *s, const z3::params& p) {
+            acc = acc & z3::with(z3::tactic(c, s), p);
+        }
+    };
+    
+    if (const char *s_ = std::getenv("TACTICS")) {
+        std::cerr << "using tactics " << s_ << "\n";
+        char *s__ = ::strdup(s_);
+        char *s = s__;
+        while (char *tok = ::strsep(&s, " ")) {
+            add(tok);
+        }
+        std::free(s__);
+        return acc.mk_solver();
+    } else {
+        return z3::solver(c);
+    }
+}
+
 void AEG::simplify() {
     Progress progress {nodes.size()};
     std::for_each(nodes.begin(), nodes.end(), [&] (Node& node) {
@@ -58,7 +96,11 @@ void AEG::test() {
     
     logv(3) << "testing...\n";
     
+#if 0
     z3::solver solver {context.context};
+#else
+    z3::solver solver = make_solver();
+#endif
     
     simplify();
     
