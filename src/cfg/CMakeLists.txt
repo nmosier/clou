@@ -5,4 +5,3 @@ add_library(cfg_objs OBJECT
   unrolled.cc unrolled.h
   block.cc block.h
   )
-

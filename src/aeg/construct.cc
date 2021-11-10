@@ -8,6 +8,7 @@
 #include "util/output.h"
 #include "config.h"
 #include "util/llvm.h"
+#include "cfg/block.h"
 
 namespace aeg {
 
@@ -47,8 +48,8 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     
     logv(2) << "Constructing nodes\n";
     construct_nodes();
-    logv(2) << "Constructing po\n";
-    construct_po();
+    logv(2) << "Construct arch\n";
+    construct_arch();
     logv(2) << "Constructing tfo\n";
     construct_tfo();
     logv(2) << "Constructing exec\n";
@@ -122,45 +123,13 @@ void AEG::construct_nodes() {
     // initalize `trans`
     NodeRefVec order;
     po.reverse_postorder(std::back_inserter(order));
-    {
-#if 1
-        for (NodeRef ref : order) {
-            Node& node = lookup(ref);
-            
-            const auto& exec = po.execs.at(ref);
-            const auto apply_exec = [&] (Option opt, const char *name) -> z3::expr {
-#if 1
-                switch (opt) {
-                    case Option::MUST: return context.TRUE;
-                    case Option::MAY: return context.make_bool(name);
-                    case Option::NO: return context.FALSE;
-                }
-#else
-                return context.make_bool(name);
-#endif
-            };
-            
-            node.arch = apply_exec(exec.arch, "arch");
-            node.trans = apply_exec(exec.trans, "trans");
+    for (NodeRef ref : order) {
+        Node& node = lookup(ref);
+        if (ref == entry || exits.find(ref) != exits.end()) {
+            node.trans = context.FALSE;
+        } else {
+            node.trans = context.make_bool("trans");
         }
-#else
-        // TODO: rewrite as function?
-        for (NodeRef ref : order) {
-            const auto& preds = po.po.rev.at(ref);
-            Node& node = lookup(ref);
-            if (preds.size() != 1) {
-                node.trans = context.FALSE;
-            } else {
-                const NodeRef pred = *preds.begin();
-                const auto& pred_succs = po.po.fwd.at(pred);
-                if (pred_succs.size() == 1 && lookup(pred).trans.is_false()) {
-                    node.trans = context.FALSE;
-                } else {
-                    node.trans = context.make_bool("trans");
-                }
-            }
-        }
-#endif
     }
     
     // initialize `xsread`, `xswrite`
@@ -441,20 +410,77 @@ void AEG::construct_exec() {
         node.constraints(!(node.arch && node.trans), ss.str());
     }
     
-    construct_arch();
+    // construct_arch();
     construct_trans();
 }
  
 void AEG::construct_arch() {
-    // Entry node is architecturally executed
-    Node& entry_node = lookup(entry);
-    entry_node.constraints(entry_node.arch, "entry-arch");
+    // assign arch variables
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    for (NodeRef ref : order) {
+        z3::expr& arch = lookup(ref).arch;
+        if (ref == entry) {
+            arch = context.TRUE;
+        } else {
+            arch = context.make_bool("arch");
+        }
+    }
     
-    const z3::expr_vector exit_archs = z3::transform(exits, [&] (const NodeRef ref) -> z3::expr {
+    // one exit arch
+    constraints(z3::exactly(z3::transform(exits, [&] (NodeRef ref) -> z3::expr {
         return lookup(ref).arch;
-    });
-    constraints(z3::exactly(exit_archs, 1), "exit-arch");
+    }), 1), "one-exit-arch");
 }
+
+
+void AEG::construct_arch_po() {
+    /* entry */
+    lookup(entry).arch = context.context.bool_val(true);
+    
+    /* exits */
+    {
+        z3::expr_vector exit_archs {context.context};
+        for (NodeRef ref : exits) {
+            z3::expr arch = context.make_bool("arch");
+            lookup(ref).arch = arch;
+            exit_archs.push_back(arch);
+        }
+        constraints(z3::exactly(exit_archs, 1), "one-exit-arch");
+    }
+    
+    /* other */
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    z3::expr_vector arch_enables {context.context};
+    for (NodeRef ref : order) {
+        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
+        
+        Node& node = lookup(ref);
+        node.arch = context.make_bool("arch");
+        
+        /* collect incoming po edges */
+        const auto po_ins = z3::transform(context.context, get_edges(Direction::IN, ref, Edge::PO), [] (const auto& e) -> z3::expr {
+            return e->exists;
+        });
+        node.constraints(z3::atmost2(po_ins, 1), "po-in-limit");
+        arch_enables.push_back(node.arch && !z3::mk_or(po_ins)); // cold start
+        
+        /* create outgoing po edges */
+        // NOTE: Only if no arch successors.
+        z3::expr_vector po_outs {context.context};
+        for (NodeRef dst : po.po.fwd.at(ref)) {
+            const z3::expr exists = add_optional_edge(ref, dst, Edge {
+                Edge::PO,
+                node.arch
+            }, "po");
+            po_outs.push_back(exists);
+        }
+        node.constraints(z3::atmost2(po_outs, 1), "po-out-limit");
+    }
+}
+
 
 void AEG::construct_trans() {
     // NOTE: depends on results of construct_tfo()
@@ -464,9 +490,10 @@ void AEG::construct_trans() {
         Node& node = lookup(ref);
         const auto tfos = get_edges(Direction::IN, ref, Edge::TFO);
         // TODO: experiment with using z3::{atleast,exactly}(vec, 1) instead.
-        const z3::expr f = util::any_of(tfos.begin(), tfos.end(), [] (const auto& edge) -> z3::expr {
+        const auto tfo_vec = z3::transform(context.context, tfos, [] (const auto& edge) -> z3::expr {
             return edge->exists;
-        }, context.FALSE);
+        });
+        const auto f = z3::exactly(tfo_vec, 1);
         node.constraints(z3::implies(node.trans, f), "trans-tfo");
     }
     
@@ -517,6 +544,7 @@ void AEG::construct_trans() {
 void AEG::construct_po() {
     logv(3) << __FUNCTION__ << ": adding edges\n";
     
+#if 0
     std::size_t nedges = 0;
     for (const NodeRef src : node_range()) {
         Node& src_node = lookup(src);
@@ -529,11 +557,30 @@ void AEG::construct_po() {
             ++nedges;
         }
     }
+#else
+    for (const NodeRef src : node_range()) {
+        Node& src_node = lookup(src);
+        
+        // add successor po edges
+        z3::expr_vector enables {context.context};
+        for (const NodeRef dst : po.po.fwd.at(src)) {
+            Edge edge {
+                Edge::PO,
+                src_node.arch && lookup(dst).arch
+            };
+            const z3::expr enable = context.make_bool(util::to_string("po-enable-", src, "-", dst));
+            edge.exists = enable && edge.exists;
+            add_unidir_edge(src, dst, edge);
+            enables.push_back(enable);
+        }
+        
+        src_node.constraints(z3::atmost2(enables, 1), util::to_string("po-enable-one-", src).c_str());
+    }
+#endif
     
     const auto edge_exists = [&] (const auto& edge) -> z3::expr {
         return edge->exists;
     };
-    
     
     const auto count_func = partial_executions ? &z3::atmost : &z3::exactly;
     
@@ -571,8 +618,13 @@ void AEG::construct_po() {
 
 /// depends on construct_po()
 void AEG::construct_tfo() {
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
     std::size_t nedges = 0;
     for (const NodeRef src : node_range()) {
+        if (src == entry || exits.find(src) != exits.end()) { continue; }
+        
         Node& src_node = lookup(src);
         z3::expr_vector tfos {context};
         for (const NodeRef dst : po.po.fwd.at(src)) {
@@ -608,20 +660,8 @@ void AEG::construct_tfo() {
     });
     constraints(z3::atmost(tfos, 1), "at-most-one-spec-intro");
     
-    // entry has no po or tfo successors
-    if (partial_executions) {
-        for (const Edge::Kind kind : std::array<Edge::Kind, 2> {Edge::PO, Edge::TFO}) {
-            const auto edges = get_nodes(Direction::OUT, entry, kind);
-            const z3::expr_vector v = z3::transform(edges, [&] (const auto& p) -> z3::expr {
-                return p.second;
-            });
-            lookup(entry).constraints(!z3::mk_or(v), util::to_string("entry-no-out-", kind));
-        }
-    }
-    
     // if node introduces speculation, it has no arch successor in tfo
     if (partial_executions) {
-        z3::expr_vector vec {context.context};
         for (const NodeRef ref : node_range()) {
             const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
             const auto some_trans_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
@@ -630,9 +670,21 @@ void AEG::construct_tfo() {
             const auto no_arch_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
                 return p.second && lookup(p.first).arch;
             }));
-            vec.push_back(lookup(ref).arch && some_trans_succ && no_arch_succ);
+            Node& node = lookup(ref);
+            // node.constraints(z3::implies(node.arch && some_trans_succ, no_arch_succ), "speculation-arch-no-po");
         }
     }
+    
+    // only one cold arch start
+    z3::expr_vector cold_start {context.context};
+    for (NodeRef ref : order) {
+        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
+        const Node& node = lookup(ref);
+        const auto tfo_ins = get_edges(Direction::IN, ref, Edge::TFO);
+        const auto tfo_ins_v = z3::transform(context.context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });
+        cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
+    }
+    constraints(z3::exactly(cold_start, 1), "one-cold-start");
 }
 
 std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) {

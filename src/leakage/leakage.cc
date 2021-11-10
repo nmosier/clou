@@ -112,16 +112,17 @@ Detector::Mems Detector::get_mems() {
         const auto& cur_node = aeg.lookup(cur);
         
         auto tfos = aeg.get_nodes(Direction::IN, cur, aeg::Edge::TFO);
-        assert(!tfos.empty());
-        
         z3::expr mem {ctx};
-        
-        auto tfo_it = tfos.begin();
-        mem = outs.at(tfo_it->first);
-        ++tfo_it;
-        mem = std::accumulate(tfo_it, tfos.end(), mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
-            return z3::ite(tfo.second, outs.at(tfo.first), acc);
-        });
+        if (tfos.empty()) {
+            mem = init_mem;
+        } else {
+            auto tfo_it = tfos.begin();
+            mem = outs.at(tfo_it->first);
+            ++tfo_it;
+            mem = std::accumulate(tfo_it, tfos.end(), mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
+                return z3::ite(tfo.second, outs.at(tfo.first), acc);
+            });
+        }
         
         ins.emplace(cur, mem);
         

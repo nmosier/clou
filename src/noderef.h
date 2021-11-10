@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <unordered_set>
+#include <optional>
 #include <unordered_map>
 
 #include "util/container.h"
@@ -24,3 +25,5 @@ NodeRefMap& operator+=(NodeRefMap& a, const NodeRefMap& b);
 using NodeRefBitset = util::natural_set<NodeRef>;
 using NodeRefBitmap = std::unordered_map<NodeRef, NodeRefBitset>;
 using NodeRefPair = std::pair<NodeRef, NodeRef>;
+
+using NodeRefOpt = std::optional<NodeRef>;

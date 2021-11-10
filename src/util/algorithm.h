@@ -126,5 +126,13 @@ bool prefixeq(const std::vector<T>& a, const std::vector<T>& b) {
     return std::equal(a.begin(), a.end(), b.begin());
 }
 
+template <typename Container>
+std::optional<typename Container::value_type> get_singleton(const Container& container) {
+    if (container.size() == 1) {
+        return *container.begin();
+    } else {
+        return std::nullopt;
+    }
+}
 
 }
