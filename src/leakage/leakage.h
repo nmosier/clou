@@ -32,6 +32,9 @@ public:
 protected:
     std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};
+    struct lookahead_found {};
+    
+    bool lookahead(std::function<void ()> thunk);
     
     struct EdgeRef {
         NodeRef src;
@@ -68,18 +71,9 @@ protected:
     /** Trace back load */
     enum class CheckMode { FAST, SLOW };
     
-    struct Handler {
-        using Function = std::function<void (NodeRef)>;
-        Function slow;
-        Function fast;
-    };
-    
-    template <CheckMode mode>
-    void traceback(NodeRef load, std::function<void (NodeRef)> func);
-    template <CheckMode mode>
-    void traceback_rf(NodeRef load, std::function<void (NodeRef)> func);
-    template <CheckMode mode>
-    void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef)> func);
+    void traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    void traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
     void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func);
     
@@ -160,10 +154,8 @@ private:
     NodeRefVec loads;
     virtual void run_() override final;
 
-    template <CheckMode mode>
-    void run1(NodeRef transmitter, NodeRef access);
+    void run1(NodeRef transmitter, NodeRef access, CheckMode mode);
     
-    struct lookahead_found {};
 };
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
