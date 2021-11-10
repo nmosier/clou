@@ -79,6 +79,8 @@ private:
     
     void construct_nodes();
     void construct_exec();
+    void construct_arch_po();
+    void construct_trans_tfo();
     void construct_arch();
     void construct_trans();
     void construct_po();

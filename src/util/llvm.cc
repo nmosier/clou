@@ -15,22 +15,6 @@ bool getelementptr_can_zero(const llvm::GetElementPtrInst *GEP) {
     return true;
 }
 
-namespace {
-
-const llvm::Type *get_element_type(const llvm::Type *T, unsigned idx) {
-    if (T->isStructTy()) {
-        return T->getStructElementType(idx);
-    }
-    if (T->isPointerTy()) {
-        return T->getPointerElementType();
-    }
-    if (T->isArrayTy()) {
-        return T->getArrayElementType();
-    }
-}
-
-}
-
 std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP) {
     const llvm::Module *M = GEP->getParent()->getParent()->getParent();
     llvm::DataLayout layout {M};

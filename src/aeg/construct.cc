@@ -281,6 +281,154 @@ void AEG::construct_addr_refs() {
     }
 }
 
+
+#if 0
+void AEG::construct_arch_po() {
+    /* entry */
+    lookup(entry).arch = context.context.bool_val(true);
+    
+    /* exit */
+    {
+        z3::expr_vector enables {context.context};
+        for (NodeRef ref : exits) {
+            const z3::expr enable = context.context.bool_val(util::to_string("arch-exit-enable-", ref).c_str());
+            enables.push_back(enable);
+            lookup(ref).arch = enable;
+        }
+        constraints(z3::exactly(enables, 1), "one-arch-exit");
+    }
+    
+    /* other */
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    z3::expr_vector enables {context.context}; // this holds the enable booleans
+    for (NodeRef ref : order) {
+        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
+        
+        Node& node = lookup(ref);
+        
+        /* collect incoming po edges; set arch */
+        const z3::expr enable = context.context.bool_const(util::to_string("arch-enable-", ref).c_str());
+        enables.push_back(enable);
+        z3::expr_vector arch_v {context.context};
+        arch_v.push_back(enable);
+        for (const auto& po_in : get_edges(Direction::IN, ref, Edge::PO)) {
+            arch_v.push_back(po_in->exists);
+        }
+        node.arch = z3::mk_or(arch_v);
+        
+        /* create outgoing po edges */
+        EdgeTupleVec po_outs;
+        for (NodeRef dst : po.po.fwd.at(ref)) {
+            po_outs.emplace_back(ref, dst, Edge(Edge::PO, node.arch));
+        }
+        add_mux_edge(po_outs, util::to_string("po-mux-", ref));
+    }
+    
+    constraints(z3::exactly(enables, 1), "one-arch-cold-start");
+}
+
+void AEG::construct_trans_tfo() {
+    /* entry */
+    lookup(entry).trans = context.context.bool_val(false);
+    
+    /* exits */
+    for (NodeRef ref : exits) {
+        lookup(ref).trans = context.context.bool_val(false);
+    }
+    
+    /* other */
+    
+    /* compute min distance to speculation gadget */
+    std::unordered_map<NodeRef, unsigned> min_specs_in, min_specs_out;
+    if (max_transient_nodes) {
+        NodeRefVec order;
+        po.reverse_postorder(std::back_inserter(order));
+                
+        for (NodeRef ref : order) {
+            const auto& preds = po.po.rev.at(ref);
+            unsigned min = std::transform_reduce(preds.begin(), preds.end(), *max_transient_nodes, [] (unsigned a, unsigned b) -> unsigned {
+                return std::min(a, b);
+            }, [&] (const NodeRef ref) -> unsigned {
+                return min_specs_out.at(ref);
+            });
+
+            min_specs_in.emplace(ref, min);
+            
+            if (po.may_introduce_speculation(ref)) {
+                min = 0;
+            } else {
+                min = std::min(*max_transient_nodes, min + 1);
+            }
+            
+            min_specs_out.emplace(ref, min);
+        }
+    }
+    
+    NodeRefVec order;
+    po.reverse_postorder(std::back_inserter(order));
+    
+    z3::expr_vector transes {context.context};
+    for (NodeRef ref : order) {
+        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
+        
+        Node& node = lookup(ref);
+        
+        /* check if can even be transiently executed */
+        if (max_transient_nodes && min_specs_in.at(ref) >= *max_transient_nodes) {
+            std::cerr << "pruning " << ref << "\n";
+            node.trans = context.context.bool_val(false);
+            continue;
+        }
+        
+        /* collect incoming tfo edges */
+        z3::expr_vector trans_v {context.context};
+        for (const auto& tfo_in : get_edges(Direction::IN, ref, Edge::TFO)) {
+            trans_v.push_back(tfo_in->exists);
+        }
+        node.trans = z3::mk_or(trans_v);
+        transes.push_back(node.trans);
+        
+        /* assert arch/trans exclusivity */
+        node.constraints(!(node.arch && node.trans), util::to_string("arch-trans-exclusive-", ref).c_str());
+        
+        const auto po_out = get_edges(Direction::OUT, ref, Edge::PO);
+        const auto no_po_out = !z3::mk_or(z3::transform(context.context, po_out, [] (const auto& e) -> z3::expr {
+            return e->exists;
+        }));
+        
+        /* create outgoing tfo edges */
+        EdgeTupleVec tfo_outs;
+        for (NodeRef dst : po.po.fwd.at(ref)) {
+#if 1
+            const z3::expr tfo_exists = context.context.bool_const(util::to_string("tfo-", ref, "-", dst).c_str());
+            node.constraints(tfo_exists == (node.trans || (po.may_introduce_speculation(ref) && node.arch && no_po_out)), util::to_string("tfo-def-", ref, "-", dst).c_str());
+            tfo_outs.emplace_back(ref, dst, Edge {
+                Edge::TFO,
+                tfo_exists
+            });
+#else
+            tfo_outs.emplace_back(ref, dst, Edge {
+                Edge::TFO,
+                node.trans || (po.may_introduce_speculation(ref) && node.arch && no_po_out)
+            });
+#endif
+        }
+        add_mux_edge(tfo_outs, util::to_string("tfo-mux-", ref));
+        
+    }
+    
+    /* trans limit */
+    if (max_transient_nodes) {
+        constraints(z3::atmost(transes, *max_transient_nodes), "max-transient-nodes");
+    }
+    
+}
+#endif
+
+
 void AEG::construct_exec() {
     // TODO: test making this its own variable
     // NOTE: depends on results of construct_tfo().
