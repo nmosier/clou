@@ -10,18 +10,33 @@ public:
         start_();
     }
     
+    Timer(Timer&& other) {
+        *this = std::move(other);
+    }
+    
+    Timer& operator=(Timer&& other) {
+        if (good()) { show(); }
+        os = other.os; other.os = nullptr;
+        start = other.start;
+        stop = other.stop;
+        return *this;
+    }
+    
     ~Timer() {
-        show();
+        if (good()) { show(); }
     }
     
     float get() const {
         std::chrono::duration<float> elapsed_sec = now() - start;
         return elapsed_sec.count();
     }
+    
+    bool good() const { return os != nullptr; }
+    operator bool() const { return good(); }
 
 private:
     using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
-    std::ostream *os;
+    std::ostream *os = nullptr;
     TimePoint start;
     TimePoint stop;
 

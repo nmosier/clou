@@ -15,6 +15,9 @@
 #include "mon/client.h"
 #include "mon/proto.h"
 
+#define z3_cond_scope std::optional<z3::scope> scope = (mode == CheckMode::SLOW) ? std::make_optional(solver) : std::optional<z3::solver>()
+
+
 /* For each speculative-dst addr edge, find all leakage coming out of it.
  * Any rfx edges, it's leakage, as long as the tail of the rfx edge is a READ.
  * Any frx edges, it's leakage, as ....
@@ -136,34 +139,40 @@ Detector::Mems Detector::get_mems() {
     return ins;
 }
 
-
+template <Detector::CheckMode mode>
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
     // Sources new_sources;
     for (const auto& store_pair : rf_sources(load)) {
         const NodeRef store = store_pair.first;
-        const z3::expr& cond = store_pair.second;
-        z3_scope;
         
+        z3_cond_scope;
         const std::string desc = util::to_string(store, " -rf-> ", load);
-        solver.add(cond, desc.c_str());
+        if constexpr (mode == CheckMode::SLOW) {
+            const z3::expr& cond = store_pair.second;
+            solver.add(cond, desc.c_str());
 #if 0
-        // NOTE: not checking actually speeds up execution by 0.5X
-        if (solver.check() != z3::sat) { continue; }
+            // NOTE: not checking actually speeds up execution by 0.5X
+            if (solver.check() != z3::sat) { continue; }
 #endif
+        }
+        
+        const auto action = util::push(actions, desc);
+
         // new_sources.insert(store_pair);
         // TODO: need to separately check if this is due to something else
-        const auto action = util::push(actions, desc);
         func(store);
     }
 }
 
-
+template <Detector::CheckMode mode>
 void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     const aeg::Node& load_node = aeg.lookup(load);
 
-    z3_scope;
-    solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
-    if (solver.check() != z3::sat) { return; }
+    z3_cond_scope;
+    if constexpr (mode == CheckMode::SLOW) {
+        solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
+        if (solver.check() != z3::sat) { return; }
+    }
     
     if (traceback_depth == max_traceback) {
         std::cerr << "backtracking: max traceback depth (" << max_traceback << ")\n";
@@ -176,8 +185,10 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     const auto traceback_edge = [&] (aeg::Edge::Kind kind, NodeRef ref) {
         const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
         for (const auto& edge : edges) {
-            z3_scope;
-            solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
+            z3_cond_scope;
+            if constexpr (mode == CheckMode::SLOW) {
+                solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
+            }
             const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
             func(edge.first);
         }
@@ -185,7 +196,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     };
     
     // traceback via rf.data
-    traceback_rf(load, [&] (const NodeRef store) {
+    traceback_rf<mode>(load, [&] (const NodeRef store) {
         traceback_edge(aeg::Edge::DATA, store);
     });
     
@@ -196,7 +207,6 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
         trace("backtrack: no traceback edges\n");
     }
 }
-
 
 template <typename Derived>
 void Leakage<Derived>::print_short(std::ostream& os) const {
@@ -273,54 +283,57 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     }
 }
 
-
-void SpectreV1_Detector::run_() {
-    for_each_transmitter(deps().back(), [&] (const NodeRef transmitter) {
-        run1(transmitter, transmitter);
-    });
-}
-
+template <Detector::CheckMode mode>
 void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
-    std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
+    if constexpr (mode == CheckMode::SLOW) {
+        std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
+        
+        // lookahead
+        try {
+            SpectreV1_Detector::run1<CheckMode::FAST>(transmitter, access);
+            lookahead_tmp = false;
+            if (use_lookahead) {
+                return;
+            }
+        } catch (const lookahead_found&) {
+            lookahead_tmp = true;
+        }
+    }
     
+
+#if 0
     if (!(lookahead_tmp = lookahead(transmitter, access))) {
         std::cerr << "lookahead false\n";
         if (use_lookahead) {
             return;
         }
     }
-
-#define OPTIMIZED_CHECK 1
-    
-#if !OPTIMIZED_CHECK
-    if (solver.check() != z3::sat) {
-        trace("backtrack: unsat");
-        return;
-    }
 #endif
 
-        
+    // check if done
     if (loads.size() == deps().size()) {
-#if OPTIMIZED_CHECK
-        if (solver.check() != z3::sat) {
-            trace("backtrack: unsat");
+        if constexpr (mode == CheckMode::SLOW) {
+            if (solver.check() != z3::sat) {
+                trace("backtrack: unsat");
+                return;
+            }
+            
+            z3_eval;
+            
+            const SpectreV1_Leakage leak = {
+                .load0 = loads.at(1),
+                .load1 = loads.at(0),
+                .transmitter2 = transmitter,
+            };
+            
+            std::cerr << "spectre-v1 leak found\n";
+            
+            output_execution(leak);
             return;
+            
+        } else {
+            throw lookahead_found();
         }
-#endif
-
-        z3_eval;
-        
-        const SpectreV1_Leakage leak = {
-            .load0 = loads.at(1),
-            .load1 = loads.at(0),
-            .transmitter2 = transmitter,
-        };
-        
-        std::cerr << "spectre-v1 leak found\n";
-        
-        output_execution(leak);
-        
-        return;
     }
     
     assert(loads.size() < deps().size());
@@ -336,29 +349,33 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
             goto label;
         }
         
-#if OPTIMIZED_CHECK
-        if (solver.check() != z3::sat) {
-            trace("backtrack: unsat");
-            return;
+        if constexpr (mode == CheckMode::SLOW) {
+            if (solver.check() != z3::sat) {
+                trace("backtrack: unsat");
+                return;
+            }
+
+            trace("trying to commit %lu (%zu deps)", access, deps.size());
         }
-#endif
-        
-        trace("trying to commit %lu (%zu deps)", access, deps.size());
         
         for (const auto& dep : deps) {
-            z3_scope;
+            z3_cond_scope;
             const NodeRef load = dep.first;
             const auto push_load = util::push(loads, load);
-            solver.add(dep.second, util::to_string(load, " -", dep_kind, "-> ", access).c_str());
+            if constexpr (mode == CheckMode::SLOW) {
+                solver.add(dep.second, util::to_string(load, " -", dep_kind, "-> ", access).c_str());
+            }
             const auto addr_edge = util::push(flag_edges, EdgeRef {
                 .src = load,
                 .dst = access,
                 .kind = aeg::Edge::ADDR,
             });
-                
+            
             const auto action = util::push(actions, util::to_string(load, " -", dep_kind, "-> ", access));
-            std::cerr << __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n";
-            run1(transmitter, load);
+            if constexpr (mode == CheckMode::SLOW) {
+                std::cerr << __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n";
+            }
+            run1<mode>(transmitter, load);
         }
     }
     
@@ -366,12 +383,21 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
     
     /* traceback */
     if (access != transmitter) {
-        traceback(access, [&] (const NodeRef load) {
-            Timer timer;
-            std::cerr << name() << ": traceback " << access << " to " << load << "\n";
-            run1(transmitter, load);
+        traceback<mode>(access, [&] (const NodeRef load) {
+            std::optional<Timer> timer;
+            if constexpr (mode == CheckMode::SLOW) {
+                timer = Timer();
+                std::cerr << name() << ": traceback " << access << " to " << load << "\n";
+            }
+            run1<mode>(transmitter, load);
         });
     }
+}
+
+void SpectreV1_Detector::run_() {
+    for_each_transmitter(deps().back(), [&] (const NodeRef transmitter) {
+        run1<CheckMode::SLOW>(transmitter, transmitter);
+    });
 }
 
 void SpectreV1_Detector::lookahead_aux(NodeRef transmitter, NodeRef access) {
@@ -484,7 +510,7 @@ void SpectreV4_Detector::run_load(NodeRef access) {
     }
     
     // traceback
-    traceback(access, [&] (NodeRef load) {
+    traceback<CheckMode::SLOW>(access, [&] (NodeRef load) {
         std::cerr << "traceback " << load << "\n";
         run_load(load);
     });
@@ -493,7 +519,7 @@ void SpectreV4_Detector::run_load(NodeRef access) {
 
 void SpectreV4_Detector::run_bypassed_store() {
     std::cerr << __FUNCTION__ << "\n";
-    traceback_rf(leak.load, [&] (const NodeRef bypassed_store) {
+    traceback_rf<CheckMode::SLOW>(leak.load, [&] (const NodeRef bypassed_store) {
         // store can't be bypased if older than stb_size
         if (bypassed_store != aeg.entry && !aeg.may_source_stb(leak.load, bypassed_store)) { return; }
         

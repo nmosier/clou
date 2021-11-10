@@ -201,14 +201,36 @@ detail::defer_impl<Func> defer(Func func) {
 template <typename Container>
 class push_scope {
 public:
-    push_scope(Container& container, const typename Container::value_type& x): container(container) {
+    push_scope() {}
+    push_scope(Container& container, const typename Container::value_type& x): container(&container) {
         container.push_back(x);
     }
-    ~push_scope() {
-        container.pop_back();
+    push_scope(push_scope&& other) {
+        container = other.container; other.container = nullptr;
     }
+    push_scope& operator=(push_scope&& other) {
+        if (container) {
+            pop();
+        }
+        container = other.container; other.container = nullptr;
+    }
+    
+    ~push_scope() {
+        if (container) {
+            pop();
+        }
+    }
+    
+    bool good() const { return container != nullptr; }
+    operator bool() const { return good(); }
+
 private:
-    Container& container;
+    Container *container = nullptr;
+    
+    void pop() {
+        container->pop_back();
+        container = nullptr;
+    }
 };
 
 template <typename Container>

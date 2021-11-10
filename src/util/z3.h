@@ -82,9 +82,9 @@ inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3
 }
 
 struct scope {
-    z3::solver& solver;
-    scope(z3::solver& solver): solver(solver) {
-        solver.push();
+    z3::solver solver;
+    scope(const z3::solver& solver): solver(solver) {
+        this->solver.push();
     }
     ~scope() {
         solver.pop();
@@ -177,32 +177,6 @@ z3::expr_vector transform(const Container& container, Op op) {
 }
 
 z3::expr distinct2(const z3::expr_vector& v);
-
-#if 0
-class lazy_solver {
-public:
-    lazy_solver(z3::context& c);
-    
-    void push();
-    void pop();
-    
-    void add(const z3::expr& e);
-    void add(const z3::expr& e, const char *p);
-    void add(const z3::expr& e, const std::string& p);
-    
-private:
-    struct Entry {
-        z3::expr e;
-        std::optional<std::string> p;
-    };
-    using Uncommitted = std::vector<Entry>;
-    struct Committed {};
-    using Scope = std::variant<Uncommitted, Committed>;
-    z3::solver solver;
-    std::vector<Scope> scopes;
-    Uncommitted current;
-};
-#endif
 
 }
 

@@ -43,10 +43,10 @@ protected:
     
     aeg::AEG& aeg;
     z3::solver& solver;
-    std::vector<std::string> actions;
-#if 1
+    using Actions = std::vector<std::string>;
+    using PushAction = util::push_scope<Actions>;
+    Actions actions;
     Mems mems;
-#endif
     NodeRefVec order;
     
     z3::expr mem(NodeRef ref) const {
@@ -66,7 +66,11 @@ protected:
     /* UTILITIES FOR SUBCLASSES */
     
     /** Trace back load */
+    enum class CheckMode { FAST, SLOW };
+    
+    template <CheckMode mode>
     void traceback(NodeRef load, std::function<void (NodeRef)> func);
+    template <CheckMode mode>
     void traceback_rf(NodeRef load, std::function<void (NodeRef)> func);
     
     void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func);
@@ -148,6 +152,7 @@ private:
     NodeRefVec loads;
     virtual void run_() override final;
 
+    template <CheckMode mode>
     void run1(NodeRef transmitter, NodeRef access);
     
     struct lookahead_found {};
