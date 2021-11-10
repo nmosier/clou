@@ -165,6 +165,19 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
 }
 
 template <Detector::CheckMode mode>
+void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef)> func) {
+    const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
+    for (const auto& edge : edges) {
+        z3_cond_scope;
+        if constexpr (mode == CheckMode::SLOW) {
+            solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
+        }
+        const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
+        func(edge.first);
+    }
+}
+
+template <Detector::CheckMode mode>
 void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     const aeg::Node& load_node = aeg.lookup(load);
 
@@ -181,31 +194,13 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef)> func) {
     
     const auto inc_depth = util::inc_scope(traceback_depth);
     
-    unsigned num_traced_back = 0;
-    const auto traceback_edge = [&] (aeg::Edge::Kind kind, NodeRef ref) {
-        const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
-        for (const auto& edge : edges) {
-            z3_cond_scope;
-            if constexpr (mode == CheckMode::SLOW) {
-                solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
-            }
-            const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
-            func(edge.first);
-        }
-        ++num_traced_back;
-    };
-    
     // traceback via rf.data
     traceback_rf<mode>(load, [&] (const NodeRef store) {
-        traceback_edge(aeg::Edge::DATA, store);
+        traceback_edge<mode>(aeg::Edge::DATA, store, func);
     });
     
     // traceback via addr
-    traceback_edge(aeg::Edge::ADDR, load);
-    
-    if (num_traced_back == 0) {
-        trace("backtrack: no traceback edges\n");
-    }
+    traceback_edge<mode>(aeg::Edge::ADDR, load, func);
 }
 
 template <typename Derived>
@@ -299,16 +294,6 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access) {
             lookahead_tmp = true;
         }
     }
-    
-
-#if 0
-    if (!(lookahead_tmp = lookahead(transmitter, access))) {
-        std::cerr << "lookahead false\n";
-        if (use_lookahead) {
-            return;
-        }
-    }
-#endif
 
     // check if done
     if (loads.size() == deps().size()) {
@@ -398,69 +383,6 @@ void SpectreV1_Detector::run_() {
     for_each_transmitter(deps().back(), [&] (const NodeRef transmitter) {
         run1<CheckMode::SLOW>(transmitter, transmitter);
     });
-}
-
-void SpectreV1_Detector::lookahead_aux(NodeRef transmitter, NodeRef access) {
-    /* check if done */
-    if (loads.size() == deps().size()) {
-        throw lookahead_found();
-    }
-    
-    /* try committing load */
-    {
-        const aeg::Edge::Kind dep_kind = cur_dep();
-        const auto deps = aeg.get_nodes(Direction::IN, access, dep_kind);
-        for (const auto& dep : deps) {
-            const NodeRef load = dep.first;
-            const auto push_load = util::push(loads, load);
-            lookahead_aux(transmitter, load);
-        }
-    }
-    
-    /* traceback */
-    if (access != transmitter) {
-        lookahead_traceback(access, [&] (const NodeRef load) {
-            lookahead_aux(transmitter, load);
-        });
-    }
-}
-
-void SpectreV1_Detector::lookahead_traceback(NodeRef load, std::function<void (NodeRef)> func) {
-    /* check traceback limit */
-    if (traceback_depth == max_traceback) {
-        return;
-    }
-    
-    const auto inc_depth = util::inc_scope(traceback_depth);
-    
-    const auto lookahead_traceback_edge = [&] (aeg::Edge::Kind kind, NodeRef ref) {
-        const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
-        for (const auto& edge : edges) {
-            func(edge.first);
-        }
-    };
-    
-    lookahead_traceback_rf(load, [&] (const NodeRef store) {
-        lookahead_traceback_edge(aeg::Edge::DATA, store);
-    });
-    
-    lookahead_traceback_edge(aeg::Edge::ADDR, load);
-}
-
-void SpectreV1_Detector::lookahead_traceback_rf(NodeRef load, std::function<void (NodeRef)> func) {
-    for (const auto& store_pair : rf_sources(load)) {
-        const NodeRef store = store_pair.first;
-        func(store);
-    }
-}
-
-bool SpectreV1_Detector::lookahead(NodeRef transmitter, NodeRef access) {
-    try {
-        lookahead_aux(transmitter, access);
-        return false;
-    } catch (const lookahead_found&) {
-        return true;
-    }
 }
 
 
