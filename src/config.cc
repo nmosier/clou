@@ -43,6 +43,7 @@ bool fast_mode = false;
 bool batch_mode = false;
 std::optional<unsigned> stb_size;
 SyntacticDependencies respect_syntactic_dependencies;
+bool use_lookahead = false;
 
 OutputCFGs output_cfgs;
 
@@ -87,6 +88,7 @@ only examine given functions
 --stb <value>        store buffer size (default: "unlimited")
 --respect-syntactic-deps[=<dep>...]
                      respect syntactic dependencies (options: "addr", "data"). Assign empty string to respect none.
+--lookahead=[<bool>] use lookahead during leakage detection
 )=";
     fprintf(f, "%s", s);
 }
@@ -169,6 +171,7 @@ int parse_args() {
         CFG,
         STB,
         SYNTACTIC_DEPS,
+        LOOKAHEAD,
     };
     
     struct option opts[] = {
@@ -195,6 +198,7 @@ int parse_args() {
         {"cfg", optional_argument, nullptr, CFG},
         {"stb", required_argument, nullptr, STB},
         {"respect-syntactic-deps", optional_argument, nullptr, SYNTACTIC_DEPS},
+        {"lookahead", optional_argument, nullptr, LOOKAHEAD},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -368,6 +372,7 @@ int parse_args() {
                     partial_executions = true;
                     output_cfgs.clearall();
                     output_cfgs.expanded = true;
+                    use_lookahead = true;
                 }
                 break;
             }
@@ -413,6 +418,11 @@ int parse_args() {
                 break;
             }
                 
+            case LOOKAHEAD: {
+                use_lookahead = parse_bool_opt(optarg);
+                break;
+            }
+                
             default:
                 usage();
                 exit(1);
@@ -424,7 +434,9 @@ int parse_args() {
     // check_config();
     initialize_post();
     
-    std::cerr << "llvm is multithreaded: " << llvm::llvm_is_multithreaded() << "\n";
+    if (use_lookahead) {
+        std::cerr << "config: using lookahead\n";
+    }
     
     return 0;
 }

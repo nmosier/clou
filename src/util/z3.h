@@ -2,10 +2,15 @@
 
 #include <type_traits>
 #include <unordered_map>
+#include <vector>
+#include <string>
+#include <variant>
+#include <optional>
 
 #include <z3++.h>
 
 
+// TODO: remove
 inline z3::expr& operator&=(z3::expr& a, const z3::expr& b) {
    a = a && b;
    return a;
@@ -18,46 +23,19 @@ inline z3::expr& operator|=(z3::expr& a, const z3::expr& b) {
 
 
 namespace z3 {
-inline z3::expr max(const z3::expr_vector& exprs) {
-    assert(!exprs.empty());
-    auto it = exprs.begin();
-    z3::expr acc = *it++;
-    while (it != exprs.end()) {
-        acc = min(acc, *it++);
-    }
-    return acc;
-}
 
-inline z3::expr atmost2(const z3::expr_vector& exprs, unsigned count) {
-    if (exprs.size() <= count) {
-        return exprs.ctx().bool_val(true);
-    } else {
-        return z3::atmost(exprs, count);
-    }
-}
-
-inline z3::expr atleast2(const z3::expr_vector& exprs, unsigned count) {
-    if (exprs.size() < count) {
-        return exprs.ctx().bool_val(false);
-    } else if (exprs.size() == count) {
-        return z3::mk_and(exprs);
-    } else {
-        return z3::atleast(exprs, count);
-    }
-}
-
-inline z3::expr exactly(const z3::expr_vector& exprs, unsigned count) {
-    const z3::expr lower = z3::atleast2(exprs, count);
-    const z3::expr upper = z3::atmost2(exprs, count);
-    return lower && upper;
-}
+z3::expr max(const z3::expr_vector& exprs);
+z3::expr atmost2(const z3::expr_vector& exprs, unsigned count);
+z3::expr atleast2(const z3::expr_vector& exprs, unsigned count);
+z3::expr exactly(const z3::expr_vector& exprs, unsigned count);
 
 /// NOTE: bounds are inclusive
+// TODO: delete?
 inline z3::expr atleastmost(const z3::expr_vector& exprs, unsigned lower, unsigned upper) {
     return z3::atleast2(exprs, lower) && z3::atmost2(exprs, upper);
 }
 
-
+// TODO: delete?
 inline bool to_bool(const z3::expr& e) {
     switch (e.bool_value()) {
         case Z3_L_TRUE: return true;
@@ -141,14 +119,7 @@ inline bool always_true(z3::solver& solver, const z3::expr& pred) {
     return solver.check(vec) == z3::unsat;
 }
 
-inline z3::solver duplicate(const z3::solver& orig) {
-    z3::context& ctx = orig.ctx();
-    z3::solver dup {ctx};
-    for (const z3::expr& e : orig.assertions()) {
-        dup.add(e);
-    }
-    return dup;
-}
+z3::solver duplicate(const z3::solver& orig);
 
 template <typename... Args>
 inline z3::check_result check_force(z3::solver& solver, Args&&... args) {
@@ -205,13 +176,33 @@ z3::expr_vector transform(const Container& container, Op op) {
     return transform(container.begin(), container.end(), op);
 }
 
-inline z3::expr distinct2(const z3::expr_vector& v) {
-    if (v.empty()) {
-        return v.ctx().bool_val(true);
-    } else {
-        return distinct(v);
-    }
-}
+z3::expr distinct2(const z3::expr_vector& v);
+
+#if 0
+class lazy_solver {
+public:
+    lazy_solver(z3::context& c);
+    
+    void push();
+    void pop();
+    
+    void add(const z3::expr& e);
+    void add(const z3::expr& e, const char *p);
+    void add(const z3::expr& e, const std::string& p);
+    
+private:
+    struct Entry {
+        z3::expr e;
+        std::optional<std::string> p;
+    };
+    using Uncommitted = std::vector<Entry>;
+    struct Committed {};
+    using Scope = std::variant<Uncommitted, Committed>;
+    z3::solver solver;
+    std::vector<Scope> scopes;
+    Uncommitted current;
+};
+#endif
 
 }
 
@@ -225,3 +216,4 @@ struct hash<z3::expr> {
 };
 
 }
+

@@ -82,8 +82,10 @@ protected:
     const Sources& rf_sources(NodeRef load);
     void rf_sources(NodeRef load, Sources&& sources);
         
-private:
+    // TODO: this is protected for now
     unsigned traceback_depth = 0;
+    bool lookahead_tmp = true;
+private:
     CFGOrder partial_order;
     
     
@@ -147,6 +149,12 @@ private:
     virtual void run_() override final;
 
     void run1(NodeRef transmitter, NodeRef access);
+    
+    struct lookahead_found {};
+    bool lookahead(NodeRef transmitter, NodeRef access);
+    void lookahead_aux(NodeRef transmitter, NodeRef access);
+    void lookahead_traceback(NodeRef load, std::function<void (NodeRef)> func);
+    void lookahead_traceback_rf(NodeRef load, std::function<void (NodeRef)> func);
 };
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
@@ -243,6 +251,8 @@ void Detector_<Leakage>::run() {
 
 template <typename Leakage>
 void Detector_<Leakage>::output_execution(const Leakage& leak) {
+    assert(lookahead_tmp);
+    
     leaks.emplace_back(leak, std::accumulate(actions.rbegin(), actions.rend(), std::string(), [] (const std::string& a, const std::string& b) -> std::string {
         std::string res = a;
         if (!res.empty()) {

@@ -1,7 +1,7 @@
 add_library(util_objs OBJECT
   llvm.h llvm.cc
   tuple.h
-  z3.h
+  z3.h z3.cc
   output.h
   functional.h
   algorithm.h
