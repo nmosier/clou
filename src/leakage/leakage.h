@@ -9,6 +9,7 @@
 #include "config.h"
 #include "util/output.h"
 #include "cfg/block.h"
+#include "util/z3.h"
 
 // TODO: shouldn't need to include "aeg.h"
 
@@ -45,7 +46,11 @@ protected:
     using Mems = std::unordered_map<NodeRef, z3::expr>;
     
     aeg::AEG& aeg;
+#if 0
     z3::solver& solver;
+#else
+    z3::mysolver solver;
+#endif
     using Actions = std::vector<std::string>;
     using PushAction = util::push_scope<Actions>;
     Actions actions;
@@ -86,16 +91,15 @@ protected:
     // TODO: this is protected for now
     unsigned traceback_depth = 0;
     bool lookahead_tmp = true;
+    
 private:
     CFGOrder partial_order;
     
-    
     Mems get_mems();
     Mems get_mems(const NodeRefSet& set); /*!< only consider nodes in \p set */
-    Mems get_mems1(const NodeRefSet& set);
+    Mems get_mems1(const NodeRefSet& set); /*!< this uses topological order */
     
     RF rf; // TODO: remove?
-    z3::solver rf_solver; // TODO: remove
     
     // DEBUG members
     // TODO: remove

@@ -15,7 +15,8 @@
 #include "mon/client.h"
 #include "mon/proto.h"
 
-#define z3_cond_scope std::optional<z3::scope> scope = (mode == CheckMode::SLOW) ? std::make_optional(solver) : std::optional<z3::solver>()
+#define z3_cond_scope \
+const std::optional<z3::scope<decltype(solver)>> scope = (mode == CheckMode::SLOW) ? std::make_optional(solver) : std::optional<decltype(solver)>()
 
 #define do_lookahead(call) \
 if (!lookahead([&] () { call; }) && use_lookahead) { \
@@ -104,9 +105,20 @@ unsigned AEG::leakage(z3::solver& solver) {
 
 namespace lkg {
 
+namespace dbg {
+
+void append_core(z3::mysolver& solver) {
+    if (const char *corepath = std::getenv("CORES")) {
+        std::ofstream ofs {corepath, std::ios::app};
+        ofs << __FILE__ << ":" << __LINE__ << ": " << solver.unsat_core() << "\n";
+    }
+}
+
+}
+
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po), rf_solver(z3::duplicate(solver)) {
+Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {
     aeg.po.reverse_postorder(std::back_inserter(order));
 }
 
@@ -405,6 +417,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             std::cerr << "skipping transmitter\n";
             std::cerr << "access: " << transmitter_node.access() << "\n";
             std::cerr << "trans: " << transmitter_node.trans << "\n";
+            dbg::append_core(solver);
         }
     }
 }
@@ -463,6 +476,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
             if (solver.check() != z3::sat) {
                 trace("backtrack: unsat");
                 std::cerr << "mark:unsat\n";
+                dbg::append_core(solver);
                 return;
             }
 
