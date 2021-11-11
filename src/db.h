@@ -64,7 +64,6 @@ public:
     SharedDatabaseListSet(const std::string& path): path(path) {}
     
     bool contains(const std::string& s) const {
-        std::cerr << __FUNCTION__ << "\n";
         int fd;
         if ((fd = ::open(path.c_str(), O_RDONLY | O_CREAT, 0664)) < 0) {
             throw util::syserr();

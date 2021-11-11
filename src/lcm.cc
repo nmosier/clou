@@ -96,6 +96,7 @@ struct LCMPass: public llvm::FunctionPass {
             if (output_cfgs.unrolled) {
                 output_(aegpo_unrolled, "cfg-unrolled", F);
             }
+            std::cerr << "cfg-unrolled: " << aegpo_unrolled.size() << " nodes\n";
             
             client.send_step("cfg-calls", F.getName().str());
             CFG_Calls cfg_calls {spec_depth};
@@ -104,6 +105,7 @@ struct LCMPass: public llvm::FunctionPass {
             if (output_cfgs.calls) {
                 output_(cfg_calls, "cfg-calls", F);
             }
+            std::cerr << "cfg-calls: " << cfg_calls.size() << " nodes\n";
             
             logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
             client.send_step("cfg-expanded", F.getName().str());
@@ -125,14 +127,12 @@ struct LCMPass: public llvm::FunctionPass {
                     default: std::abort();
                 }
             }
-            logv(2) << "Expanded AEGPO node counts: " << aegpo_unrolled.size() << " (orig) vs. "
-            << cfg_expanded.size() << " (expanded)\n";
             
             if (output_cfgs.expanded) {
                 output_(cfg_expanded, "cfg-expanded", F);
             }
-            
-            
+            std::cerr << "cfg-expanded: " << cfg_expanded.size() << " nodes\n";
+
             
             // DEBUG: show block CFG information
             {
@@ -167,9 +167,6 @@ struct LCMPass: public llvm::FunctionPass {
             llvm::errs() << "done\n";
             
             // add analyzed functions
-#if 0
-            analyzed_functions.insert(F.getName().str());
-#else
             {
                 std::unordered_set<std::string> set;
                 std::transform(aegpo_unrolled.nodes.begin(), aegpo_unrolled.nodes.end(), std::inserter(set, set.end()), [] (const CFG::Node& node) -> std::string {
@@ -193,7 +190,6 @@ struct LCMPass: public llvm::FunctionPass {
                     client.send(msg);
                 }
             }
-#endif
             
         } catch (const util::resume& resume) {
             std::cerr << resume.what() << "\n";

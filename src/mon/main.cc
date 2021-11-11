@@ -289,6 +289,8 @@ struct Monitor: Component {
     RunningJobList running_jobs {48};
     using CompletedJobList = ComponentList<CompletedJob>;
     CompletedJobList completed_jobs {16};
+    using AbortedJobList = ComponentList<CompletedJob>;
+    AbortedJobList aborted_jobs {16};
     
     /** NOTE: \p server_sock must already be set to listening. */
     Monitor(int server_sock): server_sock(server_sock) {}
@@ -305,14 +307,15 @@ struct Monitor: Component {
             return a.duration.secs > b.duration.secs;
         });
         completed_jobs.display();
-        ::addstr("\n");
-        ::printw("ANALYZED: %zu\n", analyzed_functions.size());
+        ::addstr("\nABORTED:\n");
+        aborted_jobs.display();
+        ::printw("\nANALYZED: %zu\n", analyzed_functions.size());
     }
     
     void run();
     
 private:
-    void run_body(FILE *client_f, int owner, ::pid_t pid);
+    bool run_body(FILE *client_f, int owner, ::pid_t pid);
     
     void handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid);
     void handle_func_completed(const mon::FunctionCompleted& msg);
@@ -390,17 +393,20 @@ void Monitor::run() {
                             
                             /* check flags */
                             if ((pfd.revents & POLLIN)) {
-                                this->run_body(client_f, id, pid);
-                            }
-                            if ((pfd.revents & POLLHUP)) {
-                                break;
-                            }
-                            if ((pfd.revents & POLLNVAL)) {
-                                error("poll: invalid socket");
-                            }
-                            if ((pfd.revents & POLLERR)) {
-                                std::cerr << prog << ": error on socket, closing\n";
-                                break;
+                                if (!this->run_body(client_f, id, pid)) {
+                                    break;
+                                }
+                            } else {
+                                if ((pfd.revents & POLLHUP)) {
+                                    break;
+                                }
+                                if ((pfd.revents & POLLNVAL)) {
+                                    error("poll: invalid socket");
+                                }
+                                if ((pfd.revents & POLLERR)) {
+                                    std::cerr << prog << ": error on socket, closing\n";
+                                    break;
+                                }
                             }
                         }
                         
@@ -413,7 +419,9 @@ void Monitor::run() {
                             std::unique_lock<std::mutex> lock {mutex};
                             for (auto it = running_jobs.begin(); it != running_jobs.end(); ) {
                                 if (it->owner == id) {
+                                    const auto job = *it;
                                     it = running_jobs.vec.erase(it);
+                                    aborted_jobs.vec.push_back(job);
                                 } else {
                                     ++it;
                                 }
@@ -447,9 +455,9 @@ void Monitor::run() {
     display_thd.join();
 }
 
-void Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
+bool Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
     mon::Message msg;
-    if (!parse(client_f, msg)) { return; }
+    if (!parse(client_f, msg)) { return false; }
     
     std::unique_lock<std::mutex> lock {mutex};
     
@@ -483,6 +491,8 @@ void Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
             
         default: std::abort();
     }
+    
+    return true;
 }
 
 void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid) {
