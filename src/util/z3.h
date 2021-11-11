@@ -81,16 +81,17 @@ inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3
     return store(a, i, ite(c, v, a[i]));
 }
 
+template <typename Solver>
 struct scope {
-    z3::solver solver;
-    scope(const z3::solver& solver): solver(solver) {
+    Solver solver;
+    scope(const Solver& solver): solver(solver) {
         this->solver.push();
     }
     ~scope() {
         solver.pop();
     }
 };
-#define z3_scope const z3::scope scope {solver}
+#define z3_scope const z3::scope<decltype(solver)> scope {solver}
 
 
 /** Enumerate all the possible values of the given expression \p expr under the current constraints in \p solver.
@@ -177,6 +178,35 @@ z3::expr_vector transform(const Container& container, Op op) {
 }
 
 z3::expr distinct2(const z3::expr_vector& v);
+
+class mysolver {
+public:
+    mysolver(z3::context& c): s(c) {}
+    mysolver(z3::solver& s): s(s) {}
+    z3::context& ctx() const { return s.ctx(); }
+    void push();
+    void pop();
+    void add(const z3::expr& e);
+    void add(const z3::expr& e, const std::string& d);
+    void add(const z3::expr_vector& v);
+    z3::check_result check();
+    z3::model get_model() const { return s.get_model(); }
+    z3::stats statistics() const { return s.statistics(); }
+    z3::expr_vector unsat_core() const;
+    z3::expr_vector assertions() const { return s.assertions(); }
+
+    operator const z3::solver&() const { return s; }
+    operator z3::solver&() { return s; }
+    
+private:
+    z3::solver s;
+    bool asserted_false = false;
+    std::vector<bool> asserted_false_stack;
+    
+    void check_expr(const z3::expr& e);
+    bool is_trivially_unsat() const;
+};
+
 
 }
 
