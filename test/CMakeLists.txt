@@ -53,10 +53,12 @@ add_test(NAME spectre-v1-medium
   ${LIBSODIUM}/crypto_onetimeauth/poly1305/donna/poly1305_donna.c -I ${LIBSODIUM}/include/sodium
   )
 
-set(SPECTRE_V1_LARGE_FILE crypto_core/ed25519/core_h2c.c)
-set(SPECTRE_V1_LARGE_FUNC _sodium_core_h2c_string_to_hash)
+# set(SPECTRE_V1_LARGE_FILE crypto_core/ed25519/core_h2c.c)
+# set(SPECTRE_V1_LARGE_FUNC _sodium_core_h2c_string_to_hash)
 # set(SPECTRE_V1_LARGE_FILE crypto_shorthash/siphash24/ref/shorthash_siphashx24_ref.c)
 # set(SPECTRE_V1_LARGE_FUNC crypto_shorthash_siphashx24)
+set(SPECTRE_V1_LARGE_FILE crypto_core/ed25519/ref10/ed25519_ref10.c)
+set(SPECTRE_V1_LARGE_FUNC _sodium_fe25519_invert)
 
 add_test(NAME spectre-v1-large
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh

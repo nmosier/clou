@@ -70,20 +70,12 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
         Translations::Value value {callee_id};
         if (!C->getType()->isVoidTy()) {
             for (const auto& exit : port.exits) {
-                llvm::errs() << exit.first->back() << "\n";
                 const llvm::ReturnInst *R = llvm::cast<llvm::ReturnInst>(&exit.first->back());
-#if 0
-                if (R->getType()->isVoidTy()) {
-                    const llvm::Value *V = R->getOperand(0);
-                    value.Vs.insert(V);
-                }
-#else
                 if (const llvm::Value *RV = R->getReturnValue()) {
                     if (llvm::isa<llvm::Instruction>(RV) || llvm::isa<llvm::Argument>(RV)) {
                         value.Vs.insert(RV);
                     }
                 }
-#endif
             }
         }
         translations.map.emplace(key, value);

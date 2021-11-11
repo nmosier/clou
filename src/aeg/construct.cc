@@ -237,10 +237,13 @@ void AEG::construct_addr_refs() {
                     } else {
                         e = Address {context};
                         if (defs.size() != 0) {
+                            using output::operator<<;
+                            std::stringstream desc;
+                            desc << "addr-ref-" << ref << "-" << defs;
                             node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                                     [&] (NodeRef def) {
                                 return lookup_def(def) == *e;
-                            }, context.FALSE), "addr-ref");
+                            }, context.FALSE), desc.str().c_str());
                         }
                     }
                 }

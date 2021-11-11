@@ -202,6 +202,29 @@ Detector::Mems Detector::get_mems(const NodeRefSet& set) {
     return ins;
 }
 
+Detector::Mems Detector::get_mems1(const NodeRefSet& set) {
+    NodeRefVec order;
+    aeg.po.reverse_postorder(std::back_inserter(order));
+    
+    Mems ins;
+    Mems outs;
+    z3::expr mem = init_mem;
+    for (const NodeRef ref : order) {
+        if (ref == aeg.entry || set.find(ref) == set.end()) { continue; }
+        const aeg::Node& node = aeg.lookup(ref);
+        
+        ins.emplace(ref, mem);
+        
+        if (node.may_write()) {
+            mem = z3::conditional_store(mem, node.get_memory_address(), ctx().int_val(static_cast<unsigned>(ref)), node.exec() && node.write);
+        }
+        
+        outs.emplace(ref, mem);
+    }
+    
+    return ins;
+}
+
 bool Detector::lookahead(std::function<void ()> thunk) {
     try {
         thunk();
@@ -368,7 +391,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             }
 #endif
 #if 1
-            mems = get_mems(window);
+            mems = get_mems1(window);
 #endif
         }
         
@@ -439,6 +462,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
         if (mode == CheckMode::SLOW) {
             if (solver.check() != z3::sat) {
                 trace("backtrack: unsat");
+                std::cerr << "mark:unsat\n";
                 return;
             }
 

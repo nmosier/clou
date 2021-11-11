@@ -92,6 +92,7 @@ private:
     
     Mems get_mems();
     Mems get_mems(const NodeRefSet& set); /*!< only consider nodes in \p set */
+    Mems get_mems1(const NodeRefSet& set);
     
     RF rf; // TODO: remove?
     z3::solver rf_solver; // TODO: remove
