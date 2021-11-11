@@ -28,6 +28,7 @@ extern bool batch_mode;
 extern mon::Client client;
 extern std::optional<unsigned> stb_size;
 extern bool use_lookahead;
+extern unsigned window_size;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

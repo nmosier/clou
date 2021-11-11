@@ -149,22 +149,24 @@ struct LCMPass: public llvm::FunctionPass {
             
             logv(1) << "Constructing AEG for " << F.getName() << "\n";
             client.send_step("aeg", F.getName().str());
-            ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
-            signal(SIGINT, [] (int sig) {
-                ProfilerStop();
-                std::exit(0);
-            });
             aeg::AEG aeg {cfg_expanded};
             aeg.construct(AA, rob_size);
 #if 0
             output(aeg, "aeg", F);
 #endif
-            ProfilerStop();
             
+            ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
+            signal(SIGINT, [] (int sig) {
+                ProfilerStop();
+                std::exit(0);
+            });
+
             client.send_step("leakage", F.getName().str());
             llvm::errs() << "Testing...\n";
             aeg.test();
             llvm::errs() << "done\n";
+            
+            ProfilerStop();
             
             // add analyzed functions
             {

@@ -49,20 +49,15 @@ protected:
     using Actions = std::vector<std::string>;
     using PushAction = util::push_scope<Actions>;
     Actions actions;
+    z3::expr init_mem;
     Mems mems;
     NodeRefVec order;
     
-    z3::expr mem(NodeRef ref) const {
-        return mems.at(ref);
-    }
+    z3::expr mem(NodeRef ref) const;
     
     EdgeVec flag_edges;
     
-    Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver),
-    mems(get_mems()), partial_order(aeg.po),
-    rf_solver(z3::duplicate(solver)) {
-        aeg.po.reverse_postorder(std::back_inserter(order));
-    }
+    Detector(aeg::AEG& aeg, z3::solver& solver);
     
     z3::context& ctx() { return aeg.context.context; }
     
@@ -96,7 +91,7 @@ private:
     
     
     Mems get_mems();
-    Mems get_mems1();
+    Mems get_mems(const NodeRefSet& set); /*!< only consider nodes in \p set */
     
     RF rf; // TODO: remove?
     z3::solver rf_solver; // TODO: remove

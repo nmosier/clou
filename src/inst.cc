@@ -29,6 +29,9 @@ Inst *Inst::Create(const llvm::Instruction *I) {
         {
             if (I->mayReadOrWriteMemory()) {
                 if (const auto *C = llvm::dyn_cast<llvm::CallInst>(I)) {
+                    if (C->getNumArgOperands() != 0) {
+                        llvm::errs() << *C << "\n";
+                    }
                     assert(C->getNumArgOperands() == 0);
                 } else {
                     assert(false);

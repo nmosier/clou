@@ -44,6 +44,7 @@ bool batch_mode = false;
 std::optional<unsigned> stb_size;
 SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
+unsigned window_size = std::numeric_limits<unsigned>::max();
 
 OutputCFGs output_cfgs;
 
@@ -89,6 +90,7 @@ only examine given functions
 --respect-syntactic-deps[=<dep>...]
                      respect syntactic dependencies (options: "addr", "data"). Assign empty string to respect none.
 --lookahead=[<bool>] use lookahead during leakage detection
+--window <uint>      sliding window size
 )=";
     fprintf(f, "%s", s);
 }
@@ -172,6 +174,7 @@ int parse_args() {
         STB,
         SYNTACTIC_DEPS,
         LOOKAHEAD,
+        WINDOW,
     };
     
     struct option opts[] = {
@@ -199,6 +202,7 @@ int parse_args() {
         {"stb", required_argument, nullptr, STB},
         {"respect-syntactic-deps", optional_argument, nullptr, SYNTACTIC_DEPS},
         {"lookahead", optional_argument, nullptr, LOOKAHEAD},
+        {"window", required_argument, nullptr, WINDOW},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -420,6 +424,11 @@ int parse_args() {
                 
             case LOOKAHEAD: {
                 use_lookahead = parse_bool_opt(optarg);
+                break;
+            }
+                
+            case WINDOW: {
+                window_size = std::stoul(optarg);
                 break;
             }
                 

@@ -106,13 +106,25 @@ namespace lkg {
 
 /* LEAKAGE DETECTOR METHODS */
 
+Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po), rf_solver(z3::duplicate(solver)) {
+    aeg.po.reverse_postorder(std::back_inserter(order));
+}
+
+z3::expr Detector::mem(NodeRef ref) const {
+    const auto it = mems.find(ref);
+    if (it == mems.end()) {
+        return init_mem;
+    } else {
+        return it->second;
+    }
+}
+
 Detector::Mems Detector::get_mems() {
     z3::context& ctx = this->ctx();
     auto& po = aeg.po;
     NodeRefVec order;
     po.reverse_postorder(std::back_inserter(order));
 
-    const z3::expr init_mem = z3::const_array(ctx.int_sort(), ctx.int_val(static_cast<unsigned>(aeg.entry)));
     Mems ins;
     Mems outs = {{aeg.entry, init_mem}};
     for (const NodeRef cur : order) {
@@ -135,10 +147,56 @@ Detector::Mems Detector::get_mems() {
         ins.emplace(cur, mem);
         
         if (cur_node.may_write()) {
-            mem = z3::conditional_store(mem, cur_node.get_memory_address(), ctx.int_val(static_cast<unsigned>(cur)), cur_node.write);
+            mem = z3::conditional_store(mem, cur_node.get_memory_address(), ctx.int_val(static_cast<unsigned>(cur)), cur_node.exec() && cur_node.write);
         }
         
         outs.emplace(cur, mem);
+    }
+    
+    return ins;
+}
+
+Detector::Mems Detector::get_mems(const NodeRefSet& set) {
+    NodeRefVec order;
+    aeg.po.reverse_postorder(std::back_inserter(order));
+    
+    Mems ins;
+    Mems outs;
+    const auto outs_at = [&] (const NodeRef ref) -> z3::expr {
+        const auto it = outs.find(ref);
+        if (it == outs.end()) {
+            return init_mem;
+        } else {
+            return it->second;
+        }
+    };
+    for (const NodeRef ref : order) {
+        if (ref == aeg.entry ||
+            set.find(ref) == set.end()) {
+            continue;
+        }
+        const aeg::Node& node = aeg.lookup(ref);
+        
+        const auto tfos = aeg.get_nodes(Direction::IN, ref, aeg::Edge::TFO);
+        z3::expr mem {ctx()};
+        if (tfos.empty()) {
+            mem = init_mem;
+        } else {
+            auto tfo_it = tfos.begin();
+            mem = outs_at(tfo_it->first);
+            ++tfo_it;
+            mem = std::accumulate(tfo_it, tfos.end(), mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
+                return z3::ite(tfo.second, outs_at(tfo.first), acc);
+            });
+        }
+        
+        ins.emplace(ref, mem);
+        
+        if (node.may_write()) {
+            mem = z3::conditional_store(mem, node.get_memory_address(), ctx().int_val(static_cast<unsigned>(ref)), node.exec() && node.write);
+        }
+        
+        outs.emplace(ref, mem);
     }
     
     return ins;
@@ -247,6 +305,8 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
+        Timer timer;
+        
         std::cerr << ++i << "/" << candidate_transmitters.size() << "\n";
         
         if (client) {
@@ -271,11 +331,46 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             continue;
         }
         
+#define VERIFY_SAT 0
+        
+#if VERIFY_SAT
+        assert(solver.check() == z3::sat);
+#endif
+        
         // require transmitter is access
         solver.add(transmitter_node.access(), "transmitter.access");
         
+#if VERIFY_SAT
+        assert(solver.check() == z3::sat);
+#endif
+        
         // require transmitter.trans
         solver.add(transmitter_node.trans, "transmitter.trans");
+        
+        // window size
+        const auto saved_mems = util::save(mems);
+        {
+            z3::expr_vector src {ctx()};
+            z3::expr_vector dst {ctx()};
+            NodeRefSet window;
+            aeg.for_each_pred_in_window(transmitter, window_size, [&window] (NodeRef ref) {
+                window.insert(ref);
+            }, [&] (NodeRef ref) {
+                const aeg::Node& node = aeg.lookup(ref);
+                solver.add(!node.exec(), util::to_string("window-exclude-", ref).c_str());
+                src.push_back(node.arch); dst.push_back(ctx().bool_val(false));
+                src.push_back(node.trans); dst.push_back(ctx().bool_val(false));
+            });
+#if 0
+            for (auto& p : mems) {
+                z3::expr& mem = p.second;
+                mem = mem.substitute(src, dst).simplify();
+            }
+#endif
+#if 1
+            mems = get_mems(window);
+#endif
+        }
         
         if (solver.check() == z3::sat) {
             try {

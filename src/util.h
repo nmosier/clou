@@ -269,6 +269,22 @@ op_scope<T> inc_scope(T& x) {
     };
 }
 
+template <typename T>
+class save_scope {
+public:
+    save_scope(T& orig): orig(orig), saved(orig) {}
+    save_scope(const save_scope& other) = delete;
+    ~save_scope() { orig = saved; }
+private:
+    T& orig;
+    T saved;
+};
+
+template <typename T>
+save_scope<T> save(T& x) {
+    return save_scope<T>(x);
+}
+
 #define trace(...) \
 do { \
 fprintf(stderr, "%s:%d: ", __FUNCTION__, __LINE__); \

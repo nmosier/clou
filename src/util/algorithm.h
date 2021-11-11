@@ -135,4 +135,16 @@ std::optional<typename Container::value_type> get_singleton(const Container& con
     }
 }
 
+template <typename Container, typename T, typename BinaryOp, typename UnaryOp>
+T transform_reduce(const Container& container, T init, BinaryOp b, UnaryOp u) {
+    return std::transform_reduce(container.begin(), container.end(), init, b, u);
+}
+
+template <typename T, typename Container, typename UnaryOp>
+T transform_min(const Container& container, UnaryOp u) {
+    return util::transform_reduce(container, std::numeric_limits<T>::max(), [] (T a, T b) -> T {
+        return std::min<T>(a, b);
+    }, u);
+}
+
 }
