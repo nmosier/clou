@@ -101,8 +101,8 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
 }
 
 void SpectreV1_Detector::run_() {
-    for_each_transmitter(deps().back(), [&] (const NodeRef transmitter) {
-        run1(transmitter, transmitter, CheckMode::SLOW);
+    for_each_transmitter(deps().back(), [&] (NodeRef transmitter, CheckMode mode) {
+        run1(transmitter, transmitter, mode);
     });
 }
 

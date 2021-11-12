@@ -4,7 +4,8 @@ namespace lkg {
 
 
 void SpectreV4_Detector::run_() {
-    for_each_transmitter(aeg::Edge::ADDR, [&] (const NodeRef transmitter) {
+    for_each_transmitter(aeg::Edge::ADDR, [&] (NodeRef transmitter, CheckMode mode) {
+        if (mode == CheckMode::FAST) { throw lookahead_found(); } // TODO
         std::cerr << "transmitter " << transmitter << " (" << solver.assertions().size() << " assertions)\n";
         leak.transmitter = transmitter;
         run_load(transmitter);
