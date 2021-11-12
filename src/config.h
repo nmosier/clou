@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <fstream>
 #include <optional>
+#include <memory>
 
 /* FORWARD DECLARATIONS */
 namespace mon {
