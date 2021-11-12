@@ -155,14 +155,12 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Value& V) {
 }
 
 extern unsigned verbose;
-inline llvm::raw_ostream& logv(unsigned verb) {
-    if (verbose >= verb) {
-        return llvm::errs();
-    } else {
-        static llvm::raw_null_ostream null_os;
-        return null_os;
-    }
-}
+#define logv(level, msg) \
+do { \
+if (verbose >= level) { \
+llvm::errs() << msg; \
+} \
+} while (false)
 
 
 extern char prog[];

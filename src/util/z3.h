@@ -452,7 +452,7 @@ public:
     simplify_solver(z3::context& ctx): s(ctx) {}
     simplify_solver(z3::solver& solver): s(solver) {}
     simplify_solver(const simplify_solver&) = delete;
-    simplify_solver& operator=(const simplify_solver*) = delete;
+    simplify_solver& operator=(const simplify_solver&) = delete;
     
     z3::context ctx() const { return s.ctx(); }
     void push() { s.push(); }
@@ -477,6 +477,69 @@ void simplify_solver<Solver>::add(const z3::expr_vector& v) {
     s.add(v_);
 }
 
+
+template <class Solver>
+class cache_solver {
+    static_assert(std::is_class<Solver>());
+public:
+    cache_solver(z3::context& ctx): s(ctx) {}
+    cache_solver(z3::solver& solver): s(solver) {}
+    cache_solver(const cache_solver&) = delete;
+    cache_solver& operator=(const cache_solver&) = delete;
+    
+    z3::context& ctx() const { return s.ctx(); }
+    void push();
+    void pop();
+    void add(const z3::expr& e) { add_impl(e); }
+    void add(const z3::expr& e, const std::string& d) { add_impl(e, d.c_str()); }
+    void add(const z3::expr_vector& v);
+    z3::check_result check();
+    z3::model get_model() const { return s.get_model(); }
+    z3::expr_vector unsat_core() const { return s.unsat_core(); }
+    z3::expr_vector assertions() const { return s.assertions(); }
+    
+private:
+    Solver s;
+    using Result = std::optional<z3::check_result>;
+    Result cur;
+    std::vector<Result> stack;
+    
+    template <typename... Args>
+    void add_impl(Args&&... args) {
+        cur = std::nullopt;
+        s.add(std::forward<Args>(args)...);
+    }
+};
+
+template <class Solver>
+void cache_solver<Solver>::push() {
+    stack.push_back(cur);
+    s.push();
+}
+
+template <class Solver>
+void cache_solver<Solver>::pop() {
+    s.pop();
+    cur = stack.back();
+    stack.pop_back();
+}
+
+template <class Solver>
+void cache_solver<Solver>::add(const z3::expr_vector& v) {
+    if (!v.empty()) {
+        add_impl(v);
+    }
+}
+
+template <class Solver>
+z3::check_result cache_solver<Solver>::check() {
+    if (!cur) {
+        cur = s.check();
+    } else {
+        std::cerr << "mark:cached-check\n";
+    }
+    return *cur;
+}
 
 }
 

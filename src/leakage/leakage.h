@@ -52,10 +52,6 @@ protected:
 #else
 # if 1
     using Solver = z3::trivial_solver<z3::solver>;
-# elif 0
-    using Solver = z3::lazy_solver<z3::solver>;
-# else
-    using Solver = z3::trivial_solver<z3::lazy_solver<z3::solver>>;
 # endif
     Solver solver;
 #endif

@@ -60,7 +60,7 @@ bool SharedDatabaseListSet::contains(const std::string& s) const {
     }
     
     if (std::ferror(f)) {
-        std::cerr << strerror(errno) << "\n";
+        std::cerr << std::strerror(errno) << "\n";
         throw util::syserr();
     }
     

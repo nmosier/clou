@@ -85,7 +85,7 @@ struct LCMPass: public llvm::FunctionPass {
             const unsigned num_unrolls = 2;
             
             /* Construct AEG */
-            logv(1) << "Constructing AEGPO for " << F.getName() << "\n";
+            logv(1, "Constructing AEGPO for " << F.getName() << "\n");
             client.send_step("cfg-unrolled", F.getName().str());
             CFG_Unrolled aegpo_unrolled {F, spec_depth, num_unrolls};
             aegpo_unrolled.construct();
@@ -104,7 +104,7 @@ struct LCMPass: public llvm::FunctionPass {
             }
             std::cerr << "cfg-calls: " << cfg_calls.size() << " nodes\n";
             
-            logv(1) << "Constructing expanded AEGPO for " << F.getName() << "\n";
+            logv(1, "Constructing expanded AEGPO for " << F.getName() << "\n");
             client.send_step("cfg-expanded", F.getName().str());
             CFG_Expanded cfg_expanded {spec_depth};
             {
@@ -144,7 +144,7 @@ struct LCMPass: public llvm::FunctionPass {
             
             client.send_property(F.getName().str(), "nodes", cfg_expanded.size());
             
-            logv(1) << "Constructing AEG for " << F.getName() << "\n";
+            logv(1, "Constructing AEG for " << F.getName() << "\n");
             client.send_step("aeg", F.getName().str());
             aeg::AEG aeg {cfg_expanded};
             aeg.construct(AA, rob_size);

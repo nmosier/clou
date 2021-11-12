@@ -94,7 +94,7 @@ void AEG::test() {
         return;
     }
     
-    logv(3) << "testing...\n";
+    logv(1, "testing...\n");
     
 #if 0
     z3::solver solver {context.context};

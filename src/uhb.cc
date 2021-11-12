@@ -49,23 +49,18 @@ Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arc
 Context::Context(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
 void Constraints::add_to(z3::solver& solver) const {
-   for (const auto& p : exprs) {
-      std::stringstream ss;
-       if (include_expr_in_constraint_name) {
-           ss << p.first << ":";
-       }
-      ss << p.second << ":" << constraint_counter++;
-      try {
-          if constexpr (should_name_constraints) {
-              solver.add(p.first, ss.str().c_str());
-          } else {
-              solver.add(p.first);
-          }
-      } catch (const z3::exception& e) {
-         logv(0) << e.msg() << "\n";
-         std::abort();
-      }
-   }
+    for (const auto& p : exprs) {
+        std::stringstream ss;
+        if (include_expr_in_constraint_name) {
+            ss << p.first << ":";
+        }
+        ss << p.second << ":" << constraint_counter++;
+        if constexpr (should_name_constraints) {
+            solver.add(p.first, ss.str().c_str());
+        } else {
+            solver.add(p.first);
+        }
+    }
 }
 
 void Constraints::operator()(const z3::expr& clause, const std::string& name) {

@@ -10,14 +10,6 @@
 #include "util/llvm.h"
 #include "cfg/block.h"
 
-#undef logv
-#define logv(level, msg) \
-do { \
-if (verbose >= level) { \
-llvm::errs() << msg; \
-} \
-} while (false)
-
 namespace aeg {
 
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {

@@ -46,6 +46,11 @@ SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
 unsigned window_size = std::numeric_limits<unsigned>::max();
 
+namespace {
+std::optional<std::string> logdir;
+int saved_fd = -1;
+}
+
 OutputCFGs output_cfgs;
 
 mon::Client client;
@@ -91,6 +96,7 @@ only examine given functions
                      respect syntactic dependencies (options: "addr", "data"). Assign empty string to respect none.
 --lookahead=[<bool>] use lookahead during leakage detection
 --window <uint>      sliding window size
+--log <dir>          redirect stderr to log directory
 )=";
     fprintf(f, "%s", s);
 }
@@ -138,6 +144,13 @@ void initialize_post() {
 #endif
     
     std::signal(SIGPIPE, SIG_IGN);
+    
+    if (logdir) {
+        if ((saved_fd = ::dup(STDERR_FILENO)) < 0) {
+            std::perror("dup");
+            std::abort();
+        }
+    }
 }
 
 int parse_args() {
@@ -175,6 +188,7 @@ int parse_args() {
         SYNTACTIC_DEPS,
         LOOKAHEAD,
         WINDOW,
+        LOG,
     };
     
     struct option opts[] = {
@@ -203,6 +217,7 @@ int parse_args() {
         {"respect-syntactic-deps", optional_argument, nullptr, SYNTACTIC_DEPS},
         {"lookahead", optional_argument, nullptr, LOOKAHEAD},
         {"window", required_argument, nullptr, WINDOW},
+        {"log", required_argument, nullptr, LOG},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -432,6 +447,11 @@ int parse_args() {
                 break;
             }
                 
+            case LOG: {
+                logdir = optarg;
+                break;
+            }
+                
             default:
                 usage();
                 exit(1);
@@ -444,7 +464,7 @@ int parse_args() {
     initialize_post();
     
     if (use_lookahead) {
-        std::cerr << "config: using lookahead\n";
+        logv(1, "config: using lookahead\n");
     }
     
     return 0;
@@ -458,4 +478,26 @@ void check_config() {
     if (leakage_class == LeakageClass::INVALID) {
         throw util::resume("warning: missing leakage class option (--spectre-v1, --spectre-v4, ...)");
     }
+}
+
+void open_log(const std::string& name) {
+    if (!logdir) { return; }
+    const std::string path = *logdir + "/" + name + ".log";
+    assert(saved_fd >= 0);
+    int log_fd;
+    if ((log_fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664)) < 0) {
+        std::cerr << prog << ": open: " << path << ": " << std::strerror(errno) << "\n";
+        std::exit(1);
+    }
+    if (::dup2(log_fd, STDERR_FILENO) < 0) {
+        std::perror("dup2");
+        std::abort();
+    }
+    ::close(log_fd);
+}
+
+void close_log() {
+    if (!logdir) { return; }
+    assert(saved_fd >= 0);
+    ::dup2(saved_fd, STDERR_FILENO);
 }

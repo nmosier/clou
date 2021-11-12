@@ -117,3 +117,6 @@ void check_config();
 
 class SharedDatabaseListSet;
 extern SharedDatabaseListSet analyzed_functions;
+
+void open_log(const std::string& name);
+void close_log();
