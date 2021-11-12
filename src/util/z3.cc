@@ -1,7 +1,7 @@
 #include <functional>
 
 #include "z3.h"
-#include "util.h" // for util::overloaded
+#include "util/functional.h"
 
 namespace z3 {
 

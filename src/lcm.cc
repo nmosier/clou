@@ -12,7 +12,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 
-#include "util.h"
 #include "lcm.h"
 #include "config.h"
 #include "aeg/aeg.h"
@@ -26,9 +25,7 @@
 #include "mon/proto.h"
 #include "mon/client.h"
 #include "cfg/block.h"
-
-// tmp
-#include "util/container.h"
+#include "util/exception.h"
 
 using llvm::errs;
 

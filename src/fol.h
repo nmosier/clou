@@ -10,10 +10,10 @@
 #include "uhb.h"
 #include "aeg/aeg.h"
 #include "default_map.h"
-#include "util.h"
 #include "util/tuple.h"
 #include "util/output.h"
 #include "util/algorithm.h"
+#include "util/z3.h"
 
 /** First-order relational logic library
  */

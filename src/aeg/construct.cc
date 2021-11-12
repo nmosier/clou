@@ -10,6 +10,14 @@
 #include "util/llvm.h"
 #include "cfg/block.h"
 
+#undef logv
+#define logv(level, msg) \
+do { \
+if (verbose >= level) { \
+llvm::errs() << msg; \
+} \
+} while (false)
+
 namespace aeg {
 
 void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
@@ -42,51 +50,49 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
             return node.inst->kind() == kind;
         });
     };
-    logv(2) << "Number of loads: " << count_kind(Inst::Kind::LOAD) << "\n";
-    logv(2) << "Number of stores: " << count_kind(Inst::Kind::STORE) << "\n";
+    logv(2, "Number of loads: " << count_kind(Inst::Kind::LOAD) << "\n");
+    logv(2, "Number of stores: " << count_kind(Inst::Kind::STORE) << "\n");
     
     
-    logv(2) << "Constructing nodes\n";
+    logv(2, "Constructing nodes\n");
     construct_nodes();
-    logv(2) << "Construct arch\n";
+    logv(2, "Construct arch\n");
     construct_arch();
-    logv(2) << "Constructing tfo\n";
+    logv(2, "Constructing tfo\n");
     construct_tfo();
-    logv(2) << "Constructing exec\n";
+    logv(2, "Constructing exec\n");
     construct_exec();
-    logv(2) << "Constructing addr defs\n";
+    logv(2, "Constructing addr defs\n");
     construct_addr_defs();
-    logv(2) << "Constructing addr refs\n";
+    logv(2, "Constructing addr refs\n");
     construct_addr_refs();
-    logv(2) << "Constructing aliases\n";
+    logv(2, "Constructing aliases\n");
     construct_aliases(AA);
 
-    logv(2) << "Constructing com\n";
+    logv(2, "Constructing com\n");
     construct_com();
 
-    logv(2) << "Constructing comx\n";
+    logv(2, "Constructing comx\n");
     construct_comx();
-    logv(2) << "Constructing dependencies\n";
+    logv(2, "Constructing dependencies\n");
 
     dependencies = construct_dependencies2();
 
-    logv(2) << "Constructing dominators\n";
+    logv(2, "Constructing dominators\n");
     construct_dominators();
-    logv(2) << "Constructing postdominators\n";
+    logv(2, "Constructing postdominators\n");
     construct_postdominators();
-    logv(2) << "Constructing control-equivalents\n";
+    logv(2, "Constructing control-equivalents\n");
     construct_control_equivalents();
     
     // syntactic memory dependencies
-    logv(2) << "Constructing addr\n";
+    logv(2, "Constructing addr\n");
     construct_addr();
-#if 1
-    logv(2) << "Constructing addr_gep\n";
+    logv(2, "Constructing addr_gep\n");
     construct_addr_gep();
-#endif
-    logv(2) << "Constructing data\n";
+    logv(2, "Constructing data\n");
     construct_data();
-    logv(2) << "Constructing ctrl\n";
+    logv(2, "Constructing ctrl\n");
     construct_ctrl();
     
     if (partial_executions || stb_size) {
@@ -545,7 +551,7 @@ void AEG::construct_trans() {
 } 
 
 void AEG::construct_po() {
-    logv(3) << __FUNCTION__ << ": adding edges\n";
+    logv(3, __FUNCTION__ << ": adding edges\n");
     
 #if 0
     std::size_t nedges = 0;
@@ -673,8 +679,10 @@ void AEG::construct_tfo() {
             const auto no_arch_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
                 return p.second && lookup(p.first).arch;
             }));
+#if 0
             Node& node = lookup(ref);
-            // node.constraints(z3::implies(node.arch && some_trans_succ, no_arch_succ), "speculation-arch-no-po");
+            node.constraints(z3::implies(node.arch && some_trans_succ, no_arch_succ), "speculation-arch-no-po");
+#endif
         }
     }
     
@@ -705,8 +713,6 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
     
     // EXPERIMENTAL: try inter-procedural alias analysis
     if (!compatible_types(a.V->getType(), b.V->getType())) {
-        static unsigned tbaa = 0;
-        logv(1) << "tbaa: " << tbaa++ << "\n";
         return llvm::AliasResult::NoAlias;
     }
     
@@ -722,18 +728,14 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
         }
     }
     
-#if 1
     /* check if address kinds differ */
     {
         const AddressKind k1 = get_addr_kind(a.V);
         const AddressKind k2 = get_addr_kind(b.V);
         if (k1 != AddressKind::UNKNOWN && k2 != AddressKind::UNKNOWN && k1 != k2) {
-            static unsigned i = 0;
-            logv(1) << "alias-kind: " << ++i << "\n";
             return llvm::AliasResult::NoAlias;
         }
     }
-#endif
     
     {
         if (llvm::isa<llvm::Argument>(x->V)) {
@@ -755,13 +757,11 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             const llvm::Type *T1 = AI->getType()->getPointerElementType();
             if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(y->V)) {
                 if (!llvm::getelementptr_can_zero(GEP)) {
-                    logv(1) << "gep-alloca-nonzero:\n";
                     return llvm::AliasResult::NoAlias;
                 }
                 
                 const llvm::Type *T2 = GEP->getPointerOperand()->getType()->getPointerElementType();
                 if (T1 != T2) {
-                    logv(1) << "gep-alloca-zero:\n";
                     return llvm::AliasResult::NoAlias;
                 }
             }
@@ -773,37 +773,8 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
         }
     }
     
-    const auto g = [] (const llvm::Value *V) -> bool {
-        if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(V)) {
-            const llvm::Type *PT = GEP->getPointerOperand()->getType();
-            if (PT->getPointerElementType()->isStructTy()) {
-                return true;
-            }
-        }
-        return false;
-    };
-    
-    if (g(a.V) || g(b.V)) {
-        logv(1) << "two-gep-struct\n";
-    }
-    
-    
     {
-        logv(1) << "alias-fail: " << *a.V << " -- " << *b.V << "\n";
-    }
-    
-    if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(a.V)) {
-        for (const llvm::Value *I : GEP->indices()) {
-            if (const llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(I)) {
-                logv(1) << "constant: " << *C << "\n";
-                if (llvm::isa<llvm::ConstantExpr>(C)) {
-                    logv(1) << "constant expr\n";
-                }
-                if (llvm::isa<llvm::ConstantData>(C)) {
-                    logv(1) << "constant data\n";
-                }
-            }
-        }
+        logv(3, "alias-fail: " << *a.V << " -- " << *b.V << "\n");
     }
     
     /* check whether pointers point to different address spaces */
@@ -985,7 +956,7 @@ void AEG::construct_comx() {
         process(i, node, node.inst->may_xsread(), node.inst->may_xswrite());
     }
     
-    logv(3) << "constructing xsaccess order...\n";
+    logv(3, "constructing xsaccess order...\n");
     construct_xsaccess_order(xsaccesses);
 }
 

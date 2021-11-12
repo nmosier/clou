@@ -2,7 +2,6 @@
 
 #include "inst.h"
 #include "util/llvm.h"
-#include "util.h"
 #include "cfg/cfg.h"
 
 Inst *Inst::Create(Entry) {

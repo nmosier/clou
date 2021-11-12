@@ -4,7 +4,6 @@
 #include <unordered_set>
 #include <memory>
 
-#include "util.h"
 #include "tarjan.h"
 #include "lcm.h"
 

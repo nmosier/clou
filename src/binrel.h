@@ -3,6 +3,8 @@
 #include <unordered_set>
 #include <unordered_map>
 
+#include <llvm/Support/raw_ostream.h>
+
 #include "hash.h"
 #include "dot.h"
 

@@ -1,9 +1,9 @@
 
 #include "cfg/cfg.h"
-#include "util.h"
 #include "util/algorithm.h"
 #include "util/output.h"
 #include "config.h"
+#include "util/functional.h"
 
 
 /* Construction Algorithm

@@ -9,10 +9,10 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include "config.h"
-#include "util.h"
 #include "uhb.h"
 #include "db.h"
 #include "mon/client.h"
+#include "util/exception.h"
 
 /* TODO
  * [ ] Handle function names

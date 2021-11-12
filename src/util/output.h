@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 #include <variant>
+#include <sstream>
 
 namespace output {
 
@@ -140,3 +141,85 @@ std::ostream& operator<<(std::ostream& os, const std::variant<Ts...>& v) {
     }, v);
     return os;
 }
+
+extern unsigned verbose;
+inline llvm::raw_ostream& logv(unsigned verb) {
+    if (verbose >= verb) {
+        return llvm::errs();
+    } else {
+        static llvm::raw_null_ostream null_os;
+        return null_os;
+    }
+}
+
+
+extern char prog[];
+
+template <typename... Args>
+void log(const char *fmt, Args&&... args) {
+    llvm::errs() << llvm::format(fmt, std::forward<Args>(args)...) << "\n";
+}
+
+template <typename... Args>
+[[noreturn]] void error(const char *fmt, Args&&... args) {
+    llvm::errs() << "error: ";
+    log(fmt, std::forward<Args>(args)...);
+    exit(1);
+}
+
+template <typename... Args>
+void warning(const char *fmt, Args&&... args) {
+    llvm::errs() << "warning: ";
+    log(fmt, std::forward<Args>(args)...);
+}
+
+extern unsigned verbose;
+template <typename... Args>
+void log(unsigned verb, const char *fmt, Args&&... args) {
+    if (verbose >= verb) {
+        log(fmt, std::forward<Args>(args)...);
+    }
+}
+
+template <typename... Args>
+std::string format(const std::string& fmt, Args&&... args) {
+    char *s;
+    if (asprintf(&s, fmt.c_str(), std::forward<Args>(args)...) < 0) {
+        throw std::system_error(errno, std::generic_category(), "asprintf");
+    }
+    std::string res {s};
+    free(s);
+    return res;
+}
+
+inline std::string format_graph_path(const std::string& fmt, const llvm::Function& F) {
+#ifdef __APPLE__
+    return format(fmtcheck(fmt.c_str(), "%s.dot"), F.getName().str().c_str());
+#else
+    return format(fmt.c_str(), F.getName().str().c_str());
+#endif
+}
+
+
+namespace util {
+
+template <typename... Ts>
+std::string to_string(Ts&&... xs) {
+    std::stringstream ss;
+    (ss << ... << xs);
+    return ss.str();
+}
+
+
+}
+
+
+#define trace(...) \
+do { \
+fprintf(stderr, "%s:%d: ", __FUNCTION__, __LINE__); \
+fprintf(stderr, __VA_ARGS__); \
+fprintf(stderr, "\n"); \
+} while (false)
+
+
+#define todo() std::cerr << __FILE__ << ":" << __LINE__ << ": todo\n"; std::abort()

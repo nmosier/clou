@@ -84,6 +84,7 @@ inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3
 #if 1
 template <typename Solver>
 class scope {
+    static_assert(std::is_class<Solver>());
 public:
     scope(Solver& solver) { open(&solver); }
     scope(Solver& solver, const std::string& pop_msg): pop_msg(pop_msg) { open(&solver); }
@@ -179,6 +180,7 @@ inline z3::check_result check_force(z3::solver& solver, Args&&... args) {
     }
 }
 
+#if 0
 class checker {
 public:
     checker(z3::solver& solver): solver(solver) {}
@@ -194,7 +196,7 @@ private:
     z3::solver& solver;
     std::optional<z3::check_result> result;
 };
-
+#endif
 
 template <typename InputIt, typename Op>
 z3::expr_vector transform(z3::context& ctx, InputIt begin, InputIt end, Op op) {
@@ -225,8 +227,9 @@ z3::expr_vector transform(const Container& container, Op op) {
 z3::expr distinct2(const z3::expr_vector& v);
 
 /** This solver class catches assertions that make the query trivially unsatisfiable. Currently, it checks if an trivial_solver::add()'ed instruction is z3::expr::is_false(). */
-template <typename Solver>
+template <class Solver>
 class trivial_solver {
+    static_assert(std::is_class<Solver>());
 public:
     using solver_type = Solver;
     trivial_solver(z3::context& c): s(c) {}
@@ -255,40 +258,40 @@ private:
     bool is_trivially_unsat() const;
 };
 
-template <typename Solver>
+template <class Solver>
 void trivial_solver<Solver>::push() {
     s.push();
     asserted_false_stack.push_back(asserted_false);
     asserted_false = false;
 }
 
-template <typename Solver>
+template <class Solver>
 void trivial_solver<Solver>::pop() {
     asserted_false = asserted_false_stack.back();
     asserted_false_stack.pop_back();
     s.pop();
 }
 
-template <typename Solver>
+template <class Solver>
 void trivial_solver<Solver>::check_expr(const z3::expr& e) {
     if (e.is_false()) {
         asserted_false = true;
     }
 }
 
-template <typename Solver>
+template <class Solver>
 void trivial_solver<Solver>::add(const z3::expr& e) {
     check_expr(e);
     s.add(e);
 }
 
-template <typename Solver>
+template <class Solver>
 void trivial_solver<Solver>::add(const z3::expr& e, const std::string& d) {
     check_expr(e);
     s.add(e, d.c_str());
 }
 
-template <typename Solver>
+template <class Solver>
 void trivial_solver<Solver>::add(const z3::expr_vector& v) {
     for (const z3::expr& e : v) {
         check_expr(e);
@@ -296,12 +299,12 @@ void trivial_solver<Solver>::add(const z3::expr_vector& v) {
     s.add(v);
 }
 
-template <typename Solver>
+template <class Solver>
 bool trivial_solver<Solver>::is_trivially_unsat() const {
     return asserted_false || std::any_of(asserted_false_stack.begin(), asserted_false_stack.end(), [] (bool x) { return x; });
 }
 
-template <typename Solver>
+template <class Solver>
 z3::check_result trivial_solver<Solver>::check() {
     if (is_trivially_unsat()) {
         return z3::unsat;
@@ -310,7 +313,7 @@ z3::check_result trivial_solver<Solver>::check() {
     }
 }
 
-template <typename Solver>
+template <class Solver>
 z3::expr_vector trivial_solver<Solver>::unsat_core() const {
     if (is_trivially_unsat()) {
         z3::expr_vector res {ctx()};
@@ -444,6 +447,7 @@ z3::expr_vector lazy_solver<Solver>::assertions() const {
 
 template <typename Solver>
 class simplify_solver {
+    static_assert(std::is_class<Solver>());
 public:
     simplify_solver(z3::context& ctx): s(ctx) {}
     simplify_solver(z3::solver& solver): s(solver) {}

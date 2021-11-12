@@ -1,5 +1,6 @@
 #include "aeg.h"
 #include "cfg/expanded.h"
+#include "util/z3.h"
 
 namespace aeg {
 

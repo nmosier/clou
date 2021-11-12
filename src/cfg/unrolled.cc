@@ -6,7 +6,7 @@
 #include <llvm/IR/CFG.h>
 
 #include "cfg/unrolled.h"
-#include "util.h"
+#include "util/scope.h"
 #include "config.h"
 
 void CFG_Unrolled::construct() {

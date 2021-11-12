@@ -10,8 +10,7 @@
 #include "util/output.h"
 #include "cfg/block.h"
 #include "util/z3.h"
-
-// TODO: shouldn't need to include "aeg.h"
+#include "util/scope.h"
 
 namespace lkg {
 

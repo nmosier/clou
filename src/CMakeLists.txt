@@ -24,7 +24,6 @@ add_library(lcm MODULE
   progress.h
   tarjan.h
   timer.h
-  util.h
   xmacro.h
   db.cc db.h
   profiler.h

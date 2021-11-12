@@ -7,7 +7,7 @@
 #include "util/z3.h"
 #include "aeg.h"
 #include "config.h"
-#include "fol.h"
+// #include "fol.h"
 #include "progress.h"
 #include "timer.h"
 #include "fork_work_queue.h"

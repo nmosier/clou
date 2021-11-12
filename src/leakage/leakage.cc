@@ -7,13 +7,13 @@
 #include "fork_work_queue.h"
 #include "hash.h"
 #include "util/llvm.h"
-#include "fol.h"
 #include "cfg/expanded.h"
 #include "util/output.h"
 #include "util/iterator.h"
 #include "leakage.h"
 #include "mon/client.h"
 #include "mon/proto.h"
+#include "util/algorithm.h"
 
 #define z3_cond_scope \
 const std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope<std::remove_reference<decltype(solver)>::type>(solver)) : std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>>()

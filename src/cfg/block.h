@@ -4,6 +4,7 @@
 
 #include "graph.h"
 #include "noderef.h"
+#include "binrel.h"
 
 class CFG;
 

@@ -10,14 +10,14 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <z3++.h>
 
-#include "util/z3.h"
+#include "util/fwd/z3.h"
 #include "graph.h"
-#include "util.h"
 #include "uhb.h"
 #include "noderef.h"
 #include "progress.h"
+#include "util/iterator.h"
+#include "util/output.h"
 
-class Taint_Array;
 class CFG_Expanded;
 
 namespace aeg {
