@@ -16,7 +16,7 @@
 #include "mon/proto.h"
 
 #define z3_cond_scope \
-const std::optional<z3::scope<decltype(solver)>> scope = (mode == CheckMode::SLOW) ? std::make_optional(solver) : std::optional<decltype(solver)>()
+const std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope<std::remove_reference<decltype(solver)>::type>(solver)) : std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>>()
 
 #define do_lookahead(call) \
 if (!lookahead([&] () { call; }) && use_lookahead) { \
@@ -107,7 +107,8 @@ namespace lkg {
 
 namespace dbg {
 
-void append_core(z3::mysolver& solver) {
+template <typename Solver>
+void append_core(const Solver& solver) {
     if (const char *corepath = std::getenv("CORES")) {
         std::ofstream ofs {corepath, std::ios::app};
         ofs << __FILE__ << ":" << __LINE__ << ": " << solver.unsat_core() << "\n";

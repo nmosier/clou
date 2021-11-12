@@ -81,17 +81,62 @@ inline z3::expr conditional_store(const z3::expr& a, const z3::expr& i, const z3
     return store(a, i, ite(c, v, a[i]));
 }
 
+#if 1
 template <typename Solver>
-struct scope {
-    Solver solver;
-    scope(const Solver& solver): solver(solver) {
-        this->solver.push();
+class scope {
+public:
+    scope(Solver& solver) { open(&solver); }
+    scope(Solver& solver, const std::string& pop_msg): pop_msg(pop_msg) { open(&solver); }
+    scope(const scope& other) = delete;
+    scope(scope&& other) {
+        if (good()) { close(); }
+        solver = other.solver; other.solver = nullptr;
+        pop_msg = std::move(other.pop_msg);
     }
+    scope& operator=(const scope& other) = delete;
+    
+    
     ~scope() {
-        solver.pop();
+        if (good()) { close(); }
+    }
+    
+    z3::context& ctx() const { return solver->ctx(); }
+    
+    bool good() const { return solver != nullptr; }
+    operator bool() const { return good(); }
+    
+private:
+    Solver *solver = nullptr;
+    std::optional<std::string> pop_msg;
+    
+    void open(Solver *solver) {
+        assert(!good());
+        this->solver = solver;
+        this->solver->push();
+    }
+    
+    void close() {
+        assert(good());
+        solver->pop();
+        solver = nullptr;
+        if (pop_msg) {
+            std::cerr << *pop_msg;
+        }
     }
 };
-#define z3_scope const z3::scope<decltype(solver)> scope {solver}
+#else
+template <class Solver>
+class scope {
+    static_assert(std::is_class<Solver>());
+public:
+    scope(Solver& solver): solver(solver) { solver.push(); }
+    ~scope() { solver.pop(); }
+    z3::context& ctx() const { return solver.ctx(); }
+private:
+    Solver& solver;
+};
+#endif
+#define z3_scope const z3::scope<std::remove_reference<decltype(solver)>::type> scope {solver}
 
 
 /** Enumerate all the possible values of the given expression \p expr under the current constraints in \p solver.
@@ -179,10 +224,13 @@ z3::expr_vector transform(const Container& container, Op op) {
 
 z3::expr distinct2(const z3::expr_vector& v);
 
-class mysolver {
+/** This solver class catches assertions that make the query trivially unsatisfiable. Currently, it checks if an trivial_solver::add()'ed instruction is z3::expr::is_false(). */
+template <typename Solver>
+class trivial_solver {
 public:
-    mysolver(z3::context& c): s(c) {}
-    mysolver(z3::solver& s): s(s) {}
+    using solver_type = Solver;
+    trivial_solver(z3::context& c): s(c) {}
+    trivial_solver(z3::solver& s): s(s) {}
     z3::context& ctx() const { return s.ctx(); }
     void push();
     void pop();
@@ -199,13 +247,231 @@ public:
     operator z3::solver&() { return s; }
     
 private:
-    z3::solver s;
+    Solver s;
     bool asserted_false = false;
     std::vector<bool> asserted_false_stack;
     
     void check_expr(const z3::expr& e);
     bool is_trivially_unsat() const;
 };
+
+template <typename Solver>
+void trivial_solver<Solver>::push() {
+    s.push();
+    asserted_false_stack.push_back(asserted_false);
+    asserted_false = false;
+}
+
+template <typename Solver>
+void trivial_solver<Solver>::pop() {
+    asserted_false = asserted_false_stack.back();
+    asserted_false_stack.pop_back();
+    s.pop();
+}
+
+template <typename Solver>
+void trivial_solver<Solver>::check_expr(const z3::expr& e) {
+    if (e.is_false()) {
+        asserted_false = true;
+    }
+}
+
+template <typename Solver>
+void trivial_solver<Solver>::add(const z3::expr& e) {
+    check_expr(e);
+    s.add(e);
+}
+
+template <typename Solver>
+void trivial_solver<Solver>::add(const z3::expr& e, const std::string& d) {
+    check_expr(e);
+    s.add(e, d.c_str());
+}
+
+template <typename Solver>
+void trivial_solver<Solver>::add(const z3::expr_vector& v) {
+    for (const z3::expr& e : v) {
+        check_expr(e);
+    }
+    s.add(v);
+}
+
+template <typename Solver>
+bool trivial_solver<Solver>::is_trivially_unsat() const {
+    return asserted_false || std::any_of(asserted_false_stack.begin(), asserted_false_stack.end(), [] (bool x) { return x; });
+}
+
+template <typename Solver>
+z3::check_result trivial_solver<Solver>::check() {
+    if (is_trivially_unsat()) {
+        return z3::unsat;
+    } else {
+        return s.check();
+    }
+}
+
+template <typename Solver>
+z3::expr_vector trivial_solver<Solver>::unsat_core() const {
+    if (is_trivially_unsat()) {
+        z3::expr_vector res {ctx()};
+        res.push_back(ctx().bool_val(false));
+        return res;
+    } else {
+        return s.unsat_core();
+    }
+}
+
+
+
+
+template <class Solver>
+class lazy_solver {
+public:
+    using solver_type = Solver;
+    lazy_solver(z3::context& c): s(c) {}
+    lazy_solver(z3::solver& s): s(s) {}
+    lazy_solver(const lazy_solver&) = delete;
+    lazy_solver& operator=(const lazy_solver&) = delete;
+    z3::context& ctx() const { return s.ctx(); }
+    void push();
+    void pop();
+    void add(const z3::expr& e) { cur.emplace_back(e); }
+    void add(const z3::expr& e, const std::string& d) { cur.emplace_back(e, d); }
+    void add(const z3::expr_vector& v);
+    z3::check_result check();
+    z3::model get_model() const { return s.get_model(); }
+    z3::expr_vector unsat_core() const { return s.unsat_core(); }
+    z3::expr_vector assertions() const;
+    
+private:
+    Solver s;
+    struct Entry {
+        z3::expr e;
+        std::optional<std::string> d;
+        
+        Entry(const z3::expr& e): e(e) {}
+        Entry(const z3::expr& e, const std::string& d): e(e), d(d) {}
+    };
+    using Uncommitted = std::vector<Entry>;
+    Uncommitted cur;
+    std::vector<Uncommitted> stack;
+    
+    void commit(const Entry& entry);
+    void commit(const Uncommitted& v);
+};
+
+/*
+ * On add(), place into `cur`.
+ * Clear the scopes whenever we query.
+ */
+
+template <class Solver>
+void lazy_solver<Solver>::push() {
+    std::cerr << "push()\n";
+    stack.push_back(std::move(cur));
+}
+
+template <class Solver>
+void lazy_solver<Solver>::pop() {
+    std::cerr << "pop()\n";
+    if (stack.empty()) {
+        cur.clear();
+        s.pop();
+        std::cerr << "s.pop()\n";
+    } else {
+        cur = std::move(stack.back());
+        stack.pop_back();
+    }
+}
+
+template <class Solver>
+void lazy_solver<Solver>::add(const z3::expr_vector& v) {
+    for (const z3::expr& e : v) {
+        add(e);
+    }
+}
+
+template <class Solver>
+void lazy_solver<Solver>::commit(const Entry& entry) {
+    if (entry.d) {
+        s.add(entry.e, entry.d->c_str());
+    } else {
+        s.add(entry.e);
+    }
+}
+
+template <class Solver>
+void lazy_solver<Solver>::commit(const Uncommitted& v) {
+    for (const Entry& ent : v) {
+        commit(ent);
+    }
+}
+
+template <class Solver>
+z3::check_result lazy_solver<Solver>::check() {
+    std::cerr << "check()\n";
+    /* commit all scopes so far */
+    for (const Uncommitted& v : stack) {
+        commit(v);
+        s.push();
+        std::cerr << "s.push()\n";
+    }
+    stack.clear();
+    
+    /* commit current assertions */
+    commit(cur);
+    cur.clear();
+    
+    /* check using base solver */
+    return s.check();
+}
+
+template <class Solver>
+z3::expr_vector lazy_solver<Solver>::assertions() const {
+    z3::expr_vector res = s.assertions();
+    const auto f = [&res] (const Uncommitted& v) {
+        for (const Entry& ent : v) {
+            res.push_back(ent.e);
+        }
+    };
+    for (const Uncommitted& scope : stack) {
+        f(scope);
+    }
+    f(cur);
+    return res;
+}
+
+
+template <typename Solver>
+class simplify_solver {
+public:
+    simplify_solver(z3::context& ctx): s(ctx) {}
+    simplify_solver(z3::solver& solver): s(solver) {}
+    simplify_solver(const simplify_solver&) = delete;
+    simplify_solver& operator=(const simplify_solver*) = delete;
+    
+    z3::context ctx() const { return s.ctx(); }
+    void push() { s.push(); }
+    void pop() { s.pop(); }
+    void add(const z3::expr& e) { s.add(e.simplify()); }
+    void add(const z3::expr& e, const std::string& d) { s.add(e.simplify(), d.c_str()); }
+    void add(const z3::expr_vector& v);
+    z3::check_result check() { return s.check(); }
+    z3::model get_model() const { return s.get_model(); }
+    z3::expr_vector unsat_core() const { return s.unsat_core(); }
+    z3::expr_vector assertions() const { return s.assertions(); }
+    
+private:
+    Solver s;
+};
+
+template <typename Solver>
+void simplify_solver<Solver>::add(const z3::expr_vector& v) {
+    const z3::expr_vector v_ = z3::transform(ctx(), v, [] (const z3::expr& e) -> z3::expr {
+        return e.simplify();
+    });
+    s.add(v_);
+}
 
 
 }

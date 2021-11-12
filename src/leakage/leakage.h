@@ -49,7 +49,14 @@ protected:
 #if 0
     z3::solver& solver;
 #else
-    z3::mysolver solver;
+# if 1
+    using Solver = z3::trivial_solver<z3::solver>;
+# elif 0
+    using Solver = z3::lazy_solver<z3::solver>;
+# else
+    using Solver = z3::trivial_solver<z3::lazy_solver<z3::solver>>;
+# endif
+    Solver solver;
 #endif
     using Actions = std::vector<std::string>;
     using PushAction = util::push_scope<Actions>;
