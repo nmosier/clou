@@ -6,4 +6,5 @@ add_library(aeg_objs OBJECT
   exists.cc
   alias.cc
   output.cc
+  fwd.h
   )

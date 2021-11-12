@@ -17,6 +17,7 @@
 #include "progress.h"
 #include "util/iterator.h"
 #include "util/output.h"
+#include "aeg/fwd.h"
 
 class CFG_Expanded;
 

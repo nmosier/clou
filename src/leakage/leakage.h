@@ -11,6 +11,8 @@
 #include "cfg/block.h"
 #include "util/z3.h"
 #include "util/scope.h"
+#include "aeg/aeg.h"
+#include "uhb.h"
 
 namespace lkg {
 
@@ -70,7 +72,7 @@ protected:
     
     Detector(aeg::AEG& aeg, z3::solver& solver);
     
-    z3::context& ctx() { return aeg.context.context; }
+    z3::context& ctx();
     
     /* UTILITIES FOR SUBCLASSES */
     
@@ -132,79 +134,6 @@ protected:
     
 private:
     std::vector<std::pair<Leakage, std::string>> leaks;
-};
-
-struct SpectreV1_Leakage: Leakage<SpectreV1_Leakage> {
-    NodeRef load0, load1, transmitter2;
-    
-    NodeRefVec vec() const {
-        return {load0, load1, transmitter2};
-    }
-    
-    NodeRef get_transmitter() const {
-        return transmitter2;
-    }
-};
-
-class SpectreV1_Detector: public Detector_<SpectreV1_Leakage> {
-public:
-    
-protected:
-    using DepVec = std::vector<aeg::Edge::Kind>;
-    virtual DepVec deps() const = 0;
-    virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
-
-    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver): Detector_(aeg, solver) {}
-
-private:
-    NodeRefVec loads;
-    virtual void run_() override final;
-
-    void run1(NodeRef transmitter, NodeRef access, CheckMode mode);
-    
-};
-
-class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
-public:
-    SpectreV1_Classic_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
-    
-private:
-    virtual DepVec deps() const override final;
-    virtual std::string name() const override final { return "SpectreV1Classic"; }
-};
-
-class SpectreV1_Control_Detector final: public SpectreV1_Detector {
-public:
-    SpectreV1_Control_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
-private:
-    virtual DepVec deps() const override final;
-    virtual std::string name() const override final { return "SpectreV1Control"; }
-};
-
-struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
-    NodeRef transmitter;
-    NodeRef bypassed_store;
-    NodeRef sourced_store;
-    NodeRef load;
-    
-    NodeRefVec vec() const {
-        return {sourced_store, bypassed_store, load, transmitter};
-    }
-    
-    NodeRef get_transmitter() const { return transmitter; }
-};
-
-class SpectreV4_Detector: public Detector_<SpectreV4_Leakage> {
-public:
-    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver): Detector_(aeg, solver) {}
-private:
-    SpectreV4_Leakage leak;
-    
-    virtual void run_() override final;
-    void run_load(NodeRef access); /*!< binds speculative load */
-    void run_bypassed_store(); /*!< binds bypassed store */
-    void run_sourced_store(); /*!< binds sourced stores */
-    virtual std::string name() const override final { return "SpectreV4"; }
 };
 
 /* IMPLEMENTATIONS */
@@ -305,4 +234,21 @@ void Detector_<Leakage>::output_execution(const Leakage& leak) {
     }
 }
 
+
+namespace dbg {
+
+template <typename Solver>
+void append_core(const Solver& solver) {
+    if (const char *corepath = std::getenv("CORES")) {
+        std::ofstream ofs {corepath, std::ios::app};
+        ofs << __FILE__ << ":" << __LINE__ << ": " << solver.unsat_core() << "\n";
+    }
 }
+
+}
+
+}
+
+
+#define z3_cond_scope \
+const std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope<std::remove_reference<decltype(solver)>::type>(solver)) : std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>>()
