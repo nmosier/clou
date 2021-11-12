@@ -111,9 +111,7 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
 }
 
 
-void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in,
-                                      std::unordered_map<NodeRef, RefMap> &maps,
-                                      CFG::Node &node, NodeRef ref) {
+void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap> &maps, CFG::Node &node, NodeRef ref) {
     using Key = Translations::Key;
     using Map = RefMap;
     enum ValueKind {
@@ -179,12 +177,18 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
      * Optimiaztion idea: remove from map once all successors have been processed
      */
     
-    std::vector<NodeRef> order;
+    NodeRefVec order;
     reverse_postorder(std::back_inserter(order));
+    
     using Translations = CFG_Unrolled::Translations;
     using Key = Translations::Key;
     using Map = std::unordered_map<Key, NodeRefSet, Key::Hash>;
+
+#if 0
     std::unordered_map<NodeRef, Map> maps;
+#else
+    std::vector<Map> maps(size());
+#endif
     
     NodeRefSet done;
     for (const NodeRef ref : order) {
@@ -193,9 +197,6 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
         // merge incoming
         Map& map = maps[ref];
         for (const NodeRef pred : po.rev.at(ref)) {
-            if (maps.find(pred) == maps.end()) {
-                llvm::errs() << "pred: " <<  lookup(pred) << "\n";
-            }
             const Map& a = maps.at(pred);
             for (const auto& p : a) {
                 map[p.first].insert(p.second.begin(), p.second.end());
@@ -204,7 +205,11 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
 #if 1
             // check if done
             if (util::subset(po.fwd.at(pred), done)) {
+# if 0
                 maps.erase(pred);
+# else
+                maps.at(pred).clear();
+# endif
             }
 #endif
         }

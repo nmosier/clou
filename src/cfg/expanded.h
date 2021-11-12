@@ -48,9 +48,7 @@ private:
     void construct_partial(const CFG& in, Expand& expand);
     
     using RefMap = std::unordered_map<Translations::Key, NodeRefSet, Translations::Key::Hash>;
-    void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in,
-                            std::unordered_map<NodeRef, RefMap> &maps,
-                            CFG::Node &node, NodeRef ref);
+    void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap>& maps, CFG::Node &node, NodeRef ref);
     
     void resolve_refs(const CFG& in);
 };
