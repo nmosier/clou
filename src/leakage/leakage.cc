@@ -247,33 +247,16 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     traceback_edge(aeg::Edge::ADDR, load, func, mode);
 }
 
-template <typename Derived>
-void Leakage<Derived>::print_short(std::ostream& os) const {
-    const auto v = static_cast<const Derived&>(*this).vec();
-    for (auto it = v.begin(); it != v.end(); ++it) {
-        if (it != v.begin()) {
-            os << " ";
-        }
-        os << *it;
-    }
-}
-
-template <typename Derived>
-void Leakage<Derived>::print_long(std::ostream& os, const aeg::AEG& aeg) const {
-    const auto v = static_cast<const Derived&>(*this).vec();
-    for (auto it = v.begin(); it != v.end(); ++it) {
-        if (it != v.begin()) {
-            os << "; ";
-        }
-        os << *aeg.lookup(*it).inst;
-    }
-}
-
-
 void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) {
     NodeRefSet candidate_transmitters;
     aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
-        candidate_transmitters.insert(ref);
+        z3::solver solver {ctx()};
+        const aeg::Node& node = aeg.lookup(ref);
+        solver.add(node.trans);
+        solver.add(node.access());
+        if (solver.check() != z3::unsat) {
+            candidate_transmitters.insert(ref);
+        }
     });
     
     std::size_t i = 0;

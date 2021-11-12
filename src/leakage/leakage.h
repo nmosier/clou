@@ -230,6 +230,28 @@ void Detector_<Leakage>::output_execution(const Leakage& leak) {
     }
 }
 
+template <typename Derived>
+void Leakage<Derived>::print_long(std::ostream& os, const aeg::AEG& aeg) const {
+    const auto v = static_cast<const Derived&>(*this).vec();
+    for (auto it = v.begin(); it != v.end(); ++it) {
+        if (it != v.begin()) {
+            os << "; ";
+        }
+        os << *aeg.lookup(*it).inst;
+    }
+}
+
+template <typename Derived>
+void Leakage<Derived>::print_short(std::ostream& os) const {
+    const auto v = static_cast<const Derived&>(*this).vec();
+    for (auto it = v.begin(); it != v.end(); ++it) {
+        if (it != v.begin()) {
+            os << " ";
+        }
+        os << *it;
+    }
+}
+
 
 namespace dbg {
 
