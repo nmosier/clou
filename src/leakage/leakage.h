@@ -79,7 +79,7 @@ protected:
     void traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
-    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func);
+    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func);
     
     auto push_edge(const EdgeRef& edge) {
         return util::push(flag_edges, edge);
