@@ -1,3 +1,6 @@
-export LCM_ARGS_SH="--max-transient=25 --aa=transient --fast --batch -o $PWD/lcm --monitor=$PWD/lcm/fifo --window=200 --stb=56"
+LOG="$PWD/lcm/logs"
+mkdir -p "$LOG"
+export FIFO="$PWD/lcm/fifo"
+export LCM_ARGS_SH="--max-transient=50 --aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --window=200 --stb=56 --log $LOG"
 export LCM_ARGS_V1="$LCM_ARGS_SH --spectre-v1=mode=classic"
 export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4"
