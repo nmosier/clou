@@ -6,6 +6,7 @@
 #include <string>
 #include <variant>
 #include <optional>
+#include <algorithm>
 
 #include <z3++.h>
 
