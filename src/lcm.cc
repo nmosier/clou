@@ -11,6 +11,7 @@
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/AliasAnalysis.h>
+#include <llvm/Analysis/CallGraph.h>
 
 #include "lcm.h"
 #include "config.h"
@@ -37,16 +38,46 @@ void output_(const Graph& graph, const std::string& name, const llvm::Function& 
     }
 }
 
-struct LCMPass: public llvm::FunctionPass {
+struct LCMPass: public llvm::ModulePass {
     static char ID;
     
-    LCMPass(): FunctionPass(ID) {}
+    LCMPass(): llvm::ModulePass(ID) {}
     
     virtual void getAnalysisUsage(llvm::AnalysisUsage& usage) const override {
-        usage.addRequired<llvm::AAResultsWrapperPass>();
+        usage.addRequiredTransitive<llvm::AAResultsWrapperPass>();
+        usage.addRequiredTransitive<llvm::CallGraphWrapperPass>();
     }
     
-    virtual bool runOnFunction(llvm::Function& F) override {
+    virtual bool runOnModule(llvm::Module& M) override {
+        for (llvm::Function *F : getFunctionOrder(M)) {
+            if (F->isDeclaration()) {
+                std::cerr << "skipping function declaration " << F->getName().str() << "\n";
+            } else {
+                llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
+                runOnFunction(*F, AA);
+            }
+        }
+        return false;
+    }
+    
+    std::vector<llvm::Function *> getFunctionOrder(llvm::Module& M) {
+        // want to find all roots in call graph
+        llvm::CallGraph& CG = getAnalysis<llvm::CallGraphWrapperPass>().getCallGraph();
+
+        std::vector<llvm::Function *> order;
+        std::transform(M.begin(), M.end(), std::back_inserter(order), [] (llvm::Function& F) {
+            return &F;
+        });
+        for (const llvm::Function *F : order) {
+            std::cerr << F->getName().str() << ": " << CG[F]->getNumReferences() << "\n";
+        }
+        std::sort(order.begin(), order.end(), [&] (const llvm::Function *F1, const llvm::Function *F2) -> bool {
+            return CG[F1]->getNumReferences() < CG[F2]->getNumReferences();
+        });
+        return order;
+    }
+    
+    void runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA) {
         const std::string func = F.getName().str();
         
         llvm::errs() << "processing function '" << F.getName() << "'\n";
@@ -83,7 +114,7 @@ struct LCMPass: public llvm::FunctionPass {
                     client.send(msg);
                 }
                 
-                return false;
+                return;
             }
             
             if (!function_names.empty()) {
@@ -94,10 +125,8 @@ struct LCMPass: public llvm::FunctionPass {
                         break;
                     }
                 }
-                if (!match) { return false; }
+                if (!match) { return; }
             }
-            
-            llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
             
             const unsigned num_unrolls = 2;
             
@@ -205,8 +234,6 @@ struct LCMPass: public llvm::FunctionPass {
             msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
             client.send(msg);
         }
-        
-        return false;
     }
 };
 
@@ -214,43 +241,16 @@ char LCMPass::ID = 0;
 
 // Automatically enable the pass.
 // http://adriansampson.net/blog/clangpass.html
-static void registerLCMPass(const llvm::PassManagerBuilder&, llvm::legacy::PassManagerBase& PM) {
+namespace {
+void registerLCMPass(const llvm::PassManagerBuilder&, llvm::legacy::PassManagerBase& PM) {
     PM.add(new LCMPass());
 }
-static llvm::RegisterStandardPasses RegisterMyPass {
-    llvm::PassManagerBuilder::EP_EarlyAsPossible,
+llvm::RegisterStandardPasses RegisterMyPass {
+    llvm::PassManagerBuilder::EP_EnabledOnOptLevel0,
     registerLCMPass
 };
-
-
-/* NOTES
- * We only consider these instructions:
- * - Memory accesses: load, store, clflush, etc.
- * - Branch instructions
- * - Terminator instructions: go to bottom.
- *
- * I could do this in multiple passes, in the LLVM spirit, to simplify work and make intermediate
- * results more verifiable.
- *
- * First, we can squash out all irrelevant instructions and construct a basic control flow graph
- * from relevant instructions. We don't even need branches, either; we can model branching as edges
- * looping back.
- * However, we still need to model dataflow dependencies, like a very simple taint analysis.
- * We can use this analysis to extract ...
- *
- * Address Dependency Pass
- * This will find all address dependencies in the program.
- * These take the form of a value being used in pointer arithmetic on an address that may be
- * accessed.
- *
- * For each variable, track the set of load instructions whose results were used to compute its
- * value. Then, when you see a store, add addr dependencies for the corresponding set of the
- * address.
- *
- * I := set of instructions
- * Top := {}
- * Bot := I
- * Transition function f(i in I) := ...
- * Meet := union
- * Direction := forward
- */
+llvm::RegisterStandardPasses RegisterMyPass0 {
+    llvm::PassManagerBuilder::EP_ModuleOptimizerEarly,
+    registerLCMPass
+};
+}
