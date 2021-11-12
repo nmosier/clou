@@ -232,7 +232,9 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     }
     
     if (traceback_depth == max_traceback) {
-        std::cerr << "backtracking: max traceback depth (" << max_traceback << ")\n";
+        if (mode == CheckMode::SLOW) {
+            std::cerr << "backtracking: max traceback depth (" << max_traceback << ")\n";
+        }
         return;
     }
     
@@ -247,7 +249,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     traceback_edge(aeg::Edge::ADDR, load, func, mode);
 }
 
-void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef)> func) {
+void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
     NodeRefSet candidate_transmitters;
     aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
         z3::solver solver {ctx()};
@@ -261,6 +263,13 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
+        if (!lookahead([&] () {
+            func(transmitter, CheckMode::FAST);
+        })) {
+            std::cerr << "skipping transmitter: failed lookahead\n";
+            continue;
+        }
+        
         Timer timer;
         
         std::cerr << ++i << "/" << candidate_transmitters.size() << "\n";
@@ -330,7 +339,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         
         if (solver.check() == z3::sat) {
             try {
-                func(transmitter);
+                func(transmitter, CheckMode::SLOW);
             } catch (const next_transmitter& e) {
                 // continue
             }
