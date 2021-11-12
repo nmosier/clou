@@ -54,7 +54,9 @@ struct LCMPass: public llvm::ModulePass {
                 std::cerr << "skipping function declaration " << F->getName().str() << "\n";
             } else {
                 llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
+                open_log(F->getName().str());
                 runOnFunction(*F, AA);
+                close_log();
             }
         }
         return false;
