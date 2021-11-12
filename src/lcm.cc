@@ -26,6 +26,7 @@
 #include "mon/client.h"
 #include "cfg/block.h"
 #include "util/exception.h"
+#include "util/scope.h"
 
 using llvm::errs;
 
@@ -46,12 +47,28 @@ struct LCMPass: public llvm::FunctionPass {
     }
     
     virtual bool runOnFunction(llvm::Function& F) override {
+        const std::string func = F.getName().str();
+        
         llvm::errs() << "processing function '" << F.getName() << "'\n";
         
         if (client) {
             mon::Message msg;
             msg.mutable_func_started()->mutable_func()->set_name(F.getName().str());
             client.send(msg);
+        }
+        
+        
+        const auto profiler_stop = util::defer([] () {
+            ProfilerStop();
+        });
+        {
+            std::stringstream ss;
+            ss << output_dir << "/" << func << ".prof";
+            ProfilerStart(ss.str().c_str());
+            signal(SIGINT, [] (int sig) {
+                ProfilerStop();
+                std::exit(0);
+            });
         }
         
         
@@ -148,22 +165,11 @@ struct LCMPass: public llvm::FunctionPass {
             client.send_step("aeg", F.getName().str());
             aeg::AEG aeg {cfg_expanded};
             aeg.construct(AA, rob_size);
-#if 0
-            output(aeg, "aeg", F);
-#endif
-            
-            ProfilerStart(format_graph_path("out/%s.prof", F).c_str());
-            signal(SIGINT, [] (int sig) {
-                ProfilerStop();
-                std::exit(0);
-            });
 
             client.send_step("leakage", F.getName().str());
             llvm::errs() << "Testing...\n";
             aeg.test();
             llvm::errs() << "done\n";
-            
-            ProfilerStop();
             
             // add analyzed functions
             {
