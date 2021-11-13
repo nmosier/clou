@@ -105,7 +105,7 @@ void AEG::test() {
     simplify();
     
     /* display stats */
-    if (verbose >= 3) {
+    if (verbose >= 0) {
         auto& os = llvm::errs();
         os << constraints.exprs.size() << " top level constraints\n";
         const unsigned node_clauses =
