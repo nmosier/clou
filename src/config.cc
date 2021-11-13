@@ -45,6 +45,7 @@ std::optional<unsigned> stb_size;
 SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
 unsigned window_size = std::numeric_limits<unsigned>::max();
+bool profile = false;
 
 namespace {
 std::optional<std::string> logdir;
@@ -97,6 +98,7 @@ only examine given functions
 --lookahead=[<bool>] use lookahead during leakage detection
 --window <uint>      sliding window size
 --log <dir>          redirect stderr to log directory
+--profile            enable profiler
 )=";
     fprintf(f, "%s", s);
 }
@@ -189,6 +191,7 @@ int parse_args() {
         LOOKAHEAD,
         WINDOW,
         LOG,
+        PROFILE,
     };
     
     struct option opts[] = {
@@ -218,6 +221,7 @@ int parse_args() {
         {"lookahead", optional_argument, nullptr, LOOKAHEAD},
         {"window", required_argument, nullptr, WINDOW},
         {"log", required_argument, nullptr, LOG},
+        {"profile", optional_argument, nullptr, PROFILE},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -449,6 +453,11 @@ int parse_args() {
                 
             case LOG: {
                 logdir = optarg;
+                break;
+            }
+                
+            case PROFILE: {
+                profile = parse_bool_opt(optarg);
                 break;
             }
                 

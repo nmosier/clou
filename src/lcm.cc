@@ -92,9 +92,11 @@ struct LCMPass: public llvm::ModulePass {
         
         
         const auto profiler_stop = util::defer([] () {
-            ProfilerStop();
+            if (profile) {
+                ProfilerStop();
+            }
         });
-        {
+        if (profile) {
             std::stringstream ss;
             ss << output_dir << "/" << func << ".prof";
             ProfilerStart(ss.str().c_str());

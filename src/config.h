@@ -30,6 +30,7 @@ extern mon::Client client;
 extern std::optional<unsigned> stb_size;
 extern bool use_lookahead;
 extern unsigned window_size;
+extern bool profile;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;
