@@ -242,6 +242,8 @@ struct LCMPass: public llvm::ModulePass {
             msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
             client.send(msg);
         }
+        
+        std::cerr << "done analyzing function " << F.getName().str() << "\n";
     }
 };
 
