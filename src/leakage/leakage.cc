@@ -430,9 +430,6 @@ void Detector::precompute_rf(NodeRef load) {
 }
 
 const Detector::Sources& Detector::rf_sources(NodeRef load) {
-    rf_source_count[load]++;
-    std::cerr << rf_source_count << "\n";
-    
     auto it = rf.find(load);
     if (it == rf.end()) {
         precompute_rf(load);
