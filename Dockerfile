@@ -30,14 +30,16 @@ RUN git clone https://github.com/jedisct1/libsodium.git libsodium-v1
 RUN cp -r libsodium-v1 libsodium-v4
 RUN cp -r libsodium-v1 libsodium-ll
 
+ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H"
+
 WORKDIR "$LCM_BUILD/libsodium-v1"
 RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="-UHAVE_INLINE_ASM"
+RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
 RUN mkdir lcm
 
 WORKDIR "$LCM_BUILD/libsodium-v4"
 RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="-WHAVE_INLINE_ASM"
+RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
 RUN mkdir lcm
 
 WORKDIR "$LCM_BUILD/libsodium-ll"
