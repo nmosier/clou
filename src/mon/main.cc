@@ -301,6 +301,9 @@ struct Monitor: Component {
         ::printw("MESSAGES: %u\n", msgs);
         ::printw("CLIENTS: %zu\n", client_thds.size());
         ::addstr("RUNNING:\n");
+        std::sort(running_jobs.vec.begin(), running_jobs.vec.end(), [] (const RunningJob& a, const RunningJob& b) -> bool {
+            return a.duration.elapsed() > b.duration.elapsed();
+        });
         running_jobs.display();
         ::addstr("\n\nCOMPLETED:\n");
         std::sort(completed_jobs.vec.begin(), completed_jobs.vec.end(), [] (const CompletedJob& a, const CompletedJob& b) -> bool {

@@ -1,10 +1,13 @@
 #include <deque>
 
+#include <llvm/IR/InlineAsm.h>
+
 #include "cfg/expanded.h"
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
 #include "util/output.h"
 #include "util/algorithm.h"
+#include "timer.h"
 
 template <typename Expand>
 void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {
@@ -38,7 +41,7 @@ void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {
         const NodeRef dst = expand.merge(task.fork, task.in_dst, end_ref);
         if (dst == end_ref) {
             // create new node
-            const NodeRef dst_tmp = add_node(in.lookup(task.in_dst));
+            [[maybe_unused]] const NodeRef dst_tmp = add_node(in.lookup(task.in_dst));
             assert(dst == dst_tmp);
             newnode = true;
         } else {
@@ -49,7 +52,7 @@ void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {
             .arch = task.fork.can_arch(),
             .trans = task.fork.can_trans(num_specs),
         };
-        const auto res = execs.emplace(dst, exec);
+        [[maybe_unused]] const auto res = execs.emplace(dst, exec);
         assert(res.first->second == exec);
         
         po.insert(task.src, dst);
@@ -107,13 +110,17 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
     }
     
     /* remaining tasks */
-    resolve_refs(in);
+    {
+        std::cerr << "resolving refs...\n";
+        Timer timer;
+        resolve_refs(in);
+    }
 }
 
 
-void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap> &maps, CFG::Node &node, NodeRef ref) {
+void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap1> &maps, CFG::Node &node, NodeRef ref) {
     using Key = Translations::Key;
-    using Map = RefMap;
+    using Map = RefMap1;
     enum ValueKind {
         INST, ARG, OTHER, UNKNOWN
     } kind;
@@ -139,7 +146,7 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
                 if (kind == INST) {
                     if (!llvm::isa<llvm::PHINode>(I)) {
                         if (it == map.end()) {
-                            llvm::errs() << "source: " << *source.V << "\n";
+                            llvm::errs() << "source: " << source << "\n";
                             std::cerr << "map: ";
                             for (const auto& p : map) {
                                 llvm::errs() << p.first << "\n";
@@ -149,7 +156,7 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
                     }
                 }
                 if (it != map.end()) {
-                    const NodeRefSet& refs = it->second;
+                    const auto& refs = (*it).second;
                     node.refs[V].insert(refs.begin(), refs.end());
                 }
             }
@@ -160,7 +167,9 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
             break;
             
         case UNKNOWN:
-            llvm::errs() << "value of unknown kind: " << *V << "\n";
+            std::cerr << __FILE__ << ": " << __LINE__ << ": value of unknown kind: " << *V << "\n";
+            std::cerr << "in instruction: " << *I << "\n";
+            std::cerr << "in function: " << *I->getFunction() << "\n";
             std::abort();
     }
 }
@@ -182,14 +191,20 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
     
     using Translations = CFG_Unrolled::Translations;
     using Key = Translations::Key;
-    using Map = std::unordered_map<Key, NodeRefSet, Key::Hash>;
-
+    using Map = RefMap1; // TODO: remove this unnecessary definition
+    
+    
+/* Idea: use a string-table-like approach. Rather than the map's values being a NodeRefSet, it is an index into a table of NodeRefSets.
+ */
+    
 #if 0
-    std::unordered_map<NodeRef, Map> maps;
 #else
-    std::vector<Map> maps(size());
+    using Table = std::set<std::set<NodeRef>>;
+    Table table;
 #endif
     
+    std::vector<Map> maps(size(), Map(table));
+
     NodeRefSet done;
     for (const NodeRef ref : order) {
         done.insert(ref);
@@ -198,30 +213,46 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
         Map& map = maps[ref];
         for (const NodeRef pred : po.rev.at(ref)) {
             const Map& a = maps.at(pred);
-            for (const auto& p : a) {
-                map[p.first].insert(p.second.begin(), p.second.end());
+            if (map.empty()) {
+                map = a;
+            } else {
+                for (const auto& p : a) {
+#if 0
+                    map[p.first].insert(p.second.begin(), p.second.end());
+#else
+                    map.update(p.first, [&] (auto& set) {
+                        set.insert(p.second.begin(), p.second.end());
+                    });
+#endif
+                }
             }
             
-#if 1
             // check if done
             if (util::subset(po.fwd.at(pred), done)) {
-# if 0
-                maps.erase(pred);
-# else
                 maps.at(pred).clear();
-# endif
             }
-#endif
         }
 
         Node& node = lookup(ref);
         
         std::visit(util::overloaded {
             [&] (const llvm::Instruction *I) {
+#if 0
                 map[Key {node.id->func, I}].insert(ref);
+#else
+                map.update(Key {node.id->func, I}, [ref] (auto& set) {
+                    set.insert(ref);
+                });
+#endif
             },
             [&] (const Node::Call& call) {
+#if 0
                 map[Key {node.id->func, call.C}].insert(ref);
+#else
+                map.update(Key {node.id->func, call.C}, [ref] (auto& set) {
+                    set.insert(ref);
+                });
+#endif
             },
             [] (Entry) {},
             [] (Exit) {},
@@ -246,30 +277,6 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
             [&] (Exit) {},
         }, node.v);
     }
-    
-#if 0
-    /* Now resolve refs */
-    for (const NodeRef ref : order) {
-        Node& node = lookup(ref);
-        node.refs.clear();
-        std::visit(util::overloaded {
-            [&] (const llvm::Instruction *I) {
-                for (const llvm::Value *V : I->operand_values()) {
-                    resolve_single_ref(I, V, in,
-                                       maps,
-                                       node, ref);
-                }
-            },
-            [&] (const Node::Call& call) {
-                resolve_single_ref(call.C, call.arg, in,
-                                   maps,
-                                   node, ref);
-            },
-            [&] (Entry) {},
-            [&] (Exit) {},
-        }, node.v);
-    }
-#endif
 }
 
 NodeRef Expand_SpectreV1::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {

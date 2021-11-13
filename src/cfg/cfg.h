@@ -156,9 +156,21 @@ public:
             const llvm::Value *V;
             Key(const std::vector<FuncID>& id, const llvm::Value *V): id(id), V(V) {}
             struct Hash {
-                std::size_t operator()(const Key& key) const { return llvm::hash_value(std::make_pair(std::hash<std::vector<FuncID>>()(key.id), key.V)); }
+                std::size_t operator()(const Key& key) const {
+                    return llvm::hash_value(std::make_pair(std::hash<std::vector<FuncID>>()(key.id), key.V));
+                }
+
             };
             bool operator==(const Key& other) const { return id == other.id && V == other.V; }
+            bool operator<(const Key& other) const {
+                if (V < other.V) {
+                    return true;
+                } else if (V == other.V) {
+                    return id < other.id;
+                } else {
+                    return false;
+                }
+            }
         };
         
         struct Value {
@@ -172,7 +184,11 @@ public:
             }
         };
         
+#if 1
         using Map = std::unordered_map<Key, Value, Key::Hash>;
+#elif 0
+        using Map = std::map<Key, Value>;
+#endif
         
         Map map;
         

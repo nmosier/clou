@@ -13,7 +13,6 @@
  *
  */
 
-
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node) {
    std::visit(util::overloaded {
          [&] (Entry) { os << "<ENTRY>"; },

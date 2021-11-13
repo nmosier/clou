@@ -98,10 +98,14 @@ struct LCMPass: public llvm::ModulePass {
             std::stringstream ss;
             ss << output_dir << "/" << func << ".prof";
             ProfilerStart(ss.str().c_str());
-            signal(SIGINT, [] (int sig) {
+            const auto handler = [] (int sig) {
                 ProfilerStop();
-                std::exit(0);
-            });
+                if (sig == SIGINT) {
+                    std::exit(1);
+                }
+            };
+            signal(SIGINT, handler);
+            signal(SIGUSR1, handler);
         }
         
         

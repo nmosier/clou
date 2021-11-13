@@ -7,6 +7,10 @@
 #include <numeric>
 #include <optional>
 #include <algorithm>
+#include <memory>
+#include <set>
+#include <unordered_map>
+#include <iostream>
 
 #include "functional.h"
 
@@ -279,6 +283,150 @@ private:
     void recompute_size() {
         size_ = std::reduce(v.begin(), v.end());
     }
+};
+
+
+template <class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>>
+class table_map {
+    using Table = std::set<T>;
+    using TableIt = typename Table::const_iterator;
+    using Map = std::unordered_map<Key, TableIt, Hash, KeyEqual>;
+public:
+    using key_type = Key;
+    using mapped_type = T;
+    using value_type = std::pair<const Key, T>;
+    using size_type = typename Map::size_type;
+    using difference_type = typename Map::difference_type;
+    using hasher = Hash;
+    using key_equal = KeyEqual;
+    using reference = std::pair<const Key&, const T&>;
+    using const_reference = reference;
+    // using pointer = ...
+    // using const_pointer = ...
+    
+    class iterator {
+        using MapIt = typename Map::const_iterator;
+    public:
+        /* ITERATOR TRAITS */
+        using difference_type = std::ptrdiff_t;
+        using value_type = table_map::value_type;
+        using pointer = void;
+        using reference = table_map::reference;
+        using iterator_category = std::bidirectional_iterator_tag;
+        
+        iterator() {}
+        
+        reference operator*() const {
+            return reference {it->first, *it->second};
+        }
+        
+        
+        
+        iterator& operator++() { ++it; return *this; }
+        iterator& operator++(int) { it++; return *this; }
+        iterator& operator--() { --it; return *this; }
+        iterator& operator--(int) { it--; return *this; }
+        
+#if 0
+        auto operator<=>(const iterator& o) const { return it <=> o.it; }
+#else
+        auto operator<=>(const iterator&) const = default;
+        bool operator==(const iterator&) const = default;
+#endif
+        
+    private:
+        MapIt it;
+        
+        iterator(MapIt it): it(it) {}
+        
+        friend table_map;
+    };
+    
+    using const_iterator = iterator;
+    
+    /* ITERATORS */
+    iterator begin() const noexcept { return iterator(map.begin()); }
+    iterator end() const noexcept { return iterator(map.end()); }
+    
+    /* CAPACITY */
+    bool empty() const noexcept { return map.empty(); }
+    size_type size() const noexcept { return map.size(); }
+    size_type max_size() const noexcept { return map.max_size(); }
+    
+    /* MODIFIERS */
+    void clear() noexcept { map.clear(); }
+    
+    std::pair<iterator, bool> insert(const reference& value) {
+        /* insert into table */
+        const auto table_it = table->insert(value.second).first;
+        const auto map_res = map.emplace(value.first, table_it);
+        return std::make_pair(iterator(map_res.first), map_res.second);
+    }
+    
+#if 0
+    template <class InputIt>
+    void insert(InputIt first, InputIt last) {
+        for (auto it = first; it != last; ++it) {
+            insert(*it);
+        }
+    }
+    
+    void insert(std::initializer_list<value_type> ilist) {
+        insert(ilist.begin(), ilist.end());
+    }
+#endif
+    
+    std::pair<iterator, bool> insert_or_assign(const Key& key, const T& value) {
+        const auto table_it = table->insert(value).first;
+        const auto map_res = map.insert_or_assign(key, table_it);
+        return std::make_pair(iterator(map_res.first), map_res.second);
+    }
+    
+    std::pair<iterator, bool> emplace(const Key& key, const T& value) {
+        const auto table_it = table->insert(value).first;
+        const auto map_res = map.emplace(key, table_it);
+        return std::make_pair(iterator(map_res.first), map_res.second);
+    }
+    
+    template <typename Mod>
+    void update(const Key& key, Mod mod) {
+        T value = operator[](key);
+        mod(value);
+        insert_or_assign(key, value); // TODO: should only be assign().
+    }
+    
+    iterator erase(iterator pos) {
+        return iterator(map.erase(pos.it));
+    }
+    
+    size_type erase(const Key& key) {
+        return map.erase(key);
+    }
+    
+    /* LOOKUP */
+    
+    const T& at(const Key& key) const { return *map.at(key); }
+    
+    const T& operator[](const Key& key) {
+        const auto table_it = table->insert(T()).first;
+        const auto map_res = map.emplace(key, table_it);
+        const auto map_it = map_res.first;
+        return *map_it->second;
+    }
+    
+    size_type count(const Key& key) const { return map.count(key); }
+    iterator find(const Key& key) const { return iterator(map.find(key)); }
+    bool contains(const Key& key) const { return map.contains(key); }
+    bool operator==(const table_map& other) const { return map == other.map; }
+    bool operator!=(const table_map& other) const { return !(*this == other); }
+    
+    /* CONSTRUCTORS */
+    table_map(Table& table): table(&table) {}
+    
+private:
+    Table *table;
+    Map map;
+    
 };
 
 
