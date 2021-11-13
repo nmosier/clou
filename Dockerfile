@@ -32,12 +32,12 @@ RUN cp -r libsodium-v1 libsodium-ll
 
 WORKDIR "$LCM_BUILD/libsodium-v1"
 RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so"
+RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="-UHAVE_INLINE_ASM"
 RUN mkdir lcm
 
 WORKDIR "$LCM_BUILD/libsodium-v4"
 RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so"
+RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="-WHAVE_INLINE_ASM"
 RUN mkdir lcm
 
 WORKDIR "$LCM_BUILD/libsodium-ll"
