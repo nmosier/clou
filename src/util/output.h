@@ -165,31 +165,17 @@ llvm::errs() << msg; \
 
 extern char prog[];
 
-template <typename... Args>
-void log(const char *fmt, Args&&... args) {
-    llvm::errs() << llvm::format(fmt, std::forward<Args>(args)...) << "\n";
-}
 
-template <typename... Args>
-[[noreturn]] void error(const char *fmt, Args&&... args) {
-    llvm::errs() << "error: ";
-    log(fmt, std::forward<Args>(args)...);
-    exit(1);
-}
+#define log_(fmt, ...) do { \
+std::fprintf(stderr, fmt __VA_OPT__(,) __VA_ARGS__); \
+std::fprintf(stderr, "\n"); \
+} while (false)
 
-template <typename... Args>
-void warning(const char *fmt, Args&&... args) {
-    llvm::errs() << "warning: ";
-    log(fmt, std::forward<Args>(args)...);
-}
 
-extern unsigned verbose;
-template <typename... Args>
-void log(unsigned verb, const char *fmt, Args&&... args) {
-    if (verbose >= verb) {
-        log(fmt, std::forward<Args>(args)...);
-    }
-}
+#define error(fmt, ...) do { \
+log_(fmt __VA_OPT__(,) __VA_ARGS__); \
+std::exit(1); \
+} while (false)
 
 template <typename... Args>
 std::string format(const std::string& fmt, Args&&... args) {

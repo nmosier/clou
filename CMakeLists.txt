@@ -21,7 +21,7 @@ if(DEFINED SANITIZE)
 endif()
 
 add_link_options(-w)
-add_compile_options(-Wno-c++20-designator -Wno-format-security -Wno-c99-designator)
+add_compile_options(-Wno-c++20-designator -Wno-format-security -Wno-c99-designator -Wno-gnu-zero-variadic-macro-arguments)
 
 enable_testing()
 

@@ -36,13 +36,12 @@ void perror_exit(const char *s) {
     std::exit(EXIT_FAILURE);
 }
 
-template <typename... Args>
-void error(const char *fmt, Args&&... args) {
-    fprintf(stderr, "%s: ", prog);
-    fprintf(stderr, fmt, std::forward<Args>(args)...);
-    fprintf(stderr, "\n");
-    std::exit(EXIT_FAILURE);
-}
+#define error(fmt, ...) do { \
+std::fprintf(stderr, "%s: ", prog); \
+std::fprintf(stderr, fmt __VA_OPT__(,) __VA_ARGS__); \
+std::fprintf(stderr, "\n"); \
+std::exit(EXIT_FAILURE); \
+} while (false)
 
 }
 
