@@ -13,6 +13,8 @@ Inst *Inst::Create(Exit) {
 }
 
 Inst *Inst::Create(const llvm::Instruction *I) {
+    std::cerr << "trace: " << *I << "\n";
+    
     if (llvm::isa<llvm::FenceInst>(I)) {
         return new FenceInst(I);
     } else if (llvm::isa<llvm::LoadInst>(I)) {
@@ -20,20 +22,21 @@ Inst *Inst::Create(const llvm::Instruction *I) {
     } else if (llvm::isa<llvm::StoreInst>(I)) {
         return new StoreInst(I);
     } else {
-        if (I->mayReadOrWriteMemory()) {
-            llvm::errs() << *I << "\n";
-        }
-        
         // DEBUG assertions
         {
             if (I->mayReadOrWriteMemory()) {
+                llvm::errs() << "warning: modeling instruction that may modify memory as non-memory-op: " << *I << "\n";
                 if (const auto *C = llvm::dyn_cast<llvm::CallInst>(I)) {
                     if (C->getNumArgOperands() != 0) {
                         llvm::errs() << *C << "\n";
                     }
+#if 0
                     assert(C->getNumArgOperands() == 0);
+#endif
                 } else {
+#if 0
                     assert(false);
+#endif
                 }
             }
         }
