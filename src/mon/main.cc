@@ -568,7 +568,7 @@ void Monitor::run() {
                     this->display();
                 }
                 ::refresh();
-                ::napms(100);
+                ::napms(1000);
             }
         }
     };
