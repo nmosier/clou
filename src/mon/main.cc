@@ -423,10 +423,12 @@ private:
     void handle_func_properties(const mon::FunctionProperties& msg, pid_t pid);
     
     template <typename T>
-    bool client_read(FILE *f, T *buf, std::size_t count) const {
+    bool client_read(FILE *f, T *buf, std::size_t count, bool report_eof) const {
         if (std::fread(buf, sizeof(T), count, f) != count) {
             if (std::feof(f)) {
-                std::cerr << "warning: unexpected client EOF\n";
+                if (report_eof) {
+                    std::cerr << "warning: unexpected client EOF\n";
+                }
             } else {
                 std::perror("fread");
             }
@@ -438,11 +440,11 @@ private:
     template <typename Msg>
     bool parse(FILE *client_f, Msg& msg) {
         uint32_t buflen;
-        if (!client_read(client_f, &buflen, 1)) { return false; }
+        if (!client_read(client_f, &buflen, 1, false)) { return false; }
         buflen = ntohl(buflen);
         std::vector<char> buf;
         buf.resize(buflen);
-        if (!client_read(client_f, buf.data(), buflen)) { return false; }
+        if (!client_read(client_f, buf.data(), buflen, true)) { return false; }
         if (!msg.ParseFromArray(buf.data(), buf.size())) {
             std::cerr << "warning: bad message\n";
             return false;
