@@ -148,9 +148,12 @@ void initialize_post() {
     std::signal(SIGPIPE, SIG_IGN);
     
     if (logdir) {
-        if ((saved_fd = ::dup(STDERR_FILENO)) < 0) {
+        std::stringstream ss;
+        ss << *logdir << "/" << ::getpid() << ".log";
+        if ((saved_fd = ::open(ss.str().c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0664)) < 0) {
+            std::cerr << prog << ": open: " << ss.str() << ": " << std::strerror(errno) << "\n";
+        } else if (::dup2(saved_fd, STDERR_FILENO) < 0) {
             std::perror("dup");
-            std::abort();
         }
     }
 }
