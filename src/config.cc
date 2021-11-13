@@ -491,11 +491,12 @@ void check_config() {
 
 void open_log(const std::string& name) {
     if (!logdir) { return; }
-    const std::string path = *logdir + "/" + name + ".log";
+    std::stringstream path;
+    path << *logdir << "/" << name << "." << ::getpid() << ".log";
     assert(saved_fd >= 0);
     int log_fd;
-    if ((log_fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664)) < 0) {
-        std::cerr << prog << ": open: " << path << ": " << std::strerror(errno) << "\n";
+    if ((log_fd = ::open(path.str().c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664)) < 0) {
+        std::cerr << prog << ": open: " << path.str() << ": " << std::strerror(errno) << "\n";
         std::exit(1);
     }
     if (::dup2(log_fd, STDERR_FILENO) < 0) {
