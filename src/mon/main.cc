@@ -270,10 +270,105 @@ struct ComponentList: Component {
     }
 };
 
-struct Client {
-    FILE *f;
-    std::unordered_set<std::string> running; // functions in progress
+#if 0
+struct Monitor;
+
+class Client {
+public:
+    Client(int fd, Monitor& monitor): fd(fd), monitor(monitor) {
+        mon::ClientConnect msg;
+        if (!parse(msg)) {
+            close();
+        }
+        pid = msg.pid();
+    }
+    
+    bool good() const noexcept { return fd >= 0; }
+    operator bool() const noexcept { return good(); }
+    
+    void run() {
+        while (true) {
+            struct pollfd pfd = {
+                .fd = fd,
+                .events = POLLIN
+            };
+            if (::poll(&pfd, 1, -1) < 0) {
+                std::perror("poll");
+                break;
+            }
+            
+            /* check flags */
+            if ((pfd.revents & POLLIN)) {
+                mon::Message msg;
+                if (!parse(msg)) {
+                    break;
+                }
+                handle(msg);
+            } else {
+                if ((pfd.revents & POLLHUP)) {
+                } else if ((pfd.revents & POLLNVAL)) {
+                    error("poll: invalid socket");
+                } else if ((pfd.revents & POLLERR)) {
+                    std::cerr << prog << ": error on socket\n";
+                } else {
+                    std::abort();
+                }
+                break;
+            }
+        }
+        
+        close();
+        
+        /* cleanup monitor state */
+    }
+    
+private:
+    int fd = -1;
+    pid_t pid = -1;
+    Monitor& monitor;
+    
+    void close() {
+        ::close(fd);
+        fd = -1;
+    }
+    
+    template <typename T>
+    bool read(T *buf_, std::size_t count, bool report_eof) {
+        char *buf = reinterpret_cast<char *>(buf_);
+        std::size_t rem = count * sizeof(T);
+        while (rem > 0) {
+            const ::ssize_t bytes_read = ::read(fd, buf, rem);
+            if (bytes_read < 0) {
+                std::perror("read");
+                close();
+                return false;
+            } else if (bytes_read == 0) {
+                if (report_eof) {
+                    std::cerr << "warning: unexpected EOF\n";
+                }
+                close();
+                return false;
+            }
+            rem -= bytes_read;
+            buf += bytes_read;
+        }
+        return true;
+    }
+    
+    template <typename Message>
+    bool parse(Message& msg) {
+        std::uint32_t buflen;
+        if (!read(&buflen, 1, false)) { return false; }
+        buflen = ntohl(buflen);
+        std::vector<char> buf(buflen);
+        if (!read(buf.data(), buf.size(), true)) { return false; }
+        return true;
+    }
+    
+    void handle(mon::Message& msg);
 };
+#endif
+
 
 struct Monitor: Component {
     /* Control stuff */
@@ -322,11 +417,11 @@ private:
     bool run_body(FILE *client_f, int owner, ::pid_t pid);
     
     void handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid);
-    void handle_func_completed(const mon::FunctionCompleted& msg);
-    void handle_func_progress(const mon::FunctionProgress& msg);
+    void handle_func_completed(const mon::FunctionCompleted& msg, pid_t pid);
+    void handle_func_progress(const mon::FunctionProgress& msg, pid_t pid);
     void handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg);
-    void handle_func_step(const mon::FunctionStep& msg);
-    void handle_func_properties(const mon::FunctionProperties& msg);
+    void handle_func_step(const mon::FunctionStep& msg, pid_t pid);
+    void handle_func_properties(const mon::FunctionProperties& msg, pid_t pid);
     
     template <typename T>
     bool client_read(FILE *f, T *buf, std::size_t count) const {
@@ -357,6 +452,32 @@ private:
         return true;
     }
 };
+
+#if 0
+struct Handler {
+    Monitor& monitor;
+    pid_t pid;
+    std::string func;
+    
+    void handle(const mon::Message& msg) {
+        switch (msg.message_case()) {
+            case mon::Message::kFuncStarted:
+                
+        }
+    }
+    
+    void handle_func_started()
+};
+
+void Client::handle(mon::Message& msg) {
+    std::unique_lock<std::mutex> lock {monitor.mutex};
+    
+    switch (msg.message_case()) {
+
+    }
+    
+}
+#endif
 
 
 void Monitor::run() {
@@ -471,11 +592,11 @@ bool Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
             break;
             
         case mon::Message::kFuncCompleted:
-            handle_func_completed(msg.func_completed());
+            handle_func_completed(msg.func_completed(), pid);
             break;
             
         case mon::Message::kFuncProgress:
-            handle_func_progress(msg.func_progress());
+            handle_func_progress(msg.func_progress(), pid);
             break;
             
         case mon::Message::kFuncsAnalyzed:
@@ -483,11 +604,11 @@ bool Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
             break;
             
         case mon::Message::kFuncStep:
-            handle_func_step(msg.func_step());
+            handle_func_step(msg.func_step(), pid);
             break;
             
         case mon::Message::kFuncProps:
-            handle_func_properties(msg.func_props());
+            handle_func_properties(msg.func_props(), pid);
             break;
             
         case mon::Message::MESSAGE_NOT_SET:
@@ -503,9 +624,9 @@ void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner, ::
     running_jobs.vec.emplace_back(msg.func().name(), owner, pid);
 }
 
-void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
+void Monitor::handle_func_completed(const mon::FunctionCompleted& msg, pid_t pid) {
     const auto it = running_jobs.find_if([&] (const RunningJob& job) -> bool {
-        return job.name == msg.func().name();
+        return job.pid == pid && job.name == msg.func().name();
     });
     if (it == running_jobs.end()) {
         std::cerr << "warning: received 'completed job' for job that wasn't running\n";
@@ -517,9 +638,9 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg) {
     completed_jobs.vec.emplace_back(job);
 }
 
-void Monitor::handle_func_progress(const mon::FunctionProgress& msg) {
+void Monitor::handle_func_progress(const mon::FunctionProgress& msg, pid_t pid) {
     for (RunningJob& job : running_jobs.vec) {
-        if (job.name == msg.func().name()) {
+        if (pid == job.pid && job.name == msg.func().name()) {
             job.progress.frac = msg.frac();
         }
     }
@@ -531,17 +652,17 @@ void Monitor::handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg) {
     });
 }
 
-void Monitor::handle_func_step(const mon::FunctionStep& msg) {
+void Monitor::handle_func_step(const mon::FunctionStep& msg, pid_t pid) {
     for (RunningJob& job : running_jobs.vec) {
-        if (job.name == msg.func().name()) {
+        if (pid == job.pid && job.name == msg.func().name()) {
             job.step = msg.step();
         }
     }
 }
 
-void Monitor::handle_func_properties(const mon::FunctionProperties& msg) {
+void Monitor::handle_func_properties(const mon::FunctionProperties& msg, pid_t pid) {
     for (RunningJob& job : running_jobs.vec) {
-        if (job.name == msg.func().name()) {
+        if (pid == job.pid && job.name == msg.func().name()) {
             for (const auto& p : msg.properties()) {
                 job.properties[p.first] = p.second;
             }
