@@ -41,6 +41,11 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
         return false;
     }
     
+    // check if we've reached the inlining limit
+    if (std::count(callstack.begin(), callstack.end(), F) > recursive_call_limit) {
+        return false;
+    }
+    
     const std::vector<FuncID> caller_id = ids.id.func;
     ids.push();
     const std::vector<FuncID> callee_id = ids.id.func;
@@ -250,9 +255,11 @@ void CFG_Unrolled::construct_loop(const llvm::Loop *L, Port& port, IDs& ids) {
 void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
     const auto push = util::push(callstack, F);
     // check if this function has already been called more than twice
+#if 0
     if (std::count(callstack.begin(), callstack.end(), F) > recursive_call_limit) {
         return;
     }
+#endif
     
     const llvm::DominatorTree dom_tree {*F};
     const llvm::LoopInfo loop_info {dom_tree};
