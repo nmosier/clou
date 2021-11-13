@@ -47,12 +47,7 @@ private:
     
     template <typename Expand>
     void construct_partial(const CFG& in, Expand& expand);
-    
-#if 0
     using RefMap1 = std::unordered_map<Translations::Key, NodeRefSet, Translations::Key::Hash>;
-#else
-    using RefMap1 = util::table_map<Translations::Key, std::set<NodeRef>, Translations::Key::Hash>;
-#endif
     
     void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap1>& maps, CFG::Node &node, NodeRef ref);
     

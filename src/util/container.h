@@ -422,6 +422,7 @@ public:
     
     /* CONSTRUCTORS */
     table_map(Table& table): table(&table) {}
+    table_map(Table& table, size_type size): table(&table), map(size) {}
     
 private:
     Table *table;

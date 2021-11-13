@@ -1,4 +1,5 @@
 #include <deque>
+#include <gperftools/profiler.h>
 
 #include <llvm/IR/InlineAsm.h>
 
@@ -196,14 +197,7 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
     
 /* Idea: use a string-table-like approach. Rather than the map's values being a NodeRefSet, it is an index into a table of NodeRefSets.
  */
-    
-#if 0
-#else
-    using Table = std::set<std::set<NodeRef>>;
-    Table table;
-#endif
-    
-    std::vector<Map> maps(size(), Map(table));
+    std::vector<Map> maps(size(), Map(size()));
 
     NodeRefSet done;
     for (const NodeRef ref : order) {
@@ -212,18 +206,17 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
         // merge incoming
         Map& map = maps[ref];
         for (const NodeRef pred : po.rev.at(ref)) {
-            const Map& a = maps.at(pred);
-            if (map.empty()) {
+            Map& a = maps.at(pred);
+
+            // check this predecessor will be done (all successors processed)
+            if (util::subset(po.fwd.at(pred), done)) {
+                // merge container
+                map.merge(a);
+            } else if (map.empty()) {
                 map = a;
             } else {
                 for (const auto& p : a) {
-#if 0
                     map[p.first].insert(p.second.begin(), p.second.end());
-#else
-                    map.update(p.first, [&] (auto& set) {
-                        set.insert(p.second.begin(), p.second.end());
-                    });
-#endif
                 }
             }
             
@@ -237,22 +230,10 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
         
         std::visit(util::overloaded {
             [&] (const llvm::Instruction *I) {
-#if 0
                 map[Key {node.id->func, I}].insert(ref);
-#else
-                map.update(Key {node.id->func, I}, [ref] (auto& set) {
-                    set.insert(ref);
-                });
-#endif
             },
             [&] (const Node::Call& call) {
-#if 0
                 map[Key {node.id->func, call.C}].insert(ref);
-#else
-                map.update(Key {node.id->func, call.C}, [ref] (auto& set) {
-                    set.insert(ref);
-                });
-#endif
             },
             [] (Entry) {},
             [] (Exit) {},
