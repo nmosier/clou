@@ -13,8 +13,6 @@ Inst *Inst::Create(Exit) {
 }
 
 Inst *Inst::Create(const llvm::Instruction *I) {
-    std::cerr << "trace: " << *I << "\n";
-    
     if (llvm::isa<llvm::FenceInst>(I)) {
         return new FenceInst(I);
     } else if (llvm::isa<llvm::LoadInst>(I)) {
