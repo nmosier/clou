@@ -171,9 +171,11 @@ struct Progress: Component {
 
 struct Job: Component {
     std::string name;
+    pid_t pid;
     std::unordered_map<std::string, std::string> properties;
     
     virtual void display() override {
+        ::printw("%8d ", pid);
         ::addstr(name.c_str());
         std::stringstream ss;
         ss << "{";
@@ -187,14 +189,13 @@ struct Job: Component {
         ::printw(" %s", ss.str().c_str());
     }
     
-    Job(const std::string& name): name(name) {}
+    Job(const std::string& name, pid_t pid): name(name), pid(pid) {}
 };
 
 using owner_t = int;
 
 struct RunningJob: Job {
     owner_t owner;
-    pid_t pid;
     RunningDuration duration;
     Progress progress;
     std::string step;
@@ -213,7 +214,7 @@ struct RunningJob: Job {
         }
     }
     
-    RunningJob(const std::string& name, owner_t owner, pid_t pid): Job(name), owner(owner), pid(pid) {}
+    RunningJob(const std::string& name, owner_t owner, pid_t pid): Job(name, pid), owner(owner) {}
 };
 
 struct CompletedJob: Job {
