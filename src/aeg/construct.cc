@@ -778,15 +778,30 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     using ID = CFG::ID;
     
     std::vector<AddrInfo> addrs;
+#if 0
     std::unordered_map<std::pair<ID, const llvm::Value *>, NodeRef> seen;
+#elif 0
+    std::unordered_map<ValueLoc, NodeRef> seen;
+#else
+    std::unordered_set<ValueLoc> seen;
+#endif
     for (NodeRef i : node_range()) {
         const Node& node = lookup(i);
         if (node.addr_def) {
             const ID& id = *po.lookup(i).id;
             const llvm::Value *V = dynamic_cast<const RegularInst&>(*node.inst).I;
-            addrs.push_back({.id = id, .V = V, .e = *node.addr_def, .ref = i});
-            [[maybe_unused]] const auto res = seen.emplace(std::make_pair(id, V), i);
+            const AddrInfo addr = {
+                .id = id,
+                .V = V,
+                .e = *node.addr_def,
+                .ref = i
+            };
+            addrs.push_back(addr);
+            [[maybe_unused]] const auto res = seen.emplace(addr.vl());
             
+#if 0
+            assert(res.second);
+#endif
             // TODO: ignore collisions for now, since they're introduced during the CFG expansion step.
         }
     }
@@ -797,15 +812,22 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         const CFG::Node& po_node = po.lookup(i);
         if (const auto *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
             for (const llvm::Value *V : inst->addr_refs) {
-#if 1
                 if (llvm::isa<llvm::Argument>(V) || llvm::isa<llvm::Constant>(V)) {
-#else
-                if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
-#endif
                     const ID id {po_node.id->func, {}};
-                    if (seen.emplace(std::make_pair(id, V), i).second) {
+                    if (seen.emplace(ValueLoc(id, V)).second) {
                         const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),
                                                      [&] (const auto& p) {
+                            return p.first == V;
+                        });
+                        assert(it != node.addr_refs.end());
+                        addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
+                    }
+                } else if (llvm::isa<llvm::Constant>(V)) {
+                    assert(V->getType()->isPointerTy());
+                    const ID id {{}, {}};
+                    const ValueLoc vl {id, V};
+                    if (seen.emplace(vl).second) {
+                        const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(), [&] (const auto& p) {
                             return p.first == V;
                         });
                         assert(it != node.addr_refs.end());
@@ -817,6 +839,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     }
     
     std::cerr << addrs.size() << " addrs\n";
+    
+    alias_rel.reserve(addrs.size() * addrs.size());
         
 
         // DEBUG

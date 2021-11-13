@@ -1,5 +1,6 @@
 #include "aeg.h"
 #include "cfg/expanded.h"
+#include "util/algorithm.h"
 
 namespace aeg {
 
@@ -14,8 +15,11 @@ llvm::AliasResult AEG::check_alias(NodeRef ref1, NodeRef ref2) const {
         return llvm::AliasResult::MustAlias;
     }
     
-    const ValueLoc vl1 = get_value_loc(ref1);
-    const ValueLoc vl2 = get_value_loc(ref2);
+    ValueLoc vl1 = get_value_loc(ref1);
+    ValueLoc vl2 = get_value_loc(ref2);
+    if (!(vl1 < vl2)) {
+        std::swap(vl1, vl2);
+    }
     
     const auto it = alias_rel.find(std::make_pair(vl1, vl2));
     if (it == alias_rel.end()) {
@@ -25,10 +29,14 @@ llvm::AliasResult AEG::check_alias(NodeRef ref1, NodeRef ref2) const {
     }
 }
 
-void AEG::add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res) {
+void AEG::add_alias_result(const ValueLoc& vl1_, const ValueLoc& vl2_, llvm::AliasResult res) {
     if (res != llvm::AliasResult::MayAlias) {
-        alias_rel.emplace(std::make_pair(vl1, vl2), res);
-        alias_rel.emplace(std::make_pair(vl2, vl1), res);
+        const ValueLoc *vl1 = &vl1_;
+        const ValueLoc *vl2 = &vl2_;
+        if (!(*vl1 < *vl2)) {
+            std::swap(vl1, vl2);
+        }
+        alias_rel.emplace(std::make_pair(*vl1, *vl2), res);
     }
 }
 

@@ -50,6 +50,13 @@ public:
         bool operator==(const ID& other) const {
             return func == other.func && loop == other.loop;
         }
+        bool operator<(const ID& o) const noexcept {
+            if (func == o.func) {
+                return loop < o.loop;
+            } else {
+                return func < o.func;
+            }
+        }
     };
     
     /** A node in the control flow graph. A node can represent one of the following:

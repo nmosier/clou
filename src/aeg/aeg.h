@@ -218,11 +218,11 @@ public:
     z3::expr cox_exists(NodeRef src, NodeRef dst) const;
     z3::expr frx_exists(NodeRef src, NodeRef dst) const;
     
+    using ValueLoc = std::pair<CFG::ID, const llvm::Value *>;
 private:
     z3::expr com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Access dst_kind) const;
     z3::expr comx_exists_precond(NodeRef src, NodeRef dst, XSAccessType src_kind, XSAccessType dst_kind) const;
 
-    using ValueLoc = std::pair<CFG::ID, const llvm::Value *>;
     using ValueLocRel = std::unordered_map<std::pair<ValueLoc, ValueLoc>, llvm::AliasResult>;
     ValueLocRel alias_rel;
     
@@ -253,6 +253,14 @@ private:
     
     ValueLoc get_value_loc(NodeRef ref) const;
 };
+
+inline bool operator<(const AEG::ValueLoc& a, const AEG::ValueLoc& b) {
+    if (a.first == b.first) {
+        return a.second < b.second;
+    } else {
+        return a.first < b.first;
+    }
+}
 
 
 template <typename Function>
