@@ -659,7 +659,7 @@ void AEG::construct_tfo() {
         const Node& dst_node = lookup(dst);
         tfos.push_back(src_node.arch && dst_node.trans && edge.exists);
     });
-    constraints(z3::atmost(tfos, 1), "at-most-one-spec-intro");
+    constraints(z3::atmost2(tfos, 1), "at-most-one-spec-intro");
     
     // if node introduces speculation, it has no arch successor in tfo
     if (partial_executions) {
