@@ -12,7 +12,6 @@
 #include "util/z3.h"
 #include "util/scope.h"
 #include "aeg/aeg.h"
-#include "uhb.h"
 
 namespace lkg {
 

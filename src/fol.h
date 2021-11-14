@@ -7,7 +7,6 @@
 #include <z3++.h>
 
 #include "noderef.h"
-#include "uhb.h"
 #include "aeg/aeg.h"
 #include "default_map.h"
 #include "util/tuple.h"

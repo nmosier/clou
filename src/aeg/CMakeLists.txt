@@ -7,4 +7,9 @@ add_library(aeg_objs OBJECT
   alias.cc
   output.cc
   fwd.h
+  context.h context.cc
+  constraints.h constraints.cc
+  address.h address.cc
+  node.h node.cc
+  edge.h edge.cc
   )
