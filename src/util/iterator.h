@@ -4,6 +4,7 @@
 
 namespace util {
 
+#if 1
 template <typename Container, typename... Args>
 std::optional<typename Container::const_iterator> contains(const Container& container, Args&&... args) {
     const auto it = container.find(std::forward<Args>(args)...);
@@ -15,6 +16,7 @@ std::optional<typename Container::iterator> contains(Container& container, Args&
     const auto it = container.find(std::forward<Args>(args)...);
     return it == container.end() ? std::nullopt : std::make_optional(it);
 }
+#endif
 
 
 struct null_output_iterator {
@@ -88,6 +90,22 @@ private:
 
 template <typename T>
 using RangeContainer = llvm::iterator_range<RangeIterator<T>>;
+
+
+
+template <typename InputIt, typename Func>
+void for_each_unordered_pair(InputIt first, InputIt last, Func func) {
+    for (auto it1 = first; it1 != last; ++it1) {
+        for (auto it2 = std::next(it1); it2 != last; ++it2) {
+            func(*it1, *it2);
+        }
+    }
+}
+
+template <class Container, class Func>
+void for_each_unordered_pair(const Container& container, Func func) {
+    for_each_unordered_pair(container.begin(), container.end(), func);
+}
 
 
 }

@@ -91,16 +91,15 @@ void CFG::prune() {
 }
 
 bool CFG::llvm_alias_valid(const ID& a, const ID& b) {
-   if (a.func != b.func) {
-      return false;
-   }
-
-   if (!std::equal(a.loop.begin(), a.loop.begin() + std::min(a.loop.size(), b.loop.size()),
-                   b.loop.begin())) {
-      return false;
-   }
-
-   return true;
+    if (a.func != b.func) {
+        return false;
+    }
+    
+    if (!util::prefixeq_bi(a.loop, b.loop)) {
+        return false;
+    }
+    
+    return true;
 }
 
 bool CFG::llvm_alias_valid(const Node& a, const Node& b) {

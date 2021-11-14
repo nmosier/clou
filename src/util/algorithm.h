@@ -126,6 +126,12 @@ bool prefixeq(const std::vector<T>& a, const std::vector<T>& b) {
     return std::equal(a.begin(), a.end(), b.begin());
 }
 
+template <class T>
+bool prefixeq_bi(const std::vector<T>& a, const std::vector<T>& b) {
+    const auto size = std::min(a.size(), b.size());
+    return std::equal(a.begin(), a.begin() + size, b.begin());
+}
+
 template <typename Container>
 std::optional<typename Container::value_type> get_singleton(const Container& container) {
     if (container.size() == 1) {

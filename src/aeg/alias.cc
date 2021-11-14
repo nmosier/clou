@@ -159,6 +159,8 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
         return llvm::AliasResult::NoAlias;
     }
     
+#if 0
+    // NOTE: This is already addressed in the AA rule that makes all alloca's distinct.
     /* unless alloca's scope is a prefix of another scope, it can't alias */
     {
         if (!util::prefixeq(y->id.func, x->id.func)) {
@@ -170,7 +172,10 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             }
         }
     }
+#endif
     
+#if 0
+    // NOTE: I also think this is covered elsewhere.
     /* check if address kinds differ */
     {
         const AddressKind k1 = get_addr_kind(a.V);
@@ -179,7 +184,10 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             return llvm::AliasResult::NoAlias;
         }
     }
+#endif
     
+#if 0
+    // NOTE: This is covered elsewhere.
     {
         if (llvm::isa<llvm::Argument>(x->V)) {
             std::swap(x, y);
@@ -188,6 +196,7 @@ std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const Add
             return llvm::AliasResult::NoAlias;
         }
     }
+#endif
     
     {
         /*
@@ -260,7 +269,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     Timer timer;
     using ID = CFG::ID;
     
-    std::vector<AddrInfo> addrs;
+    using AddrInfoVec = std::vector<AddrInfo>;
+    AddrInfoVec addrs;
     std::unordered_set<ValueLoc> seen;
     
     for (NodeRef i : node_range()) {
@@ -320,12 +330,43 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     
     // optimization parameters
     alias_rel.reserve(addrs.size() * addrs.size());
+    
+    
+    
+    unsigned nos = 0, musts = 0, mays = 0, invalid = 0;
+    const auto add_aa = [&] (const AddrInfo& a, const AddrInfo& b, llvm::AliasResult result, const char *desc) {
+        std::optional<z3::expr> cond;
+        switch (result) {
+            case llvm::AliasResult::NoAlias:
+                ++nos;
+                cond = a.e != b.e;
+                break;
+                
+            case llvm::AliasResult::MayAlias:
+                ++mays;
+                break;
+                
+            case llvm::AliasResult::MustAlias:
+                ++musts;
+                cond = a.e == b.e;
+                break;
+                
+            default:
+                std::abort();
+        }
         
+        if (cond) {
+            constraints(*cond, util::to_string("AA:", desc));
+        }
+        
+        add_alias_result(a.vl(), b.vl(), result);
+    };
 
     
-    
-    /* all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
+    /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
+        std::cerr << __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...\n";
+        Timer timer;
         z3::expr_vector v {context.context};
         for (const AddrInfo& addr : addrs) {
             if (llvm::isa<llvm::AllocaInst, llvm::GlobalValue, llvm::BlockAddress>(addr.V)) {
@@ -335,8 +376,10 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         constraints(z3::distinct2(v), "alloca-addrs-distinct");
     }
     
-    /* all pairs of AllocaInsts and Arguments cannot alias */
+    /* AA: all pairs of AllocaInsts and Arguments cannot alias */
     {
+        std::cerr << __FUNCTION__ << ": allocas and arguments cannot alias...\n";
+        Timer timer;
         std::vector<z3::expr> allocas;
         std::vector<z3::expr> args;
         for (const AddrInfo& addr : addrs) {
@@ -353,20 +396,32 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
     }
     
-#if 0
-    /* AllocInst's can't alias with pointers referenced in a greater scope */
+    /* AA: apply LLVM's built-in alias analysis if possible
+     * Restrictions: both VLs must have the same call stack and loops must nest.
+     * We can make this efficient by sorting all addresses into different buckets by function callstack.
+     */
     {
-        for (const AddrInfo& alloca : addrs) {
-            if (!llvm::isa<llvm::AllocaInst>(alloca.V)) { continue; }
-            
+        std::cerr << __FUNCTION__ << ": applying LLVM's built-in alias analysis...\n";
+        std::map<std::vector<CFG::FuncID>, std::vector<AddrInfoVec::const_iterator>> groups;
+        for (auto it = addrs.begin(); it != addrs.end(); ++it) {
+            const AddrInfo& addr = *it;
+            groups[addr.id.func].push_back(it);
+        }
+        
+        for (const auto& p : groups) {
+            const auto& group = p.second;
+            util::for_each_unordered_pair(group, [&] (AddrInfoVec::const_iterator it1, AddrInfoVec::const_iterator it2) {
+                if (!util::prefixeq_bi(it1->id.loop, it2->id.loop)) { return; }
+                add_aa(*it1, *it2, AA.alias(it1->V, it2->V), "llvm");
+            });
         }
     }
-    // NOTE: already computed elsewhere. Paused moving for now.
-#endif
     
+    /* AA:   */
+    
+    
+#if 0
     // add constraints
-    unsigned nos, musts, mays, invalid;
-    nos = musts = mays = invalid = 0;
     
     using ValueLocSet = std::unordered_set<ValueLoc>;
     ValueLocSet skip_vls; // skip because already saw 'must alias'
@@ -383,14 +438,14 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
         ++progress;
         const ValueLoc vl1 = it1->vl();
-        if (util::contains(skip_vls, vl1)) { continue; }
+        if (skip_vls.contains(vl1)) { continue; }
         for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
             const ValueLoc vl2 = it2->vl();
 
             if (check_alias(vl1, vl2) != llvm::AliasResult::MayAlias) { continue; }
             
             if (const auto alias_res = compute_alias(*it1, *it2, AA)) {
-                if (util::contains(skip_vls, vl2)) { continue; }
+                if (skip_vls.contains(vl2)) { continue; }
 
                 std::optional<z3::expr> cond;
                 switch (*alias_res) {
@@ -428,10 +483,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
         }
     }
-    std::cerr << "NoAlias: " << nos << "\n"
-    << "MustAlias: " << musts << "\n"
-    << "MayAlias: " << mays << "\n"
-    << "InvalidAlias: " << invalid << "\n";
+#endif
+    
+    std::cerr << "NoAlias: " << nos << "\n";
+    std::cerr << "MustAlias: " << musts << "\n";
+    std::cerr << "MayAlias: " << addrs.size() * addrs.size() - nos - musts << "\n";
 }
 
 }
