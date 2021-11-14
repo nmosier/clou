@@ -10,7 +10,7 @@ class Progress {
 public:
     Progress(): os(nullptr) {}
     
-    Progress(std::size_t total, const std::string& s = "", std::ostream& os = std::cerr, unsigned precision = 2): s(s), os(&os), cur(0), total(total), precision(precision), scale(std::pow(10, precision)), start(now()) {
+    Progress(std::size_t total, const std::string& s = "", std::ostream& os = std::cerr, unsigned precision = 2): s(s), os(&os), cur(0), total(std::max(total, 1UL)), precision(precision), scale(std::pow(10, precision)), start(now()) {
         update();
     }
     
