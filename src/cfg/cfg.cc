@@ -1,5 +1,3 @@
-#include <queue>
-#include <compare>
 #include <set>
 
 #include "cfg/cfg.h"
@@ -162,13 +160,6 @@ bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const 
 void CFG::compute_postorder(NodeRefVec& order) const {
     /* ALGORITHM:
      * Maintain a min-heap  */
-    
-    struct State {
-        NodeRef ref;
-        std::size_t nsuccs;
-        // State(NodeRef ref, std::size_t nsuccs): ref(ref), nsuccs(nsuccs) {}
-        std::weak_ordering operator<=>(const State& other) const { return nsuccs <=> other.nsuccs; }
-    };
     
     std::vector<std::size_t> ref2n(size());
     std::set<std::pair<std::size_t, NodeRef>> heap;
