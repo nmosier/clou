@@ -151,10 +151,12 @@ void AEG::test() {
     constraints.add_to(solver);
     
     std::cerr << solver.statistics() << "\n";
-    
+
+#if 0
     std::optional<Timer> timer = Timer();
     z3::scope scope {solver};
     timer = std::nullopt;
+#endif
     
     // TODO: clean this crap up
     {
