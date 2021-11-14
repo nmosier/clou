@@ -13,7 +13,6 @@ add_library(lcm MODULE
   lcm.cc           lcm.h
   config.cc        config.h
   inst.cc          inst.h   
-  uhb.cc           uhb.h
   fol.h
   shm.cc           shm.h
   binrel.h
