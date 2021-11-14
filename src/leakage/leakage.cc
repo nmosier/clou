@@ -19,7 +19,7 @@
 
 namespace aeg {
 
-unsigned AEG::leakage(z3::solver& solver) {
+unsigned AEG::leakage(Solver& solver) {
     switch (leakage_class) {
         case LeakageClass::SPECTRE_V4: {
             auto detector = std::make_unique<lkg::SpectreV4_Detector>(*this, solver);
@@ -56,7 +56,7 @@ z3::context& Detector::ctx() { return aeg.context.context; }
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {
+Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {
     aeg.po.reverse_postorder(std::back_inserter(order));
 }
 

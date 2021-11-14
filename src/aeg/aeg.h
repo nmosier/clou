@@ -103,7 +103,10 @@ private:
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
 
-    z3::solver make_solver();
+public:
+    using Solver = z3::trivial_solver<z3::lazy_solver<z3::solver>>;
+private:
+    Solver make_solver();
     
     
 public:
@@ -135,7 +138,7 @@ private:
     void construct_postdominators() { postdominators = construct_dominators_shared(Direction::IN); }
     void construct_control_equivalents();
     
-    unsigned leakage(z3::solver& solver);
+    unsigned leakage(Solver& solver);
     
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
     

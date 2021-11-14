@@ -181,24 +181,6 @@ inline z3::check_result check_force(z3::solver& solver, Args&&... args) {
     }
 }
 
-#if 0
-class checker {
-public:
-    checker(z3::solver& solver): solver(solver) {}
-    
-    z3::check_result operator()() {
-        if (!result) {
-            result = solver.check();
-        }
-        return *result;
-    }
-    
-private:
-    z3::solver& solver;
-    std::optional<z3::check_result> result;
-};
-#endif
-
 template <typename InputIt, typename Op>
 z3::expr_vector transform(z3::context& ctx, InputIt begin, InputIt end, Op op) {
     z3::expr_vector vec {ctx};
@@ -233,8 +215,8 @@ class trivial_solver {
     static_assert(std::is_class<Solver>());
 public:
     using solver_type = Solver;
-    trivial_solver(z3::context& c): s(c) {}
-    trivial_solver(z3::solver& s): s(s) {}
+    explicit trivial_solver(z3::context& c): s(c) {}
+    explicit trivial_solver(const z3::solver& s): s(s) {}
     z3::context& ctx() const { return s.ctx(); }
     void push();
     void pop();
@@ -332,8 +314,8 @@ template <class Solver>
 class lazy_solver {
 public:
     using solver_type = Solver;
-    lazy_solver(z3::context& c): s(c) {}
-    lazy_solver(z3::solver& s): s(s) {}
+    explicit lazy_solver(z3::context& c): s(c) {}
+    explicit lazy_solver(const z3::solver& s): s(s) {}
     lazy_solver(const lazy_solver&) = delete;
     lazy_solver& operator=(const lazy_solver&) = delete;
     z3::context& ctx() const { return s.ctx(); }
@@ -450,8 +432,8 @@ template <typename Solver>
 class simplify_solver {
     static_assert(std::is_class<Solver>());
 public:
-    simplify_solver(z3::context& ctx): s(ctx) {}
-    simplify_solver(z3::solver& solver): s(solver) {}
+    explicit simplify_solver(z3::context& ctx): s(ctx) {}
+    explicit simplify_solver(const z3::solver& solver): s(solver) {}
     simplify_solver(const simplify_solver&) = delete;
     simplify_solver& operator=(const simplify_solver&) = delete;
     

@@ -23,7 +23,7 @@
 
 namespace aeg {
 
-z3::solver AEG::make_solver() {
+AEG::Solver AEG::make_solver() {
     z3::context& c = context.context;
     
     if (std::getenv("VERBOSE")) {
@@ -55,9 +55,9 @@ z3::solver AEG::make_solver() {
             add(tok);
         }
         std::free(s__);
-        return acc.mk_solver();
+        return Solver(acc.mk_solver());
     } else {
-        return z3::solver(c);
+        return Solver(c);
     }
 }
 
@@ -99,7 +99,7 @@ void AEG::test() {
 #if 0
     z3::solver solver {context.context};
 #else
-    z3::solver solver = make_solver();
+    Solver solver = make_solver();
 #endif
     
     simplify();
@@ -150,7 +150,9 @@ void AEG::test() {
     // add main constraints
     constraints.add_to(solver);
     
+#if 0
     std::cerr << solver.statistics() << "\n";
+#endif
 
 #if 0
     std::optional<Timer> timer = Timer();

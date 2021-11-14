@@ -24,8 +24,11 @@ struct Leakage {
     NodeRef get_transmitter() const { std::abort(); }
 };
 
+
 class Detector {
 public:
+    using Solver = aeg::AEG::Solver;
+    
     virtual void run() = 0;
     virtual ~Detector() {
         std::cerr << rf_source_count << "\n";
@@ -47,14 +50,8 @@ protected:
     using Mems = std::unordered_map<NodeRef, z3::expr>;
     
     aeg::AEG& aeg;
-#if 0
-    z3::solver& solver;
-#else
-# if 1
-    using Solver = z3::trivial_solver<z3::solver>;
-# endif
-    Solver solver;
-#endif
+    Solver& solver;
+
     using Actions = std::vector<std::string>;
     using PushAction = util::push_scope<Actions>;
     Actions actions;
@@ -66,7 +63,7 @@ protected:
     
     EdgeVec flag_edges;
     
-    Detector(aeg::AEG& aeg, z3::solver& solver);
+    Detector(aeg::AEG& aeg, Solver& solver);
     
     z3::context& ctx();
     
@@ -110,7 +107,7 @@ private:
     std::unordered_map<NodeRef, unsigned> rf_source_count;
 };
 
-template <typename Leakage>
+template <class Leakage>
 class Detector_: public Detector {
 public:
     using leakage_type = Leakage;
@@ -126,7 +123,7 @@ protected:
 
     void output_execution(const Leakage& leak);
     
-    Detector_(aeg::AEG& aeg, z3::solver& solver): Detector(aeg, solver) {}
+    Detector_(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}
     
 private:
     std::vector<std::pair<Leakage, std::string>> leaks;

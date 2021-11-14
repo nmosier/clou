@@ -19,7 +19,7 @@ struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
 
 class SpectreV4_Detector: public Detector_<SpectreV4_Leakage> {
 public:
-    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver): Detector_(aeg, solver) {}
+    SpectreV4_Detector(aeg::AEG& aeg, Solver& solver): Detector_(aeg, solver) {}
 private:
     SpectreV4_Leakage leak;
     

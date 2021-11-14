@@ -48,21 +48,6 @@ Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arc
 
 Context::Context(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
 
-void Constraints::add_to(z3::solver& solver) const {
-    for (const auto& p : exprs) {
-        std::stringstream ss;
-        if (include_expr_in_constraint_name) {
-            ss << p.first << ":";
-        }
-        ss << p.second << ":" << constraint_counter++;
-        if constexpr (should_name_constraints) {
-            solver.add(p.first, ss.str().c_str());
-        } else {
-            solver.add(p.first);
-        }
-    }
-}
-
 void Constraints::operator()(const z3::expr& clause, const std::string& name) {
     assert(!name.empty());
     if ((simplify_before_checking_for_false_constraints ? clause.simplify() : clause).is_false()) {

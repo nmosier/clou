@@ -69,7 +69,8 @@ struct Constraints {
     Constraints() {}
     explicit Constraints(const z3::expr& expr, const std::string& name): exprs({{expr, name}}) {}
     
-    void add_to(z3::solver& solver) const;
+    template <class Solver>
+    void add_to(Solver& solver) const;
     
     void operator()(const z3::expr& clause, const std::string& name);
     
@@ -261,6 +262,24 @@ X(DATA)
 std::ostream& operator<<(std::ostream& os, const aeg::Edge& e);
 inline std::ostream& operator<<(std::ostream& os, aeg::Edge::Kind kind) {
     return os << aeg::Edge::kind_tostr(kind);
+}
+
+
+
+template <class Solver>
+void Constraints::add_to(Solver& solver) const {
+    for (const auto& p : exprs) {
+        std::stringstream ss;
+        if (include_expr_in_constraint_name) {
+            ss << p.first << ":";
+        }
+        ss << p.second << ":" << constraint_counter++;
+        if constexpr (should_name_constraints) {
+            solver.add(p.first, ss.str().c_str());
+        } else {
+            solver.add(p.first);
+        }
+    }
 }
 
 }
