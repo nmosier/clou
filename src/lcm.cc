@@ -30,8 +30,6 @@
 #include "util/scope.h"
 #include "timer.h"
 
-using llvm::errs;
-
 Timer timer {nullptr};
 std::string get_time() {
     return timer.get_str();
@@ -40,7 +38,9 @@ std::string get_time() {
 template <typename Graph>
 void output_(const Graph& graph, const std::string& name, const llvm::Function& F) {
     if (!output_dir.empty()) {
-        graph.dump_graph(format_graph_path(output_dir + "/" + name + "-%s.dot", F));
+        std::stringstream ss;
+        ss << output_dir << "/" << name << "-" << F.getName().str() << ".dot";
+        graph.dump_graph(ss.str());
     }
 }
 

@@ -179,6 +179,7 @@ log_(fmt __VA_OPT__(,) __VA_ARGS__); \
 std::exit(1); \
 } while (false)
 
+#if 0
 template <typename... Args>
 std::string format(const std::string& fmt, Args&&... args) {
     char *s;
@@ -197,6 +198,7 @@ inline std::string format_graph_path(const std::string& fmt, const llvm::Functio
     return format(fmt.c_str(), F.getName().str().c_str());
 #endif
 }
+#endif
 
 
 namespace util {

@@ -11,7 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
     libz3-dev \
     lldb-12 \
     tmux \
-    less emacs-nox
+    less emacs-nox htop
 
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"

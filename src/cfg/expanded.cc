@@ -198,48 +198,32 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
     
 /* Idea: use a string-table-like approach. Rather than the map's values being a NodeRefSet, it is an index into a table of NodeRefSets.
  */
-#if 0
-    std::vector<Map> maps(size(), Map(size()));
-#else
     std::vector<std::optional<Map>> maps {size()};
-#endif
 
     NodeRefSet done;
     for (const NodeRef ref : reverse_postorder()) {
         done.insert(ref);
 
         // merge incoming
-#if 0
-        Map& map = maps[ref];
-#else
         Map& map = *(maps[ref] = Map {size()});
-#endif
         for (const NodeRef pred : po.rev.at(ref)) {
-#if 0
-            Map& a = maps.at(pred);
-#else
-            Map& a = *maps.at(pred);
-#endif
+            auto& a = maps.at(pred);
 
             // check this predecessor will be done (all successors processed)
-            if (util::subset(po.fwd.at(pred), done)) {
-                // merge container
-                map.merge(a);
+            const bool pred_done = util::subset(po.fwd.at(pred), done);
+            if (pred_done) {
+                if (map.empty()) {
+                    map = std::move(*a);
+                } else {
+                    map.merge(*a);
+                }
+                a = std::nullopt;
             } else if (map.empty()) {
-                map = a;
+                map = *a;
             } else {
-                for (const auto& p : a) {
+                for (const auto& p : *a) {
                     map[p.first].insert(p.second.begin(), p.second.end());
                 }
-            }
-            
-            // check if done
-            if (util::subset(po.fwd.at(pred), done)) {
-#if 0
-                maps.at(pred).clear();
-#else
-                maps.at(pred) = std::nullopt;
-#endif
             }
         }
 
