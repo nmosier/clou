@@ -331,7 +331,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 v.push_back(addr.e);
             }
         }
-        constraints(z3::distinct(v), "alloca-addrs-distinct");
+        constraints(z3::distinct2(v), "alloca-addrs-distinct");
     }
     
     /* all pairs of AllocaInsts and Arguments cannot alias */
