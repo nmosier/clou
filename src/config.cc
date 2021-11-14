@@ -397,7 +397,6 @@ int parse_args() {
                     witness_executions = false;
                     partial_executions = true;
                     output_cfgs.clearall();
-                    output_cfgs.expanded = true;
                     use_lookahead = true;
                 }
                 break;

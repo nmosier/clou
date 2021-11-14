@@ -220,17 +220,12 @@ struct LCMPass: public llvm::ModulePass {
                 });
                 set.erase("");
 
+                mon::Message msg;
                 for (const std::string& s : set) {
                     analyzed_functions.insert(s);
+                    msg.mutable_funcs_analyzed()->add_funcs()->set_name(s);
                 }
-                
-                {
-                    mon::Message msg;
-                    for (const std::string& s : set) {
-                        msg.mutable_funcs_analyzed()->add_funcs()->set_name(s);
-                    }
-                    client.send(msg);
-                }
+                client.send(msg);
             }
             
         } catch (const util::resume& resume) {

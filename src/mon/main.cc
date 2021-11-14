@@ -691,7 +691,7 @@ void Monitor::handle_func_properties(const mon::FunctionProperties& msg, pid_t p
             }
         }
     }
-    table_os << "PROPERTIES" << " " << msg.func().name() << " ";
+    table_os << "PROPERTIES" << " " << pid << " " << msg.func().name() << " ";
     for (auto it = msg.properties().begin(); it != msg.properties().end(); ++it) {
         if (it != msg.properties().begin()) {
             table_os << ",";
