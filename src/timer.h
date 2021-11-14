@@ -10,6 +10,10 @@ public:
         start_();
     }
     
+    Timer(std::ostream *os): os(os) {
+        start_();
+    }
+    
     Timer(Timer&& other) {
         *this = std::move(other);
     }
@@ -31,6 +35,18 @@ public:
         return elapsed_sec.count();
     }
     
+    std::string get_str() const {
+        float secs = get();
+        const char *unit = "s";
+        if (secs < 1) {
+            secs *= 1000;
+            unit = "ms";
+        }
+        char buf[128];
+        sprintf(buf, "%.1f%s", secs, unit);
+        return std::string(buf);
+    }
+    
     bool good() const { return os != nullptr; }
     operator bool() const { return good(); }
 
@@ -47,15 +63,7 @@ private:
     }
     
     void show() const {
-        float secs = get();
-        const char *unit = "s";
-        if (secs < 1) {
-            secs *= 1000;
-            unit = "ms";
-        }
-        char buf[128];
-        sprintf(buf, "%.1f", secs);
-        *os << buf << unit << "\n";
+        *os << get_str() << "\n";
     }
 };
 

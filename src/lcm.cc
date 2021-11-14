@@ -28,8 +28,14 @@
 #include "cfg/block.h"
 #include "util/exception.h"
 #include "util/scope.h"
+#include "timer.h"
 
 using llvm::errs;
+
+Timer timer {nullptr};
+std::string get_time() {
+    return timer.get_str();
+}
 
 template <typename Graph>
 void output_(const Graph& graph, const std::string& name, const llvm::Function& F) {
@@ -55,6 +61,7 @@ struct LCMPass: public llvm::ModulePass {
             } else {
                 llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
                 open_log(F->getName().str());
+                timer = Timer(nullptr); // reset timer
                 runOnFunction(*F, AA);
                 close_log();
             }

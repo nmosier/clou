@@ -8,6 +8,7 @@
 #include <vector>
 #include <variant>
 #include <sstream>
+#include <string>
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Format.h>
@@ -155,10 +156,11 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Value& V) {
 }
 
 extern unsigned verbose;
+std::string get_time();
 #define logv(level, msg) \
 do { \
 if (verbose >= level) { \
-llvm::errs() << msg; \
+llvm::errs() << "[" << get_time() << "] " << msg; \
 } \
 } while (false)
 

@@ -402,6 +402,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
      */
     {
         std::cerr << __FUNCTION__ << ": applying LLVM's built-in alias analysis...\n";
+        Timer timer;
         std::map<std::vector<CFG::FuncID>, std::vector<AddrInfoVec::const_iterator>> groups;
         for (auto it = addrs.begin(); it != addrs.end(); ++it) {
             const AddrInfo& addr = *it;
