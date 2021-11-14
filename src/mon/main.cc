@@ -15,6 +15,7 @@
 #include <thread>
 #include <algorithm>
 #include <variant>
+#include <fstream>
 
 #include <curses.h>
 
@@ -29,7 +30,8 @@ namespace {
 int argc;
 char **argv;
 
-const char *path;
+const char *fifo_path = nullptr;
+const char *table_path = nullptr;
 
 void perror_exit(const char *s) {
     fprintf(stderr, "%s: %s: %s\n", prog, s, std::strerror(errno));
@@ -46,7 +48,7 @@ std::exit(EXIT_FAILURE); \
 }
 
 void usage(FILE *f) {
-    const char *s = R"=(usage: %s [-h] <fifo_path>
+    const char *s = R"=(usage: %s [-h] [-f <fifo>=$FIFO] [-t <path>]
 )=";
     ;
     fprintf(f, s, prog);
@@ -67,7 +69,7 @@ int main(int argc, char *argv[]) {
     ::argv = argv;
     ::prog = argv[0];
     
-    const char *optstr = "h";
+    const char *optstr = "hf:t:";
     int optchar;
     while ((optchar = getopt(argc, argv, optstr)) >= 0) {
         switch (optchar) {
@@ -75,14 +77,19 @@ int main(int argc, char *argv[]) {
                 usage(stdout);
                 return EXIT_SUCCESS;
                 
+            case 'f':
+                ::fifo_path = fifo_path = optarg;
+                break;
+                
+            case 't':
+                table_path = optarg;
+                break;
+                
             default:
                 usage(stderr);
                 return EXIT_FAILURE;
         }
     }
-    
-    const char *path = nextarg();
-    ::path = path;
     
     int fd;
     if ((fd = ::socket(PF_LOCAL, SOCK_STREAM, 0)) < 0) {
@@ -91,12 +98,12 @@ int main(int argc, char *argv[]) {
     
     // cleanup
     std::atexit([] () {
-        ::unlink(::path);
+        ::unlink(::fifo_path);
     });
     
     struct sockaddr_un addr;
     addr.sun_family = AF_LOCAL;
-    std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+    std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fifo_path);
     if (::bind(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) < 0) {
         perror_exit("bind");
     }
@@ -373,10 +380,12 @@ struct Monitor: Component {
     /* Control stuff */
     std::mutex mutex;
     int server_sock;
+    std::ofstream table_os;
     std::thread listen_thd;
     std::vector<std::thread> client_thds;
     std::thread display_thd;
     std::unordered_set<std::string> analyzed_functions;
+    RunningDuration clock;
 
     /* Display stuff */
     unsigned msgs = 0;
@@ -388,7 +397,11 @@ struct Monitor: Component {
     AbortedJobList aborted_jobs {16};
     
     /** NOTE: \p server_sock must already be set to listening. */
-    Monitor(int server_sock): server_sock(server_sock) {}
+    Monitor(int server_sock, const char *table_path): server_sock(server_sock) {
+        if (table_path != nullptr) {
+            table_os.open(table_path);
+        }
+    }
     
     virtual void display() override {
         static unsigned i = 0;
@@ -452,6 +465,12 @@ private:
         ++msgs;
         return true;
     }
+    
+#if 0
+    void table_output(pid_t pid, const std::string& func, const char *kind) {
+        table_os << clock.duration().secs << " " << pid << " " << func << " " << kind << "\n";
+    }
+#endif
 };
 
 #if 0
@@ -623,6 +642,7 @@ bool Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
 
 void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid) {
     running_jobs.vec.emplace_back(msg.func().name(), owner, pid);
+    table_os << "START" << " " << clock.duration().secs << " " << pid << " " << msg.func().name() << "\n";
 }
 
 void Monitor::handle_func_completed(const mon::FunctionCompleted& msg, pid_t pid) {
@@ -637,6 +657,7 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg, pid_t pid
     RunningJob job = *it;
     running_jobs.vec.erase(it);
     completed_jobs.vec.emplace_back(job);
+    table_os << "COMPLETE" << " " << clock.duration().secs << " " << pid << " " << msg.func().name() << "\n";
 }
 
 void Monitor::handle_func_progress(const mon::FunctionProgress& msg, pid_t pid) {
@@ -651,6 +672,7 @@ void Monitor::handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg) {
     util::transform(msg.funcs(), std::inserter(analyzed_functions, analyzed_functions.end()), [] (const mon::Function& func) -> std::string {
         return func.name();
     });
+    table_os << "ANALYZE" << " " << clock.duration().secs << " " << msg.funcs().size() << "\n";
 }
 
 void Monitor::handle_func_step(const mon::FunctionStep& msg, pid_t pid) {
@@ -669,6 +691,14 @@ void Monitor::handle_func_properties(const mon::FunctionProperties& msg, pid_t p
             }
         }
     }
+    table_os << "PROPERTIES" << " " << msg.func().name() << " ";
+    for (auto it = msg.properties().begin(); it != msg.properties().end(); ++it) {
+        if (it != msg.properties().begin()) {
+            table_os << ",";
+        }
+        table_os << "{" << it->first << "=" << it->second << "}";
+    }
+    table_os << "\n";
 }
 
 
@@ -677,7 +707,7 @@ void server(int server_sock) {
     
     // listen for incoming connections
     
-    Monitor monitor {server_sock};
+    Monitor monitor {server_sock, table_path};
     
     monitor.run();
     
