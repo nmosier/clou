@@ -3,6 +3,7 @@
 #include "util/algorithm.h"
 #include "util/llvm.h"
 #include "timer.h"
+#include "util/z3.h"
 
 namespace aeg {
 
