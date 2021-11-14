@@ -10,7 +10,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
     apt-utils apt-transport-https ca-certificates gnupg dialog \
     libz3-dev \
     lldb-12 \
-    tmux
+    tmux \
+    less
 
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"
