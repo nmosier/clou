@@ -228,6 +228,7 @@ private:
     
 public:
     llvm::AliasResult check_alias(NodeRef ref1, NodeRef ref2) const;
+    llvm::AliasResult check_alias(const ValueLoc& vl1, const ValueLoc& vl2) const;
 private:
     struct AddrInfo {
         CFG::ID id;

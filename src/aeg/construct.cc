@@ -7,8 +7,8 @@
 #include "util/iterator.h"
 #include "util/output.h"
 #include "config.h"
-#include "util/llvm.h"
 #include "cfg/block.h"
+#include "util/llvm.h"
 
 namespace aeg {
 
@@ -166,7 +166,9 @@ void AEG::construct_addr_defs() {
                             if (refs.size() == 1) {
                                 const NodeRef base_ref = *refs.begin();
                                 node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset).simplify());
+#if 0
                                 llvm::errs() << "GEP address: " << util::to_string(node.addr_def->addr) << ": " << *GEP << "\n";
+#endif
                                 continue;
                             }
                         }
@@ -213,7 +215,9 @@ void AEG::construct_addr_refs() {
                             globals_it = globals.emplace(G, Address {context}).first;
                         }
                         e = globals_it->second;
+#if 0
                         llvm::errs() << "GLOBAL: " << *G << "\n" << inst->I << "\n";
+#endif
                     } else {
                         auto& os = llvm::errs();
                         os << "Expected argument but got " << *V << "\n";
@@ -690,258 +694,7 @@ void AEG::construct_tfo() {
     constraints(z3::exactly(cold_start, 1), "one-cold-start");
 }
 
-std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) {
-    const AddrInfo *x = &a;
-    const AddrInfo *y = &b;
-    
-    /* check if LLVM's built-in alias analysis is valid */
-    if (po.llvm_alias_valid(a.id, b.id)) {
-        return AA.alias(a.V, b.V);
-    }
-    
-    if (alias_mode.llvm_only) {
-        return std::nullopt;
-    }
-    
-    // EXPERIMENTAL: try inter-procedural alias analysis
-    if (!compatible_types(a.V->getType(), b.V->getType())) {
-        return llvm::AliasResult::NoAlias;
-    }
-    
-    /* unless alloca's scope is a prefix of another scope, it can't alias */
-    {
-        if (!util::prefixeq(y->id.func, x->id.func)) {
-            std::swap(x, y);
-        }
-        if (!util::prefixeq(x->id.func, y->id.func)) {
-            if (llvm::isa<llvm::AllocaInst>(x->V)) {
-                return llvm::NoAlias;
-            }
-        }
-    }
-    
-    /* check if address kinds differ */
-    {
-        const AddressKind k1 = get_addr_kind(a.V);
-        const AddressKind k2 = get_addr_kind(b.V);
-        if (k1 != AddressKind::UNKNOWN && k2 != AddressKind::UNKNOWN && k1 != k2) {
-            return llvm::AliasResult::NoAlias;
-        }
-    }
-    
-    {
-        if (llvm::isa<llvm::Argument>(x->V)) {
-            std::swap(x, y);
-        }
-        if (llvm::isa<llvm::Argument>(x->V) && llvm::isa<llvm::AllocaInst>(y->V)) {
-            return llvm::AliasResult::NoAlias;
-        }
-    }
-    
-    {
-        /*
-         * If the types of the alloca and the getelementptr base aren't equal, then we know that the getelementptr result can't alias.
-         */
-        if (llvm::isa<llvm::AllocaInst>(y->V)) {
-            std::swap(x, y);
-        }
-        if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(x->V)) {
-            const llvm::Type *T1 = AI->getType()->getPointerElementType();
-            if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(y->V)) {
-                if (!llvm::getelementptr_can_zero(GEP)) {
-                    return llvm::AliasResult::NoAlias;
-                }
-                
-                const llvm::Type *T2 = GEP->getPointerOperand()->getType()->getPointerElementType();
-                if (T1 != T2) {
-                    return llvm::AliasResult::NoAlias;
-                }
-            }
-            
-            const llvm::Type *T2 = y->V->getType()->getPointerElementType();
-            if (!T1->isStructTy() && T2->isStructTy()) {
-                return llvm::AliasResult::NoAlias;
-            }
-        }
-    }
-    
-    {
-        logv(3, "alias-fail: " << *a.V << " -- " << *b.V << "\n");
-    }
-    
-    /* check whether pointers point to different address spaces */
-    
-    return std::nullopt;
-}
 
-void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
-    using ID = CFG::ID;
-    
-    std::vector<AddrInfo> addrs;
-#if 0
-    std::unordered_map<std::pair<ID, const llvm::Value *>, NodeRef> seen;
-#elif 0
-    std::unordered_map<ValueLoc, NodeRef> seen;
-#else
-    std::unordered_set<ValueLoc> seen;
-#endif
-    for (NodeRef i : node_range()) {
-        const Node& node = lookup(i);
-        if (node.addr_def) {
-            const ID& id = *po.lookup(i).id;
-            const llvm::Value *V = dynamic_cast<const RegularInst&>(*node.inst).I;
-            const AddrInfo addr = {
-                .id = id,
-                .V = V,
-                .e = *node.addr_def,
-                .ref = i
-            };
-            addrs.push_back(addr);
-            [[maybe_unused]] const auto res = seen.emplace(addr.vl());
-            
-#if 0
-            assert(res.second);
-#endif
-            // TODO: ignore collisions for now, since they're introduced during the CFG expansion step.
-        }
-    }
-    
-    // check for arguments
-    for (NodeRef i = 0; i < size(); ++i) {
-        const Node& node = lookup(i);
-        const CFG::Node& po_node = po.lookup(i);
-        if (const auto *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
-            for (const llvm::Value *V : inst->addr_refs) {
-                if (llvm::isa<llvm::Argument>(V) || llvm::isa<llvm::Constant>(V)) {
-                    const ID id {po_node.id->func, {}};
-                    if (seen.emplace(ValueLoc(id, V)).second) {
-                        const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),
-                                                     [&] (const auto& p) {
-                            return p.first == V;
-                        });
-                        assert(it != node.addr_refs.end());
-                        addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
-                    }
-                } else if (llvm::isa<llvm::Constant>(V)) {
-                    assert(V->getType()->isPointerTy());
-                    const ID id {{}, {}};
-                    const ValueLoc vl {id, V};
-                    if (seen.emplace(vl).second) {
-                        const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(), [&] (const auto& p) {
-                            return p.first == V;
-                        });
-                        assert(it != node.addr_refs.end());
-                        addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
-                    }
-                }
-            }
-        }
-    }
-    
-    std::cerr << addrs.size() << " addrs\n";
-    
-    alias_rel.reserve(addrs.size() * addrs.size());
-        
-
-        // DEBUG
-        {
-            for (const auto& addr : addrs) {
-#if 0
-                if (llvm::isa<llvm::Constant>(addr.V)) {
-                    llvm::errs() << "constant: " << *addr.V << ":";
-#define check(type) if (llvm::isa<llvm::type>(addr.V)) std::cerr << " " #type
-                    check(GlobalValue);
-                    check(ConstantData);
-                    check(ConstantExpr);
-                }
-                std::cerr << "\n";
-#endif
-                if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(addr.V)) {
-                    if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
-                        llvm::errs() << "GEP constant offset " << *offset << ": " << *GEP << "\n";
-                    } else {
-                        llvm::errs() << "GEP non-constant offset: " << *GEP << "\n";
-                    }
-                }
-            }
-        }
-        
-        
-    
-    // add constraints
-    unsigned nos, musts, mays, invalid;
-    nos = musts = mays = invalid = 0;
-    
-    using ValueLocSet = std::unordered_set<ValueLoc>;
-    ValueLocSet skip_vls; // skip because already saw 'must alias'
-    
-    for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
-        const ValueLoc vl1 = it1->vl();
-        if (util::contains(skip_vls, vl1)) { continue; }
-        for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
-            if (const auto alias_res = compute_alias(*it1, *it2, AA)) {
-                const ValueLoc vl2 = it2->vl();
-                if (util::contains(skip_vls, vl2)) { continue; }
-
-                const auto is_arch = [&] (const AddrInfo& x) -> z3::expr {
-                    if (x.ref) {
-                        return lookup(*x.ref).arch;
-                    } else {
-                        return context.TRUE;
-                    }
-                };
-                
-                const z3::expr arch1 = is_arch(*it1);
-                const z3::expr arch2 = is_arch(*it2);
-                const z3::expr precond = alias_mode.transient ? context.TRUE : (arch1 && arch2);
-                
-                switch (*alias_res) {
-                    case llvm::AliasResult::NoAlias: {
-#if 0
-                        // DEBUG
-                        {
-                            z3::solver solver {context.context};
-                            solver.add(it1->e != it2->e);
-                            if (solver.check() != z3::sat) {
-                                std::cerr << it1->e << " != " << it2->e << "\n";
-                                llvm::errs() << *it1->V << "\n" << *it2->V << "\n";
-                                std::exit(1);
-                            }
-                        }
-#endif
-                        
-                        constraints(z3::implies(precond, it1->e != it2->e), "no-alias");
-                        ++nos;
-                        break;
-                    }
-                        
-                    case llvm::AliasResult::MayAlias: {
-                        ++mays;
-                        break;
-                    }
-                        
-                    case llvm::AliasResult::MustAlias: {
-                        skip_vls.insert(vl2);
-                        constraints(z3::implies(precond, it1->e == it2->e), "must-alias");
-                        ++musts;
-                        break;
-                    }
-                        
-                    default: std::abort();
-                }
-                
-                add_alias_result(vl1, vl2, *alias_res);
-                
-            } else {
-                ++invalid;
-            }
-        }
-    }
-    std::cerr << "NoAlias: " << nos << "\n"
-    << "MustAlias: " << musts << "\n"
-    << "MayAlias: " << mays << "\n"
-    << "InvalidAlias: " << invalid << "\n";
-}
 
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
