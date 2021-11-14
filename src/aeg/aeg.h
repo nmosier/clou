@@ -12,12 +12,15 @@
 
 #include "util/fwd/z3.h"
 #include "graph.h"
-#include "uhb.h"
 #include "noderef.h"
 #include "progress.h"
 #include "util/iterator.h"
 #include "util/output.h"
 #include "aeg/fwd.h"
+#include "aeg/context.h"
+#include "aeg/edge.h"
+#include "aeg/node.h"
+#include "inst.h"
 
 class CFG_Expanded;
 

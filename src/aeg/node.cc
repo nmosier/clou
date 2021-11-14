@@ -1,74 +1,41 @@
-#include "uhb.h"
-#include "config.h"
+#include "aeg/node.h"
+#include "inst.h"
+#include "aeg/context.h"
 #include "aeg/aeg.h"
 #include "cfg/expanded.h"
 
 namespace aeg {
 
-std::ostream& operator<<(std::ostream& os, const aeg::Edge& e) {
-    os << e.kind << " " << e.exists << "\n"
-    << e.constraints << "\n";
-    return os;
-}
-
-unsigned constraint_counter = 0;
-
-const char *Edge::kind_tostr(Kind kind) {
-#define AEGEDGE_KIND_CASE(name) case name: return #name;
-    switch (kind) {
-            AEGEDGE_KIND_X(AEGEDGE_KIND_CASE)
-        default: return nullptr;
-    }
-#undef AEGEDGE_KIND_CASE
-}
-
-Edge::Kind Edge::kind_fromstr(const std::string& s_) {
-#define AEGEDGE_KIND_PAIR(name) {#name, name},
-    static const std::unordered_map<std::string, Kind> map {
-        AEGEDGE_KIND_X(AEGEDGE_KIND_PAIR)
-    };
-    std::string s;
-    std::transform(s_.begin(), s_.end(), std::back_inserter(s), toupper);
-    return map.at(s);
-#undef AEGEDGE_KIND_PAIR
-}
-
-/* PO
- * Create a fresh bool. Predecessors imply exactly one successor's bool is true.
- *
- * TFO
- * Create a fresh bool. Predecessors imply any number of successor's bool is true.
- *
- * po => tfo.
- *
- * TFO must be at most n hops away from a po.
- * OR all nodes exactly distance n away together (or TOP, in the edge case).
- */
 Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arch(c), trans(c), read(c), write(c), xsread(c), xswrite(c), constraints() {}
 
-Context::Context(): context(), TRUE(context.bool_val(true)), FALSE(context.bool_val(false)) {}
-
-void Constraints::operator()(const z3::expr& clause, const std::string& name) {
-    assert(!name.empty());
-    if ((simplify_before_checking_for_false_constraints ? clause.simplify() : clause).is_false()) {
-        std::cerr << "adding false constraint: " << clause << "\n";
-        throw std::logic_error("adding constraint 'false'");
-    }
-    exprs.emplace_back(clause, name);
+bool Node::may_read() const {
+    return inst->may_read() != Option::NO;
 }
 
-void Constraints::simplify() {
-    std::for_each(exprs.begin(), exprs.end(), [] (auto& p) {
-        z3::expr& e = p.first;
-        e = e.simplify();
-    });
+bool Node::may_write() const {
+    return inst->may_write() != Option::NO;
 }
+
+bool Node::may_access() const {
+    return may_read() || may_write();
+}
+
+std::pair<const llvm::Value *, Address> Node::get_memory_address_pair() const {
+    const auto *V = dynamic_cast<const MemoryInst&>(*inst).get_memory_operand();
+    return *addr_refs.find(V);
+}
+
+bool Node::is_special() const {
+    return inst->is_special();
+}
+
 
 void Node::simplify() {
     arch = arch.simplify();
     trans = trans.simplify();
     constraints.simplify();
 }
+
 
 z3::expr Node::same_addr(const Node& a, const Node& b) {
     z3::context& ctx = a.arch.ctx();
@@ -81,6 +48,7 @@ z3::expr Node::same_addr(const Node& a, const Node& b) {
     return a.get_memory_address() == b.get_memory_address();
 }
 
+
 z3::expr Node::same_xstate(const Node& a, const Node& b) {
     z3::context& ctx = a.arch.ctx();
     if (a.is_special() || b.is_special()) {
@@ -91,6 +59,7 @@ z3::expr Node::same_xstate(const Node& a, const Node& b) {
     }
     return *a.xstate == *b.xstate;
 }
+
 
 z3::expr Node::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
     if (a == b) { return aeg.context.FALSE; }
@@ -119,5 +88,6 @@ bool Node::access_order_less::operator()(NodeRef a, NodeRef b) const {
     const auto b_it = std::find(order.begin(), order.end(), b);
     return a_it < b_it;
 }
+
 
 }
