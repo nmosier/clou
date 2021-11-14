@@ -57,7 +57,6 @@ protected:
     Actions actions;
     z3::expr init_mem;
     Mems mems;
-    NodeRefVec order;
     
     z3::expr mem(NodeRef ref) const;
     

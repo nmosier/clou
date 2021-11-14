@@ -56,9 +56,7 @@ z3::context& Detector::ctx() { return aeg.context.context; }
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {
-    aeg.po.reverse_postorder(std::back_inserter(order));
-}
+Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
 
 z3::expr Detector::mem(NodeRef ref) const {
     const auto it = mems.find(ref);
@@ -72,12 +70,10 @@ z3::expr Detector::mem(NodeRef ref) const {
 Detector::Mems Detector::get_mems() {
     z3::context& ctx = this->ctx();
     auto& po = aeg.po;
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
 
     Mems ins;
     Mems outs = {{aeg.entry, init_mem}};
-    for (const NodeRef cur : order) {
+    for (const NodeRef cur : po.reverse_postorder()) {
         if (cur == aeg.entry) { continue; }
         const auto& cur_node = aeg.lookup(cur);
         
@@ -107,9 +103,6 @@ Detector::Mems Detector::get_mems() {
 }
 
 Detector::Mems Detector::get_mems(const NodeRefSet& set) {
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    
     Mems ins;
     Mems outs;
     const auto outs_at = [&] (const NodeRef ref) -> z3::expr {
@@ -120,7 +113,7 @@ Detector::Mems Detector::get_mems(const NodeRefSet& set) {
             return it->second;
         }
     };
-    for (const NodeRef ref : order) {
+    for (const NodeRef ref : aeg.po.reverse_postorder()) {
         if (ref == aeg.entry ||
             set.find(ref) == set.end()) {
             continue;
@@ -153,13 +146,10 @@ Detector::Mems Detector::get_mems(const NodeRefSet& set) {
 }
 
 Detector::Mems Detector::get_mems1(const NodeRefSet& set) {
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    
     Mems ins;
     Mems outs;
     z3::expr mem = init_mem;
-    for (const NodeRef ref : order) {
+    for (const NodeRef ref : aeg.po.reverse_postorder()) {
         if (ref == aeg.entry || set.find(ref) == set.end()) { continue; }
         const aeg::Node& node = aeg.lookup(ref);
         
@@ -363,7 +353,7 @@ void Detector::precompute_rf(NodeRef load) {
     const aeg::Node& node = aeg.lookup(load);
     if (!node.may_read()) { return; }
     
-#define FILTER_USING_ORDER 1
+#define FILTER_USING_ORDER 0
     
 #if FILTER_USING_ORDER
     NodeRefVec order;

@@ -14,10 +14,7 @@ AEG::Execution AEG::analyze_execution(const z3::eval& eval) const {
     Execution exec;
     z3::context& ctx = eval.ctx();
     
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
-    for (const NodeRef ref : order) {
+    for (const NodeRef ref : po.reverse_postorder()) {
         const Node& node = lookup(ref);
         
         // arch

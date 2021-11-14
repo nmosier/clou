@@ -191,9 +191,6 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
      * Optimiaztion idea: remove from map once all successors have been processed
      */
     
-    NodeRefVec order;
-    reverse_postorder(std::back_inserter(order));
-    
     using Translations = CFG_Unrolled::Translations;
     using Key = Translations::Key;
     using Map = RefMap1; // TODO: remove this unnecessary definition
@@ -208,7 +205,7 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
 #endif
 
     NodeRefSet done;
-    for (const NodeRef ref : order) {
+    for (const NodeRef ref : reverse_postorder()) {
         done.insert(ref);
 
         // merge incoming

@@ -20,12 +20,10 @@ NodeRefSet AEG::spectrev4_siblings(NodeRef ref) const {
 }
 
 void AEG::for_each_pred_in_window(NodeRef ref, unsigned window, std::function<void (NodeRef)> is, std::function<void (NodeRef)> isnt) {
-    NodeRefVec order;
-    po.postorder(std::back_inserter(order));
     
     constexpr unsigned max = std::numeric_limits<unsigned>::max();
     std::unordered_map<NodeRef, unsigned> map = {{ref, 0}};
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.postorder()) {
         auto it = map.find(ref);
         if (it != map.end()) { continue; }
         unsigned& acc = map[ref];
@@ -42,7 +40,7 @@ void AEG::for_each_pred_in_window(NodeRef ref, unsigned window, std::function<vo
         }
     }
     
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.postorder()) {
         const auto it = map.find(ref);
         if (ref == entry ||
             exits.find(ref) != exits.end() ||

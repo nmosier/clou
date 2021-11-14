@@ -125,11 +125,15 @@ public:
     static bool llvm_alias_valid(const Node& a, const Node& b);
     bool llvm_alias_valid(NodeRef a, NodeRef b) const { return llvm_alias_valid(lookup(a), lookup(b)); }
     
-    template <typename OutputIt>
-    void reverse_postorder(OutputIt out) const;
-    
-    template <typename OutputIt>
-    void postorder(OutputIt out) const;
+private:
+    mutable std::optional<NodeRefVec> cached_postorder;
+    bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
+public:
+    const NodeRefVec& postorder() const;
+    using ReversePostorderIteratorRange = llvm::iterator_range<NodeRefVec::const_reverse_iterator>;
+    auto reverse_postorder() const {
+        return llvm::iterator_range<NodeRefVec::const_reverse_iterator> {postorder().rbegin(), postorder().rend()};
+    }
     
     CFG(unsigned num_specs): num_specs(num_specs) {}
     
@@ -140,7 +144,6 @@ public:
     bool is_ancestor(NodeRef parent, NodeRef child) const;
     
 protected:
-    bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
     
     NodeRef add_node(const Node& node);
     
@@ -269,23 +272,6 @@ struct hash<CFG::ID> {
         return hash_ordered_tuple(id.func, id.loop);
     }
 };
-}
-
-
-template <typename OutputIt>
-void CFG::reverse_postorder(OutputIt out) const {
-    NodeRefSet done;
-    std::vector<NodeRef> order;
-    postorder_rec(done, order, entry);
-    std::copy(order.rbegin(), order.rend(), out) ;
-}
-
-template <typename OutputIt>
-void CFG::postorder(OutputIt out) const {
-    NodeRefSet done;
-    std::vector<NodeRef> order;
-    postorder_rec(done, order, entry);
-    std::copy(order.begin(), order.end(), out);
 }
 
 std::ostream& operator<<(std::ostream& os, const CFG::ID& id);

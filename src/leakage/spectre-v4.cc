@@ -1,4 +1,5 @@
 #include "spectre-v4.h"
+#include "cfg/expanded.h"
 
 namespace lkg {
 
@@ -73,7 +74,7 @@ void SpectreV4_Detector::run_sourced_store() {
     std::cerr << __FUNCTION__ << "\n";
     
     // Only process candidate source stores that can possibly appear before the bypassed store in program order
-    for (const NodeRef sourced_store : order) {
+    for (const NodeRef sourced_store : aeg.po.reverse_postorder()) {
         if (sourced_store == leak.bypassed_store) { break; } // stores must be distinct
         
         // NOTE: Is this a sound assumption to make?

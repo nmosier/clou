@@ -114,8 +114,7 @@ z3::expr Node::xsaccess_order_less::operator()(NodeRef a, NodeRef b) const {
 
 bool Node::access_order_less::operator()(NodeRef a, NodeRef b) const {
     // TODO: imporve runtime
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
+    const auto& order = aeg.po.reverse_postorder();
     const auto a_it = std::find(order.begin(), order.end(), a);
     const auto b_it = std::find(order.begin(), order.end(), b);
     return a_it < b_it;

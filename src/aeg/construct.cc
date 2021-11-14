@@ -119,9 +119,7 @@ void AEG::construct_nodes() {
     }
     
     // initalize `trans`
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.reverse_postorder()) {
         Node& node = lookup(ref);
         if (ref == entry || exits.find(ref) != exits.end()) {
             node.trans = context.FALSE;
@@ -142,10 +140,7 @@ void AEG::construct_nodes() {
 void AEG::construct_addr_defs() {
     unsigned stack_counter = 1;
     
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.reverse_postorder()) {
         Node& node = lookup(ref);
         if (auto *RI = dynamic_cast<RegularInst *>(node.inst.get())) {
             // TODO: this is fragmented. Try to unify addr_defs
@@ -421,9 +416,7 @@ void AEG::construct_exec() {
  
 void AEG::construct_arch() {
     // assign arch variables
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.reverse_postorder()) {
         z3::expr& arch = lookup(ref).arch;
         if (ref == entry) {
             arch = context.TRUE;
@@ -455,11 +448,8 @@ void AEG::construct_arch_po() {
     }
     
     /* other */
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
     z3::expr_vector arch_enables {context.context};
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.reverse_postorder()) {
         if (ref == entry || exits.find(ref) != exits.end()) { continue; }
         
         Node& node = lookup(ref);
@@ -517,11 +507,8 @@ void AEG::construct_trans() {
     
     // calculate min distance to speculation gadget
     if (max_transient_nodes) {
-        NodeRefVec order;
-        po.reverse_postorder(std::back_inserter(order));
-        
         std::unordered_map<NodeRef, unsigned> min_specs_in, min_specs_out;
-        for (NodeRef ref : order) {
+        for (NodeRef ref : po.reverse_postorder()) {
             const auto& preds = po.po.rev.at(ref);
             unsigned min = std::transform_reduce(preds.begin(), preds.end(), *max_transient_nodes, [] (unsigned a, unsigned b) -> unsigned {
                 return std::min(a, b);
@@ -623,9 +610,6 @@ void AEG::construct_po() {
 
 /// depends on construct_po()
 void AEG::construct_tfo() {
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
     std::size_t nedges = 0;
     for (const NodeRef src : node_range()) {
         if (src == entry || exits.find(src) != exits.end()) { continue; }
@@ -684,7 +668,7 @@ void AEG::construct_tfo() {
     
     // only one cold arch start
     z3::expr_vector cold_start {context.context};
-    for (NodeRef ref : order) {
+    for (NodeRef ref : po.reverse_postorder()) {
         if (ref == entry || exits.find(ref) != exits.end()) { continue; }
         const Node& node = lookup(ref);
         const auto tfo_ins = get_edges(Direction::IN, ref, Edge::TFO);
@@ -848,10 +832,8 @@ void AEG::construct_dependencies() {
      */
     
     std::unordered_map<NodeRef, DependencyMap> ins, outs;
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
     
-    for (const NodeRef dst : order) {
+    for (const NodeRef dst : po.reverse_postorder()) {
         // collect inputs
         NodeRefMap& in = ins[dst];
         for (const NodeRef src : po.po.rev.at(dst)) {
@@ -880,11 +862,8 @@ void AEG::construct_dependencies() {
 }
 
 AEG::DependencyMap AEG::construct_dependencies2() {
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
     DependencyMap map;
-    for (const NodeRef dst : order) {
+    for (const NodeRef dst : po.reverse_postorder()) {
         const CFG::Node& node = po.lookup(dst);
         NodeRefSet& out_set = map[dst];
         for (const auto& ref_pair : node.refs) {
@@ -905,10 +884,10 @@ AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
     NodeRefVec order;
     switch (dir) {
         case Direction::IN:
-            po.postorder(std::back_inserter(order));
+            util::copy(po.postorder(), std::back_inserter(order));
             break;
         case Direction::OUT:
-            po.reverse_postorder(std::back_inserter(order));
+            util::copy(po.reverse_postorder(), std::back_inserter(order));
             break;
     }
     
@@ -964,8 +943,7 @@ void AEG::construct_control_equivalents() {
     /* Find all node pairs that have each other as dominator/postdominator.
      * Brute force: O(n^2)
      */
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
+    const auto& order = po.reverse_postorder();
     for (auto it1 = order.begin(); it1 != order.end(); ++it1) {
         for (auto it2 = std::next(it1); it2 != order.end(); ++it2) {
             if (util::contains(postdominators.at(*it1), *it2) && util::contains(dominators.at(*it2), *it1)) {
@@ -1080,10 +1058,7 @@ void AEG::construct_com() {
 void AEG::compute_min_store_paths() {
     assert(partial_executions);
     
-    NodeRefVec order;
-    po.reverse_postorder(std::back_inserter(order));
-    
-    for (const NodeRef ref : order) {
+    for (const NodeRef ref : po.reverse_postorder()) {
         Node& node = lookup(ref);
         
         if (ref == entry) {

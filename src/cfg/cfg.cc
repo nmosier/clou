@@ -109,6 +109,15 @@ bool CFG::llvm_alias_valid(const Node& a, const Node& b) {
    return llvm_alias_valid(*a.id, *b.id);
 }
 
+const NodeRefVec& CFG::postorder() const {
+    if (!cached_postorder) {
+        NodeRefSet done;
+        cached_postorder = NodeRefVec();
+        postorder_rec(done, *cached_postorder, entry);
+    }
+    return *cached_postorder;
+}
+
 bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
    if (done.find(ref) != done.end()) {
       return true;
