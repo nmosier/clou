@@ -1,3 +1,6 @@
+#include <queue>
+#include <compare>
+#include <set>
 
 #include "cfg/cfg.h"
 #include "util/algorithm.h"
@@ -111,10 +114,30 @@ bool CFG::llvm_alias_valid(const Node& a, const Node& b) {
 
 const NodeRefVec& CFG::postorder() const {
     if (!cached_postorder) {
+#if 0
         NodeRefSet done;
         cached_postorder = NodeRefVec();
         postorder_rec(done, *cached_postorder, entry);
+#else
+        cached_postorder = NodeRefVec();
+        compute_postorder(*cached_postorder);
+#endif
     }
+
+    
+#if 0
+    // DEBUG
+    {
+        NodeRefVec order2;
+        postorder2(order2);
+        if (*cached_postorder != order2) {
+            std::cerr << "reference: " << *cached_postorder << "\n";
+            std::cerr << "actual:    " << order2 << "\n";
+        }
+        assert(*cached_postorder == order2);
+    }
+#endif
+    
     return *cached_postorder;
 }
 
@@ -125,7 +148,7 @@ bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const 
 
    bool acc = true;
    for (NodeRef succ : po.fwd.at(ref)) {
-      acc &= postorder_rec(done, order, succ);
+      acc = acc && postorder_rec(done, order, succ);
    }
 
    if (acc) {
@@ -134,6 +157,47 @@ bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const 
    }
 
    return acc;
+}
+
+void CFG::compute_postorder(NodeRefVec& order) const {
+    /* ALGORITHM:
+     * Maintain a min-heap  */
+    
+    struct State {
+        NodeRef ref;
+        std::size_t nsuccs;
+        // State(NodeRef ref, std::size_t nsuccs): ref(ref), nsuccs(nsuccs) {}
+        std::weak_ordering operator<=>(const State& other) const { return nsuccs <=> other.nsuccs; }
+    };
+    
+    std::vector<std::size_t> ref2n(size());
+    std::set<std::pair<std::size_t, NodeRef>> heap;
+    
+    // initialize heap
+    for (NodeRef ref = 0; ref < size(); ++ref) {
+        const auto n = po.fwd.at(ref).size();
+        ref2n[ref] = n;
+        heap.emplace(n, ref);
+    }
+    
+    while (!heap.empty()) {
+        const NodeRef ref = heap.begin()->second;
+        assert(heap.begin()->first == 0);
+        assert(ref2n.at(ref) == 0);
+        heap.erase(heap.begin());
+        
+        // add to order
+        order.push_back(ref);
+        
+        // decrement parent references
+        for (const NodeRef pred : po.rev.at(ref)) {
+            auto n = ref2n.at(pred);
+            assert(n > 0);
+            heap.erase(std::make_pair(n, pred));
+            heap.emplace(n - 1, pred);
+            --ref2n.at(pred);
+        }
+    }
 }
 
 NodeRef CFG::add_node(const Node& node) {
