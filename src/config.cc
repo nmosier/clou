@@ -422,6 +422,7 @@ int parse_args() {
                     };
                     char *tok;
                     while ((tok = ::strsep(&optarg, ",")) != nullptr) {
+                        if (*tok == '\0') { continue; }
                         const auto it = map.find(tok);
                         if (it == map.end()) {
                             error("invalid CFG '%s'", tok);
