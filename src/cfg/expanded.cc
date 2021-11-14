@@ -119,7 +119,7 @@ void CFG_Expanded::construct(const CFG& in, Expand& expand) {
 }
 
 
-void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap1> &maps, CFG::Node &node, NodeRef ref) {
+void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<std::optional<RefMap1>> &maps, CFG::Node &node, NodeRef ref) {
     using Key = Translations::Key;
     using Map = RefMap1;
     enum ValueKind {
@@ -141,7 +141,11 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
             std::vector<Key> sources;
             in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
             
+#if 0
             const Map& map = maps.at(ref);
+#else
+            const Map& map = *maps.at(ref);
+#endif
             for (const Key& source : sources) {
                 const auto it = map.find(source);
                 if (kind == INST) {
@@ -197,16 +201,28 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
     
 /* Idea: use a string-table-like approach. Rather than the map's values being a NodeRefSet, it is an index into a table of NodeRefSets.
  */
+#if 0
     std::vector<Map> maps(size(), Map(size()));
+#else
+    std::vector<std::optional<Map>> maps {size()};
+#endif
 
     NodeRefSet done;
     for (const NodeRef ref : order) {
         done.insert(ref);
 
         // merge incoming
+#if 0
         Map& map = maps[ref];
+#else
+        Map& map = *(maps[ref] = Map {size()});
+#endif
         for (const NodeRef pred : po.rev.at(ref)) {
+#if 0
             Map& a = maps.at(pred);
+#else
+            Map& a = *maps.at(pred);
+#endif
 
             // check this predecessor will be done (all successors processed)
             if (util::subset(po.fwd.at(pred), done)) {
@@ -222,7 +238,11 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
             
             // check if done
             if (util::subset(po.fwd.at(pred), done)) {
+#if 0
                 maps.at(pred).clear();
+#else
+                maps.at(pred) = std::nullopt;
+#endif
             }
         }
 

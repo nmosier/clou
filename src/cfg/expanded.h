@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
+#include <optional>
 
 #include "lcm.h"
 #include "cfg/cfg.h"
@@ -49,7 +50,7 @@ private:
     void construct_partial(const CFG& in, Expand& expand);
     using RefMap1 = std::unordered_map<Translations::Key, NodeRefSet, Translations::Key::Hash>;
     
-    void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<RefMap1>& maps, CFG::Node &node, NodeRef ref);
+    void resolve_single_ref(const llvm::Instruction *I, const llvm::Value *V, const CFG &in, std::vector<std::optional<RefMap1>>& maps, CFG::Node &node, NodeRef ref);
     
     void resolve_refs(const CFG& in);
 };
