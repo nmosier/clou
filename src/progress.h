@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <string>
 #include <chrono>
+#include <cmath>
 
 class Progress {
 public:

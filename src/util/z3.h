@@ -298,13 +298,15 @@ z3::check_result trivial_solver<Solver>::check() {
 
 template <class Solver>
 z3::check_result trivial_solver<Solver>::check(const z3::expr_vector& assumptions) {
-    if (is_trivially_unsat() || std::any_of(assumptions.begin(), assumptions.end(), [] (const z3::expr& e) -> bool {
-        return e.is_false();
-    })) {
-        return z3::unsat;
-    } else {
-        return s.check();
+    if (is_trivially_unsat()) {
+        z3::unsat;
     }
+    for (const z3::expr& assumption : assumptions) {
+        if (assumption.is_false()) {
+            return z3::unsat;
+        }
+    }
+    return s.check();
 }
 
 template <class Solver>
