@@ -174,6 +174,13 @@ llvm::errs() << "[" << get_time() << "] " << msg; \
 } \
 } while (false)
 
+#define logv_(level, msg) \
+do { \
+if (verbose >= level) { \
+llvm::errs() << msg; \
+} \
+} while (false)
+
 
 extern char prog[];
 

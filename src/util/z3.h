@@ -7,8 +7,11 @@
 #include <variant>
 #include <optional>
 #include <algorithm>
+#include <array>
 
 #include <z3++.h>
+
+#include "util/output.h"
 
 
 // TODO: remove
@@ -353,17 +356,14 @@ private:
 
 template <class Solver>
 void lazy_solver<Solver>::push() {
-    std::cerr << "push()\n";
     stack.push_back(std::move(cur));
 }
 
 template <class Solver>
 void lazy_solver<Solver>::pop() {
-    std::cerr << "pop()\n";
     if (stack.empty()) {
         cur.clear();
         s.pop();
-        std::cerr << "s.pop()\n";
     } else {
         cur = std::move(stack.back());
         stack.pop_back();
@@ -395,12 +395,10 @@ void lazy_solver<Solver>::commit(const Uncommitted& v) {
 
 template <class Solver>
 z3::check_result lazy_solver<Solver>::check() {
-    std::cerr << "check()\n";
     /* commit all scopes so far */
     for (const Uncommitted& v : stack) {
         commit(v);
         s.push();
-        std::cerr << "s.push()\n";
     }
     stack.clear();
     
@@ -523,6 +521,40 @@ z3::check_result cache_solver<Solver>::check() {
     }
     return *cur;
 }
+
+namespace detail {
+
+/* STEP 1: map vectors to their corresponding (variable, equality-assertion) pairs
+ * STEP 2:
+ */
+
+}
+
+template <typename InputIt>
+z3::expr no_intersect(z3::context& ctx, const z3::sort& sort, const char *name, InputIt begin, InputIt end) {
+    const z3::func_decl func = ctx.function(name, 1, &sort, ctx.int_sort());
+    
+    z3::expr_vector assertions {ctx};
+    int i = 0;
+    for (auto it = begin; it != end; ++it, ++i) {
+        for (const z3::expr& e : *it) {
+            assertions.push_back(func(e) == i);
+        }
+    }
+    
+    return z3::mk_and(assertions);
+}
+
+template <typename Container>
+z3::expr no_intersect(z3::context& ctx, const z3::sort& sort, const char *name, const Container& container) {
+    return no_intersect(ctx, sort, name, container.begin(), container.end());
+}
+
+inline z3::expr no_intersect(const char *name, const z3::sort& sort, const z3::expr_vector& set1, const z3::expr_vector& set2) {
+    const std::array<z3::expr_vector, 2> sets = {set1, set2};
+    return no_intersect(set1.ctx(), sort, name, sets);
+}
+
 
 }
 

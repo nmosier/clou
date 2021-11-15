@@ -389,7 +389,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     {
         std::cerr << __FUNCTION__ << ": allocas and arguments cannot alias...\n";
         Timer timer;
-        std::vector<z3::expr> allocas;
+        std::vector<z3::expr> allocas; // this is also used elsewhere
         std::vector<z3::expr> args;
         for (const AddrInfo& addr : addrs) {
             if (llvm::isa<llvm::AllocaInst>(addr.V)) {
@@ -399,11 +399,30 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
         }
         logv(1, "(alloca, arg) pairs: " << allocas.size() * args.size() << "\n");
+#if 1
         for (const z3::expr& alloca : allocas) {
             for (const z3::expr& arg : args) {
                 constraints(alloca != arg, "alloca-argument-distinct");
             }
         }
+#else
+        if (!allocas.empty() && !args.empty()) {
+            const auto make_variable = [&] (const char *name, const std::vector<z3::expr>& vec) -> z3::expr {
+                // alloca variable
+                const z3::expr v1 = context.make_int(name);
+                const z3::expr v1_constraint = z3::mk_or(z3::transform(vec, [&v1] (const z3::expr& x) -> z3::expr {
+                    return v1 == x;
+                }));
+                constraints(v1_constraint, util::to_string(name, "-set-var"));
+                return v1;
+            };
+            
+            const z3::expr alloca = make_variable("alloca", allocas);
+            const z3::expr argument = make_variable("argument", args);
+            constraints(alloca != argument, "all-alloca-argument-distinct");
+        }
+        
+#endif
     }
     
     /* AA: apply LLVM's built-in alias analysis if possible
@@ -411,8 +430,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
      * We can make this efficient by sorting all addresses into different buckets by function callstack.
      */
     {
-        std::cerr << __FUNCTION__ << ": applying LLVM's built-in alias analysis...\n";
-        Timer timer;
+        logv(1, __FUNCTION__ << ": applying LLVM's built-in alias analysis...");
+        std::size_t count = 0;
         std::map<std::vector<CFG::FuncID>, std::vector<AddrInfoVec::const_iterator>> groups;
         for (auto it = addrs.begin(); it != addrs.end(); ++it) {
             const AddrInfo& addr = *it;
@@ -424,11 +443,76 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             util::for_each_unordered_pair(group, [&] (AddrInfoVec::const_iterator it1, AddrInfoVec::const_iterator it2) {
                 if (!util::prefixeq_bi(it1->id.loop, it2->id.loop)) { return; }
                 add_aa(*it1, *it2, AA.alias(it1->V, it2->V), "llvm");
+                ++count;
             });
         }
+        
+        logv(1, "processed " << count << " pairs\n");
     }
     
-    /* AA:   */
+    /* AA: allocas cannot alias with getelementptrs */
+    {
+        logv(1, __FUNCTION__ << ": allocas and gelementptrs...\n");
+        using Vec = std::vector<AddrInfoVec::const_iterator>;
+        Vec allocas, geps_nonzero;
+        std::unordered_map<const llvm::Type *, std::pair<Vec, Vec>> types;
+        std::size_t num_type_allocas = 0;
+        std::size_t num_type_geps = 0;
+        for (auto it = addrs.begin(); it != addrs.end(); ++it) {
+            if (llvm::isa<llvm::AllocaInst>(it->V)) {
+                allocas.push_back(it);
+                types[it->V->getType()->getPointerElementType()].first.push_back(it);
+                ++num_type_allocas;
+            } else if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(it->V)) {
+                if (!llvm::getelementptr_can_zero(GEP)) {
+                    geps_nonzero.push_back(it);
+                }
+                types[GEP->getPointerOperandType()->getPointerElementType()].second.push_back(it);
+                ++num_type_geps;
+            }
+        }
+        
+        /* process pairs in allocas x geps_nonzero */
+        logv_(1, allocas.size() * geps_nonzero.size() << " pairs (1/2)\n");
+#if 0
+        for (const auto& alloca : allocas) {
+            for (const auto& gep_nonzero : geps_nonzero) {
+                add_aa(*alloca, *gep_nonzero, llvm::AliasResult::NoAlias, "alloca-gep-nonzero");
+            }
+        }
+#elif 0
+        {
+            z3::expr_vector allocas_ = z3::transform(context.context, allocas, [] (const auto& x) { return x->e; });
+            z3::expr_vector geps_nonzero_ = z3::transform(context.context, geps_nonzero, [] (const auto& x) { return x->e; });
+            constraints(z3::no_intersect("alloca-geps-nonzero", context.context.int_sort(), allocas_, geps_nonzero_), "alloca-gep-nonzero");
+        }
+#else
+        {
+            z3::expr_vector allocas_ = z3::transform(context.context, allocas, [] (const auto& x) { return x->e; });
+            for (const auto& gep : geps_nonzero) {
+                allocas_.push_back(gep->e);
+                constraints(z3::distinct(allocas_), "alloca-gep-nonzero");
+                allocas_.pop_back();
+            }
+        }
+#endif
+        
+        /* process different-type alloca, gep pairs */
+        {
+            std::size_t sum = std::transform_reduce(types.begin(), types.end(), static_cast<std::size_t>(0), std::plus<std::size_t>(), [&] (const auto& p) -> std::size_t {
+                return p.second.first.size() * (num_type_geps - p.second.first.size());
+            });
+            logv_(1, sum << " pairs (2/2)\n");
+            
+            /* Well, the only ones that may alias are same-type. So map each GEP type to different integer.
+             * NO.
+             *
+             * Map each Alloca type to different integer. This is OK since we know they never alias.
+             * Then each GEP type
+             *
+             */
+        }
+    }
     
     
 #if 0
@@ -489,8 +573,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 }
                 add_alias_result(vl1, vl2, *alias_res);
                 
-            } else {
-                ++invalid;
             }
         }
     }

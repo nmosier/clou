@@ -253,6 +253,9 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
+        ++i;
+        logv(1, i << "/" << candidate_transmitters.size() << "\n");
+
         if (!lookahead([&] () {
             func(transmitter, CheckMode::FAST);
         })) {
@@ -261,9 +264,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         }
         
         Timer timer;
-        
-        std::cerr << ++i << "/" << candidate_transmitters.size() << "\n";
-        
+                
         if (client) {
             mon::Message msg;
             auto *progress = msg.mutable_func_progress();

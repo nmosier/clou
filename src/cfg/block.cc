@@ -69,8 +69,6 @@ CFGOrder::CFGOrder(const CFG& cfg): bcfg(cfg) {
     NodeRefVec order;
     bcfg.po.reverse_postorder(std::back_inserter(order), bcfg.entry);
     
-    std::cerr << "cfg order: " << order << "\n";
-    
     NodeRefMap ins;
     NodeRefMap outs;
     for (NodeRef ref : order) {
