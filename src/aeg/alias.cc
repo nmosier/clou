@@ -4,6 +4,8 @@
 #include "util/llvm.h"
 #include "timer.h"
 #include "util/z3.h"
+#include "util/llvm.h"
+#include "util/output.h"
 
 namespace aeg {
 
@@ -300,7 +302,12 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         const CFG::Node& po_node = po.lookup(i);
         if (const auto *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
             for (const llvm::Value *V : inst->addr_refs) {
-                if (llvm::isa<llvm::Argument>(V) || llvm::isa<llvm::Constant>(V)) {
+                // check if it's missing from the po node's refs
+                if (po_node.refs.contains(V)) { continue; }
+                
+                if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+                    /* NOTE: It's ok if these are actually inlined arguments -- they are coming from constants that weren't bound during CFG::resolve_refs(). This is a bug that needs to be fixed. (Just makes the analysis less precise.) */
+
                     const ID id {po_node.id->func, {}};
                     if (seen.emplace(ValueLoc(id, V)).second) {
                         const auto it = std::find_if(node.addr_refs.begin(), node.addr_refs.end(),
@@ -389,6 +396,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 args.push_back(addr.e);
             }
         }
+        logv(1, "(alloca, arg) pairs: " << allocas.size() * args.size());
         for (const z3::expr& alloca : allocas) {
             for (const z3::expr& arg : args) {
                 constraints(alloca != arg, "alloca-argument-distinct");
