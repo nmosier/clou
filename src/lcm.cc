@@ -55,6 +55,8 @@ struct LCMPass: public llvm::ModulePass {
     }
     
     virtual bool runOnModule(llvm::Module& M) override {
+        ::signal(SIGABRT, SIG_DFL);
+        
         for (llvm::Function *F : getFunctionOrder(M)) {
             if (F->isDeclaration()) {
                 std::cerr << "skipping function declaration " << F->getName().str() << "\n";
