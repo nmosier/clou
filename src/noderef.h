@@ -12,11 +12,7 @@ class natural_set;
 
 using NodeRef = std::size_t;
 using NodeRefVec = std::vector<NodeRef>;
-#if 1
 using NodeRefSet = std::unordered_set<NodeRef>;
-#else
-using NodeRefSet = util::natural_set<NodeRef>;
-#endif
 using NodeRefRel = std::unordered_map<NodeRef, NodeRefSet>;
 using NodeRefMap = NodeRefRel;
 

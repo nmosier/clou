@@ -74,8 +74,10 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_dominators();
     logv(2, "Constructing postdominators\n");
     construct_postdominators();
+#if 0
     logv(2, "Constructing control-equivalents\n");
     construct_control_equivalents();
+#endif
     
     // syntactic memory dependencies
     logv(2, "Constructing addr\n");
@@ -877,6 +879,7 @@ AEG::DependencyMap AEG::construct_dependencies2() {
     return map;
 }
 
+#if 0
 template <Direction dir>
 AEG::DominatorMap AEG::construct_dominators_shared() const {
     /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
@@ -943,14 +946,18 @@ AEG::DominatorMap AEG::construct_dominators_shared() const {
     
     return doms;
 }
+#endif
 
 
 template <Direction dir>
 AEG::DominatorMap AEG::construct_dominators_shared2() const {
     /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
      */
+   // using NodeRefSet = ::NodeRefBitset;
     std::vector<std::optional<NodeRefSet>> outs(size());
     
+    BlockCFG bcfg(po);
+
     NodeRefVec order;
     switch (dir) {
         case Direction::IN:
@@ -961,25 +968,36 @@ AEG::DominatorMap AEG::construct_dominators_shared2() const {
             break;
     }
     
+    // filter order
+    {
+        NodeRefVec neworder;
+        std::copy_if(order.begin(), order.end(), std::back_inserter(neworder), [&bcfg] (NodeRef ref) -> bool {
+            return bcfg.blocks.contains(ref);
+        });
+        order = std::move(neworder);
+    }
+    
     const auto pred_rel = [&] () -> const CFG::Rel::Map& {
         if constexpr (dir == Direction::IN) {
-            return po.po.fwd;
+            return bcfg.po.fwd;
         } else {
-            return po.po.rev;
+            return bcfg.po.rev;
         }
     };
     
     const auto succ_rel = [&] () -> const CFG::Rel::Map& {
         if constexpr (dir == Direction::OUT) {
-            return po.po.fwd;
+            return bcfg.po.fwd;
         } else {
-            return po.po.rev;
+            return bcfg.po.rev;
         }
     };
     
-    NodeRefSet done;
+    NodeRefBitset done;
     DominatorMap doms;
+    Progress progress(bcfg.blocks.size());
     for (NodeRef ref : order) {
+        ++progress;
         done.insert(ref);
         
         // in
@@ -999,6 +1017,7 @@ AEG::DominatorMap AEG::construct_dominators_shared2() const {
                     in = *pred_out;
                 }
             } else {
+#if 1
                 for (auto it = in.begin(); it != in.end(); ) {
                     if (!pred_out->contains(*it)) {
                         it = in.erase(it);
@@ -1006,6 +1025,9 @@ AEG::DominatorMap AEG::construct_dominators_shared2() const {
                         ++it;
                     }
                 }
+#else
+                in &= *pred_out;
+#endif
             }
             
             if (pred_done) {
@@ -1014,7 +1036,7 @@ AEG::DominatorMap AEG::construct_dominators_shared2() const {
         }
         
         // out
-        auto& out = outs[ref] = in;
+        auto& out = outs[ref] = std::move(in);
         out->insert(ref);
         
         for (const NodeRef dom : *out) {
@@ -1035,6 +1057,7 @@ void AEG::construct_postdominators() {
     postdominators = construct_dominators_shared2<Direction::IN>();
 }
 
+#if 0
 void AEG::construct_control_equivalents() {
     // depends on AEG::construct_dominators(), AEG::construct_postdominators()
     /* Find all node pairs that have each other as dominator/postdominator.
@@ -1049,6 +1072,7 @@ void AEG::construct_control_equivalents() {
         }
     }
 }
+#endif
 
 void AEG::construct_ctrl() {
     /* Control dependencies are between loads of values used in computing
@@ -1067,6 +1091,8 @@ void AEG::construct_ctrl() {
      * Post-dominator. Control dependencies can only be from a dominator node to a node that has no intervening post-dominators.
      */
     
+    BlockCFG bcfg(po);
+    
     // for each dominator, find the set of nodes it properly dominates (i.e. they don't postdominate it)
     DominatorMap excl_doms;
     for (const auto& dom_pair : dominators) {
@@ -1082,6 +1108,7 @@ void AEG::construct_ctrl() {
     /* For each branch, find dependencies of conditions that are loads. Then in set of exclusive postdominators, find memory accesses.
      */
     for (const NodeRef br_ref : node_range()) {
+        const auto br_blk = bcfg.ref2block.at(br_ref);
         const auto& br_node = lookup(br_ref);
         if (const auto *BI = llvm::dyn_cast_or_null<llvm::BranchInst>(br_node.inst->get_inst())) {
             for (const NodeRef load_dep_ref : dependencies.at(br_ref)) {
@@ -1089,11 +1116,13 @@ void AEG::construct_ctrl() {
                 if (load_dep_node.may_read()) {
                     // find all memory accesses that the branch node dominates
                     // TODO: investigate whether this is expected or buggy
-                    for (const NodeRef access_dom_ref : excl_doms[br_ref]) {
-                        const Node& access_dom_node = lookup(access_dom_ref);
-                        if (access_dom_node.may_access()) {
-                            // EMIT EDGE
-                            add_unidir_edge(load_dep_ref, access_dom_ref, Edge {Edge::CTRL, (load_dep_node.exec() && load_dep_node.read) && (br_node.exec()) && (access_dom_node.exec() && access_dom_node.access())});
+                    for (const NodeRef access_dom_blk : excl_doms[br_blk]) {
+                        for (const NodeRef access_dom_ref : bcfg.blocks.at(access_dom_blk)) {
+                            const Node& access_dom_node = lookup(access_dom_ref);
+                            if (access_dom_node.may_access()) {
+                                // EMIT EDGE
+                                add_unidir_edge(load_dep_ref, access_dom_ref, Edge {Edge::CTRL, (load_dep_node.exec() && load_dep_node.read) && (br_node.exec()) && (access_dom_node.exec() && access_dom_node.access())});
+                            }
                         }
                     }
                 }
@@ -1101,7 +1130,6 @@ void AEG::construct_ctrl() {
         }
     }
 }
-
 
 
 void AEG::construct_data() {

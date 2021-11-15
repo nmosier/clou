@@ -140,15 +140,11 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
         case ARG: {
             std::vector<Key> sources;
             in.translations.lookup(Key {node.id->func, V}, std::back_inserter(sources));
-            
-#if 0
-            const Map& map = maps.at(ref);
-#else
             const Map& map = *maps.at(ref);
-#endif
             for (const Key& source : sources) {
                 const auto it = map.find(source);
                 if (kind == INST) {
+                    // TODO: why make this exception for phi nodes?
                     if (!llvm::isa<llvm::PHINode>(I)) {
                         if (it == map.end()) {
                             llvm::errs() << "source: " << source << "\n";
@@ -160,6 +156,29 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
                         assert(it != map.end());
                     }
                 }
+                
+                // DEBUG {=
+                {
+                    if (kind == ARG && it == map.end() && !node.id->func.empty() && !llvm::isa<llvm::Constant>(source.V)) {
+                        std::cerr << __FUNCTION__ << ": failed to bind inlined argument\n";
+                        llvm::errs() << "argument: " << *V << "\n";
+                        llvm::errs() << "referenced by instruction: " << *I << "\n";
+                        llvm::errs() << "in function: " << I->getFunction()->getName() << "\n";
+                        llvm::errs() << "source: " << source << "\n";
+                        llvm::errs() << "similar entries:\n";
+                        using output::operator<<;
+                        for (const auto& p : map) {
+                            if (p.first.id == source.id) {
+                                llvm::errs() << p.first << "," << p.second << "\n";
+                            }
+                            if (p.first.V == source.V) {
+                                llvm::errs() << p.first << "," << p.second << "\n";
+                            }
+                        }
+                        std::abort();
+                    }
+                }
+                
                 if (it != map.end()) {
                     const auto& refs = (*it).second;
                     node.refs[V].insert(refs.begin(), refs.end());

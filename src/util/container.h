@@ -187,9 +187,10 @@ public:
     }
     
     iterator erase(iterator pos) {
-        auto ref = v.at(pos.x);
+        auto ref = v.at(*pos.x);
         assert(ref);
         ref = false;
+        assert(!v.at(*pos.x));
         --size_;
         pos.advance();
         return pos;
@@ -235,6 +236,14 @@ public:
             return iterator(value, v);
         } else {
             return end();
+        }
+    }
+    
+    bool contains(value_type value) const noexcept {
+        if (value >= v.size()) {
+            return false;
+        } else {
+            return v.at(value);
         }
     }
     

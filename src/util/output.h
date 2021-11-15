@@ -13,12 +13,14 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Format.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/Value.h>
 
 namespace output {
 
 template <typename OutputStream, typename InputIt, typename Transform>
 OutputStream& range(OutputStream& os, InputIt begin, InputIt end, const std::string& sep, Transform transform) {
    //  using ::operator<<;
+    // using output::operator<<;
     os << "{";
     for (auto it = begin; it != end; ++it) {
         if (it != begin) {
@@ -151,6 +153,14 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Value& V) {
     std::string s;
     llvm::raw_string_ostream ss {s};
     ss << V;
+    os << s;
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const llvm::Function& F) {
+    std::string s;
+    llvm::raw_string_ostream ss {s};
+    ss << F;
     os << s;
     return os;
 }

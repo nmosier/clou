@@ -336,7 +336,9 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     std::cerr << addrs.size() << " addrs\n";
     
     // optimization parameters
+#if 0
     alias_rel.reserve(addrs.size() * addrs.size());
+#endif
     
     
     

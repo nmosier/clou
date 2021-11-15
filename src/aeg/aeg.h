@@ -101,6 +101,7 @@ private:
     static bool construct_addr_gep_nonconst(const llvm::Value *V);
     void construct_data();
     void construct_ctrl();
+    void construct_ctrl2();
     void construct_taint();
     
     template <typename Func>
@@ -132,8 +133,8 @@ private:
     
     using DominatorMap = NodeRefMap;
     
-    template <Direction dir> DominatorMap construct_dominators_shared() const;
     template <Direction dir> DominatorMap construct_dominators_shared2() const;
+    template <Direction dir> DominatorMap construct_dominators_shared(const NodeRefSet& window) const;
 public:
     DominatorMap dominators; /*!< Maps nodes to their dominators (which are always ancestors)*/
     DominatorMap postdominators; /*!< Maps nodes to their postdominators (which are always grandchildren) */
@@ -141,7 +142,9 @@ public:
 private:
     void construct_dominators();
     void construct_postdominators();
+#if 0
     void construct_control_equivalents();
+#endif
     
     unsigned leakage(Solver& solver);
     
