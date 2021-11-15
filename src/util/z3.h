@@ -283,7 +283,9 @@ void trivial_solver<Solver>::add(const z3::expr_vector& v) {
     for (const z3::expr& e : v) {
         check_expr(e);
     }
-    s.add(v);
+    for (const z3::expr& e : v) {
+        s.add(e);
+    }
 }
 
 template <class Solver>
