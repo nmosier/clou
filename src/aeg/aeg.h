@@ -108,7 +108,11 @@ private:
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
 
 public:
+#if 0
     using Solver = z3::trivial_solver<z3::lazy_solver<z3::solver>>;
+#else
+    using Solver = z3::trivial_solver<z3::solver>;
+#endif
 private:
     Solver make_solver();
     

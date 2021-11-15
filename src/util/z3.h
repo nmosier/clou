@@ -227,6 +227,7 @@ public:
     void add(const z3::expr& e, const std::string& d);
     void add(const z3::expr_vector& v);
     z3::check_result check();
+    z3::check_result check(const z3::expr_vector& assumptions);
     z3::model get_model() const { return s.get_model(); }
     z3::stats statistics() const { return s.statistics(); }
     z3::expr_vector unsat_core() const;
@@ -292,7 +293,14 @@ bool trivial_solver<Solver>::is_trivially_unsat() const {
 
 template <class Solver>
 z3::check_result trivial_solver<Solver>::check() {
-    if (is_trivially_unsat()) {
+    return check(z3::expr_vector(ctx()));
+}
+
+template <class Solver>
+z3::check_result trivial_solver<Solver>::check(const z3::expr_vector& assumptions) {
+    if (is_trivially_unsat() || std::any_of(assumptions.begin(), assumptions.end(), [] (const z3::expr& e) -> bool {
+        return e.is_false();
+    })) {
         return z3::unsat;
     } else {
         return s.check();
@@ -327,7 +335,8 @@ public:
     void add(const z3::expr& e) { cur.emplace_back(e); }
     void add(const z3::expr& e, const std::string& d) { cur.emplace_back(e, d); }
     void add(const z3::expr_vector& v);
-    z3::check_result check();
+    z3::check_result check() { return check(z3::expr_vector(ctx())); }
+    z3::check_result check(const z3::expr_vector& assumptions);
     z3::model get_model() const { return s.get_model(); }
     z3::expr_vector unsat_core() const { return s.unsat_core(); }
     z3::expr_vector assertions() const;
@@ -394,7 +403,7 @@ void lazy_solver<Solver>::commit(const Uncommitted& v) {
 }
 
 template <class Solver>
-z3::check_result lazy_solver<Solver>::check() {
+z3::check_result lazy_solver<Solver>::check(const z3::expr_vector& assumptions) {
     /* commit all scopes so far */
     for (const Uncommitted& v : stack) {
         commit(v);
@@ -407,7 +416,11 @@ z3::check_result lazy_solver<Solver>::check() {
     cur.clear();
     
     /* check using base solver */
-    return s.check();
+    if (assumptions.empty()) {
+        return s.check();
+    } else {
+        return s.check(assumptions);
+    }
 }
 
 template <class Solver>

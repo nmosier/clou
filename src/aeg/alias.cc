@@ -399,30 +399,12 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
         }
         logv(1, "(alloca, arg) pairs: " << allocas.size() * args.size() << "\n");
-#if 1
+
         for (const z3::expr& alloca : allocas) {
             for (const z3::expr& arg : args) {
                 constraints(alloca != arg, "alloca-argument-distinct");
             }
         }
-#else
-        if (!allocas.empty() && !args.empty()) {
-            const auto make_variable = [&] (const char *name, const std::vector<z3::expr>& vec) -> z3::expr {
-                // alloca variable
-                const z3::expr v1 = context.make_int(name);
-                const z3::expr v1_constraint = z3::mk_or(z3::transform(vec, [&v1] (const z3::expr& x) -> z3::expr {
-                    return v1 == x;
-                }));
-                constraints(v1_constraint, util::to_string(name, "-set-var"));
-                return v1;
-            };
-            
-            const z3::expr alloca = make_variable("alloca", allocas);
-            const z3::expr argument = make_variable("argument", args);
-            constraints(alloca != argument, "all-alloca-argument-distinct");
-        }
-        
-#endif
     }
     
     /* AA: apply LLVM's built-in alias analysis if possible
@@ -486,7 +468,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             z3::expr_vector geps_nonzero_ = z3::transform(context.context, geps_nonzero, [] (const auto& x) { return x->e; });
             constraints(z3::no_intersect("alloca-geps-nonzero", context.context.int_sort(), allocas_, geps_nonzero_), "alloca-gep-nonzero");
         }
-#else
+#elif 0
         {
             z3::expr_vector allocas_ = z3::transform(context.context, allocas, [] (const auto& x) { return x->e; });
             for (const auto& gep : geps_nonzero) {

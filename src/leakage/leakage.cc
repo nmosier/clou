@@ -241,15 +241,18 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
 
 void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
     NodeRefSet candidate_transmitters;
-    aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
+    {
         z3::solver solver {ctx()};
-        const aeg::Node& node = aeg.lookup(ref);
-        solver.add(node.trans);
-        solver.add(node.access());
-        if (solver.check() != z3::unsat) {
-            candidate_transmitters.insert(ref);
-        }
-    });
+        aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
+            const aeg::Node& node = aeg.lookup(ref);
+            z3::expr_vector vec(ctx());
+            vec.push_back(node.trans);
+            vec.push_back(node.access());
+            if (solver.check(vec) != z3::unsat) {
+                candidate_transmitters.insert(ref);
+            }
+        });
+    }
     
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
@@ -280,55 +283,39 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         
         const auto action = util::push(actions, util::to_string("transmitter ", transmitter));
         
-        z3_scope;
         const aeg::Node& transmitter_node = aeg.lookup(transmitter);
         
         if (aeg.exits.find(transmitter) != aeg.exits.end()) {
             continue;
         }
         
-#define VERIFY_SAT 0
-        
-#if VERIFY_SAT
-        assert(solver.check() == z3::sat);
-#endif
+        z3::expr_vector vec {ctx()};
         
         // require transmitter is access
-        solver.add(transmitter_node.access(), "transmitter.access");
-        
-#if VERIFY_SAT
-        assert(solver.check() == z3::sat);
-#endif
+        vec.push_back(transmitter_node.access());
         
         // require transmitter.trans
-        solver.add(transmitter_node.trans, "transmitter.trans");
+        vec.push_back(transmitter_node.trans);
         
         // window size
         const auto saved_mems = util::save(mems);
         {
-            z3::expr_vector src {ctx()};
-            z3::expr_vector dst {ctx()};
             NodeRefSet window;
             aeg.for_each_pred_in_window(transmitter, window_size, [&window] (NodeRef ref) {
                 window.insert(ref);
             }, [&] (NodeRef ref) {
                 const aeg::Node& node = aeg.lookup(ref);
-                solver.add(!node.exec(), util::to_string("window-exclude-", ref).c_str());
-                src.push_back(node.arch); dst.push_back(ctx().bool_val(false));
-                src.push_back(node.trans); dst.push_back(ctx().bool_val(false));
+                vec.push_back(!node.exec());
             });
-#if 0
-            for (auto& p : mems) {
-                z3::expr& mem = p.second;
-                mem = mem.substitute(src, dst).simplify();
-            }
-#endif
 #if 1
             mems = get_mems1(window);
 #endif
         }
         
-        if (solver.check() == z3::sat) {
+        if (solver.check(vec) != z3::unsat) {
+            z3_scope;
+            solver.add(vec);
+            
             try {
                 func(transmitter, CheckMode::SLOW);
             } catch (const next_transmitter& e) {
