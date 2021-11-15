@@ -877,7 +877,8 @@ AEG::DependencyMap AEG::construct_dependencies2() {
     return map;
 }
 
-AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
+template <Direction dir>
+AEG::DominatorMap AEG::construct_dominators_shared() const {
     /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
      */
     std::unordered_map<NodeRef, NodeRefBitset> ins, outs;
@@ -891,35 +892,24 @@ AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
             break;
     }
     
+    const auto pred_rel = [&] () -> const CFG::Rel::Map& {
+        if constexpr (dir == Direction::IN) {
+            return po.po.fwd;
+        } else {
+            return po.po.rev;
+        }
+    };
+    
     for (NodeRef ref : order) {
         // in
-        const NodeRefSet *preds_;
-        switch (dir) {
-            case Direction::IN:
-                preds_ = &po.po.fwd.at(ref);
-                break;
-            case Direction::OUT:
-                preds_ = &po.po.rev.at(ref);
-                break;
-        }
-        const auto& preds = *preds_;
+        const NodeRefSet& preds = pred_rel().at(ref);
         NodeRefBitset& in = ins[ref];
         for (auto it = preds.begin(); it != preds.end(); ++it) {
             const NodeRefBitset& pred_out = outs.at(*it);
             if (it == preds.begin()) {
                 in = pred_out;
             } else {
-#if 0
-                NodeRefBitset intersect;
-                for (const NodeRef x : pred_out) {
-                    if (in.find(x) != in.end()) {
-                        intersect.insert(x);
-                    }
-                }
-                in = std::move(intersect);
-#else
                 in &= pred_out;
-#endif
             }
         }
         
@@ -936,6 +926,14 @@ AEG::DominatorMap AEG::construct_dominators_shared(Direction dir) const {
         }
     }
     return doms;
+}
+
+void AEG::construct_dominators() {
+    dominators = construct_dominators_shared<Direction::OUT>();
+}
+
+void AEG::construct_postdominators() {
+    postdominators = construct_dominators_shared<Direction::IN>();
 }
 
 void AEG::construct_control_equivalents() {

@@ -131,14 +131,16 @@ private:
     DependencyMap construct_dependencies2();
     
     using DominatorMap = NodeRefBitmap;
-    DominatorMap construct_dominators_shared(Direction dir) const;
+    
+    template <Direction dir>
+    DominatorMap construct_dominators_shared() const;
 public:
     DominatorMap dominators; /*!< Maps nodes to their dominators (which are always ancestors)*/
     DominatorMap postdominators; /*!< Maps nodes to their postdominators (which are always grandchildren) */
     DominatorMap control_equivalents; /*!< Maps nodes to their control-equivalent ancestors */
 private:
-    void construct_dominators() { dominators = construct_dominators_shared(Direction::OUT); }
-    void construct_postdominators() { postdominators = construct_dominators_shared(Direction::IN); }
+    void construct_dominators();
+    void construct_postdominators();
     void construct_control_equivalents();
     
     unsigned leakage(Solver& solver);
