@@ -130,10 +130,10 @@ private:
     void construct_dependencies();
     DependencyMap construct_dependencies2();
     
-    using DominatorMap = NodeRefBitmap;
+    using DominatorMap = NodeRefMap;
     
-    template <Direction dir>
-    DominatorMap construct_dominators_shared() const;
+    template <Direction dir> DominatorMap construct_dominators_shared() const;
+    template <Direction dir> DominatorMap construct_dominators_shared2() const;
 public:
     DominatorMap dominators; /*!< Maps nodes to their dominators (which are always ancestors)*/
     DominatorMap postdominators; /*!< Maps nodes to their postdominators (which are always grandchildren) */

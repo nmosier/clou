@@ -925,15 +925,114 @@ AEG::DominatorMap AEG::construct_dominators_shared() const {
             doms[dom].insert(pair.first);
         }
     }
+    
+    const auto other = construct_dominators_shared2<dir>();
+    if (other != doms) {
+        using output::operator<<;
+        
+        const auto f = [] (const auto& map) {
+            for (const auto& p : map) {
+                std::cerr << "{" << p.first << ", " << p.second << "}\n";
+            }
+        };
+        
+        llvm::errs() << "correct:\n"; f(doms);
+        llvm::errs() << "incorrect:\n"; f(other);
+        std::abort();
+    }
+    
     return doms;
 }
 
+
+template <Direction dir>
+AEG::DominatorMap AEG::construct_dominators_shared2() const {
+    /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
+     */
+    std::vector<std::optional<NodeRefSet>> outs(size());
+    
+    NodeRefVec order;
+    switch (dir) {
+        case Direction::IN:
+            util::copy(po.postorder(), std::back_inserter(order));
+            break;
+        case Direction::OUT:
+            util::copy(po.reverse_postorder(), std::back_inserter(order));
+            break;
+    }
+    
+    const auto pred_rel = [&] () -> const CFG::Rel::Map& {
+        if constexpr (dir == Direction::IN) {
+            return po.po.fwd;
+        } else {
+            return po.po.rev;
+        }
+    };
+    
+    const auto succ_rel = [&] () -> const CFG::Rel::Map& {
+        if constexpr (dir == Direction::OUT) {
+            return po.po.fwd;
+        } else {
+            return po.po.rev;
+        }
+    };
+    
+    NodeRefSet done;
+    DominatorMap doms;
+    for (NodeRef ref : order) {
+        done.insert(ref);
+        
+        // in
+        const auto& preds = pred_rel().at(ref);
+        NodeRefSet in;
+        
+        // NOTE: this is performing an intersection.
+        for (auto it = preds.begin(); it != preds.end(); ++it) {
+            
+            const bool pred_done = util::subset(succ_rel().at(*it), done);
+            
+            auto& pred_out = outs.at(*it);
+            if (it == preds.begin()) {
+                if (pred_done) {
+                    in = std::move(*pred_out);
+                } else {
+                    in = *pred_out;
+                }
+            } else {
+                for (auto it = in.begin(); it != in.end(); ) {
+                    if (!pred_out->contains(*it)) {
+                        it = in.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+            
+            if (pred_done) {
+                pred_out = std::nullopt;
+            }
+        }
+        
+        // out
+        auto& out = outs[ref] = in;
+        out->insert(ref);
+        
+        for (const NodeRef dom : *out) {
+            doms[dom].insert(ref);
+        }
+    }
+    
+    return doms;
+}
+
+
+
 void AEG::construct_dominators() {
-    dominators = construct_dominators_shared<Direction::OUT>();
+    dominators = construct_dominators_shared2<Direction::OUT>();
 }
 
 void AEG::construct_postdominators() {
-    postdominators = construct_dominators_shared<Direction::IN>();
+    postdominators = construct_dominators_shared2<Direction::IN>();
 }
 
 void AEG::construct_control_equivalents() {
