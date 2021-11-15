@@ -340,7 +340,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     
     
     
-    unsigned nos = 0, musts = 0, mays = 0, invalid = 0;
+    unsigned nos = 0, musts = 0, mays = 0;
     const auto add_aa = [&] (const AddrInfo& a, const AddrInfo& b, llvm::AliasResult result, const char *desc) {
         std::optional<z3::expr> cond;
         switch (result) {
@@ -396,7 +396,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 args.push_back(addr.e);
             }
         }
-        logv(1, "(alloca, arg) pairs: " << allocas.size() * args.size());
+        logv(1, "(alloca, arg) pairs: " << allocas.size() * args.size() << "\n");
         for (const z3::expr& alloca : allocas) {
             for (const z3::expr& arg : args) {
                 constraints(alloca != arg, "alloca-argument-distinct");
