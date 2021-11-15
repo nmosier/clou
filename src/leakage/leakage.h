@@ -40,6 +40,8 @@ protected:
     
     bool lookahead(std::function<void ()> thunk);
     
+    void assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind);
+    
     struct EdgeRef {
         NodeRef src;
         NodeRef dst;

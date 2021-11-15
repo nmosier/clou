@@ -54,7 +54,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
         }
         
         if (mode == CheckMode::SLOW) {
-            if (solver.check() != z3::sat) {
+            if (solver.check() == z3::unsat) {
                 trace("backtrack: unsat");
                 std::cerr << "mark:unsat\n";
                 dbg::append_core(solver);
@@ -69,12 +69,12 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
             const NodeRef load = dep.first;
             const auto push_load = util::push(loads, load);
             if (mode == CheckMode::SLOW) {
-                solver.add(dep.second, util::to_string(load, " -", dep_kind, "-> ", access).c_str());
+                assert_edge(load, access, dep.second, dep_kind);
             }
             const auto addr_edge = util::push(flag_edges, EdgeRef {
                 .src = load,
                 .dst = access,
-                .kind = aeg::Edge::ADDR,
+                .kind = dep_kind,
             });
             
             const auto action = util::push(actions, util::to_string(load, " -", dep_kind, "-> ", access));

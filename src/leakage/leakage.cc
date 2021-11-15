@@ -205,7 +205,7 @@ void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<v
     for (const auto& edge : edges) {
         z3_cond_scope;
         if (mode == CheckMode::SLOW) {
-            solver.add(edge.second, util::to_string(edge.first, " -", kind, "-> ", ref).c_str());
+            assert_edge(edge.first, ref, edge.second, kind);
         }
         const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
         func(edge.first, mode);
@@ -214,18 +214,18 @@ void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<v
 
 void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     const aeg::Node& load_node = aeg.lookup(load);
-
-    z3_cond_scope;
-    if (mode == CheckMode::SLOW) {
-        solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
-        if (solver.check() != z3::sat) { return; }
-    }
     
     if (traceback_depth == max_traceback) {
         if (mode == CheckMode::SLOW) {
             std::cerr << "backtracking: max traceback depth (" << max_traceback << ")\n";
         }
         return;
+    }
+    
+    z3_cond_scope;
+    if (mode == CheckMode::SLOW) {
+        solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
+        if (solver.check() == z3::unsat) { return; }
     }
     
     const auto inc_depth = util::inc_scope(traceback_depth);
@@ -420,5 +420,20 @@ const Detector::Sources& Detector::rf_sources(NodeRef load) {
 void Detector::rf_sources(NodeRef load, Sources&& sources) {
     rf[load] = sources;
 }
+
+
+void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind) {
+    const auto desc = [src, dst] (const std::string& name) -> std::string {
+        return util::to_string(name, "-", src, "-", dst);
+    };
+    
+    solver.add(edge, desc(util::to_string(kind)));
+    
+    const auto& src_node = aeg.lookup(src);
+    const auto& dst_node = aeg.lookup(dst);
+    solver.add(z3::implies(src_node.trans, dst_node.trans), desc("trans->trans").c_str());
+    solver.add(z3::implies(dst_node.arch, src_node.arch), desc("arch<-arch").c_str());
+}
+
 
 }

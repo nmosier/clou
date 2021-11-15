@@ -414,6 +414,19 @@ void AEG::construct_exec() {
     
     // construct_arch();
     construct_trans();
+    
+    
+#if 0
+    // help the solver out by adding constraints saying that if a node is transiently executed, then its children cannot be architecturally executed
+    for (const NodeRef ref : node_range()) {
+        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
+        
+        auto& node = lookup(ref);
+        for (NodeRef succ : po.po.fwd.at(ref)) {
+            node.constraints(z3::implies(node.trans, !lookup(succ).arch), "trans-implies-succ-not-arch");
+        }
+    }
+#endif
 }
  
 void AEG::construct_arch() {
