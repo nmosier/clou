@@ -8,6 +8,7 @@
 #include <z3++.h>
 
 #include "config.h"
+#include "progress.h"
 
 namespace aeg {
 
@@ -23,21 +24,30 @@ struct Constraints {
     explicit Constraints(const z3::expr& expr, const std::string& name): exprs({{expr, name}}) {}
     
     template <class Solver>
-    void add_to(Solver& solver) const;
+    void add_to(Solver& solver) const {
+        for (const auto& p : exprs) {
+            add_to(solver, p);
+        }
+    }
+    
+    template <class Solver>
+    void add_to_progress(Solver& solver) const {
+        Progress progress(exprs.size());
+        for (const auto& p : exprs) {
+            ++progress;
+            add_to(solver, p);
+        }
+    }
     
     void operator()(const z3::expr& clause, const std::string& name);
     
     void simplify();
     
     z3::expr get(z3::context& ctx) const;
-};
-
-std::ostream& operator<<(std::ostream& os, const Constraints& c);
-
-
-template <class Solver>
-void Constraints::add_to(Solver& solver) const {
-    for (const auto& p : exprs) {
+    
+private:
+    template <class Solver>
+    void add_to(Solver& solver, const std::pair<z3::expr, std::string>& p) const {
         std::stringstream ss;
         ss << p.second << ":" << constraint_counter++;
         if constexpr (should_name_constraints) {
@@ -46,8 +56,9 @@ void Constraints::add_to(Solver& solver) const {
             solver.add(p.first);
         }
     }
-}
+};
 
+std::ostream& operator<<(std::ostream& os, const Constraints& c);
 
 
 }

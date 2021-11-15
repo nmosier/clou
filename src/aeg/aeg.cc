@@ -148,7 +148,9 @@ void AEG::test() {
     }
     
     // add main constraints
-    constraints.add_to(solver);
+    logv(0, __FUNCTION__ << ": adding main constraints...");
+    constraints.add_to_progress(solver);
+    logv_(0, "done\n");
     
 #if 0
     std::cerr << solver.statistics() << "\n";
