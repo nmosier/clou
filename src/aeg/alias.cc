@@ -497,6 +497,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
 #endif
         
+#if 0
         /* process different-type alloca, gep pairs */
         {
             std::size_t sum = std::transform_reduce(types.begin(), types.end(), static_cast<std::size_t>(0), std::plus<std::size_t>(), [&] (const auto& p) -> std::size_t {
@@ -511,7 +512,51 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
              * Then each GEP type
              *
              */
+            
+            for (const auto& gep_type : types) {
+                const auto& geps = gep_type.second.second;
+                z3::expr_vector allocas(context.context);
+                for (const auto& alloca_type : types) {
+                    if (alloca_type.first == gep_type.first) { continue; }
+                    for (const auto& alloca : alloca_type.second.first) {
+                        allocas.push_back(alloca->e);
+                    }
+                    for (const auto& gep : geps) {
+                        allocas.push_back(gep->e);
+                        constraints(z3::distinct2(allocas), "alloca-gep-type-mismatch");
+                        allocas.pop_back();
+                    }
+                }
+            }
+            
         }
+#endif
+        
+        
+        /* Alloca isn't struct, GEP is struct */
+        {
+            z3::expr_vector allocas(context.context);
+            z3::expr_vector geps(context.context);
+            for (const AddrInfo& addr : addrs) {
+                if (llvm::isa<llvm::AllocaInst>(addr.V) && !addr.V->getType()->getPointerElementType()->isStructTy()) {
+                    allocas.push_back(addr.e);
+                } else if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(addr.V)) {
+                    if (GEP->getPointerOperandType()->getPointerElementType()->isStructTy()) {
+                        geps.push_back(addr.e);
+                    }
+                }
+            }
+            
+            logv(1, "alloca struct, gep not struct " << geps.size() << "\n");
+            
+            for (const z3::expr& gep : geps) {
+                allocas.push_back(gep);
+                constraints(z3::distinct2(allocas), "alloca-struct-not-gep");
+                allocas.pop_back();
+            }
+        }
+        
+        
     }
     
     
