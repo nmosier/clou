@@ -388,7 +388,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     };
 
 
-#if BABA
+#if 1
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
         logv(1, __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...");
@@ -403,7 +403,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     }
 #endif
     
-#if BABA
+#if 1
     /* AA: all pairs of AllocaInsts and Arguments cannot alias */
     {
         std::cerr << __FUNCTION__ << ": allocas and arguments cannot alias...\n";
@@ -427,7 +427,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     }
 #endif
     
-#if BABA
+#if 1
     /* AA: apply LLVM's built-in alias analysis if possible
      * Restrictions: both VLs must have the same call stack and loops must nest.
      * We can make this efficient by sorting all addresses into different buckets by function callstack.
@@ -445,7 +445,9 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             const auto& group = p.second;
             util::for_each_unordered_pair(group, [&] (AddrInfoVec::const_iterator it1, AddrInfoVec::const_iterator it2) {
                 if (!util::prefixeq_bi(it1->id.loop, it2->id.loop)) { return; }
-                add_aa(*it1, *it2, AA.alias(it1->V, it2->V), "llvm");
+                const auto alias_result = AA.alias(it1->V, it2->V);
+                if (alias_result == llvm::AliasResult::MayAlias) { return; }
+                add_aa(*it1, *it2, alias_result, "llvm");
                 ++count;
             });
         }
