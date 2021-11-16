@@ -1,4 +1,5 @@
 #include <fstream>
+#include <sys/mman.h>
 
 #include <gperftools/profiler.h>
 
@@ -178,13 +179,24 @@ bool Detector::lookahead(std::function<void ()> thunk) {
 
 void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     // Sources new_sources;
-    for (const auto& store_pair : rf_sources(load)) {
+    const auto& stores = rf_sources(load);
+    if (mode == CheckMode::SLOW) {
+        logv(1, __FUNCTION__ << ": tracing back " << stores.size() << " stores\n");
+    }
+    for (const auto& store_pair : stores) {
         const NodeRef store = store_pair.first;
 #if 1
-        assert(window.contains(load));
+        assert(exec_window.contains(load));
         if (!exec_window.contains(store)) { continue; }
 #endif
-        
+        if (!lookahead([&] () {
+            func(store, CheckMode::FAST);
+        })) {
+            if (mode == CheckMode::SLOW) {
+                logv(1, __FUNCTION__ << ": skipping: failed lookahead\n");
+            }
+            continue;
+        }
         z3_cond_scope;
         const std::string desc = util::to_string(store, " -rf-> ", load);
         if (mode == CheckMode::SLOW) {
@@ -255,10 +267,42 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         });
     }
     
+#if 0
+    /* NOTE: This shared data structure only guarantees that each NodeRef element is processed at least once. */
+    struct shm_t {
+        std::size_t size;
+        std::size_t next;
+        NodeRef refs[];
+        
+        bool done() const { return next == size; }
+        NodeRef pop() {
+            const std::size_t cur = next++;
+            return refs[cur];
+        }
+    };
+    
+    /* create shared memory */
+    void *map;
+    {
+        std::size_t size = sizeof(shm_t) + candidate_transmitters.size() * sizeof(NodeRef);
+        if ((map = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0)) == MAP_FAILED) {
+            std::perror("mmap");
+            std::abort();
+        }
+    }
+    
+    shm_t *shm = reinterpret_cast<shm_t *>(map);
+    util::copy(candidate_transmitters, &shm->refs);
+    shm->size = candidate_transmitters.size();
+    shm->next = 0;
+#endif
+    
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
         ++i;
         logv(1, i << "/" << candidate_transmitters.size() << "\n");
+        
+        rf.clear();
         
         {
             logv(1, "windows ");
@@ -290,7 +334,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         if (!lookahead([&] () {
             func(transmitter, CheckMode::FAST);
         })) {
-            std::cerr << "skipping transmitter: failed lookahead\n";
+            logv(1, __FUNCTION__ << "skipping transmitter: failed lookahead\n");
             continue;
         }
         
