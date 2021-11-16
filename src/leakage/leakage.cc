@@ -182,7 +182,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
         const NodeRef store = store_pair.first;
 #if 1
         assert(window.contains(load));
-        if (!window.contains(store)) { continue; }
+        if (!exec_window.contains(store)) { continue; }
 #endif
         
         z3_cond_scope;
@@ -260,16 +260,31 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         ++i;
         logv(1, i << "/" << candidate_transmitters.size() << "\n");
         
-        // MAKE WINDOW
         {
-            window.clear();
-            notwindow.clear();
-            aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
-                window.insert(ref);
-            }, [&] (NodeRef ref) {
-                notwindow.insert(ref);
-            });
-            mems = get_mems1(window);
+            logv(1, "windows ");
+            Timer timer;
+            // MAKE EXEC WINDOW
+            {
+                exec_window.clear();
+                exec_notwindow.clear();
+                aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
+                    exec_window.insert(ref);
+                }, [&] (NodeRef ref) {
+                    exec_notwindow.insert(ref);
+                });
+                mems = get_mems1(exec_window);
+            }
+            
+            // MAKE TRANS WINDOW
+            {
+                trans_window.clear();
+                trans_notwindow.clear();
+                aeg.for_each_pred_in_window(transmitter, *max_transient_nodes, [&] (NodeRef ref) {
+                    trans_window.insert(ref);
+                }, [&] (NodeRef ref) {
+                    trans_notwindow.insert(ref);
+                });
+            }
         }
 
         if (!lookahead([&] () {
@@ -315,8 +330,13 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         const auto saved_mems = util::save(mems);
 #endif
         {
-            for (NodeRef ref : notwindow) {
+            for (NodeRef ref : exec_notwindow) {
                 vec.push_back(!aeg.lookup(ref).exec());
+            }
+            for (NodeRef ref : trans_notwindow) {
+                if (!exec_notwindow.contains(ref)) {
+                    // vec.push_back(!aeg.lookup(ref).trans);
+                }
             }
         }
         
@@ -416,7 +436,7 @@ void Detector::precompute_rf(NodeRef load) {
     
 #if 1
     for (auto it = out.begin(); it != out.end(); ) {
-        if (window.contains(it->first)) {
+        if (exec_window.contains(it->first)) {
             ++it;
         } else {
             it = out.erase(it);

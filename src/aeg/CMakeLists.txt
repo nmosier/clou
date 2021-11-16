@@ -12,4 +12,6 @@ add_library(aeg_objs OBJECT
   address.h address.cc
   node.h node.cc
   edge.h edge.cc
+  $<TARGET_OBJECTS:proto>
   )
+target_link_libraries(aeg_objs PRIVATE proto)

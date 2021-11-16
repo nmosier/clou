@@ -42,7 +42,7 @@ protected:
     
     void assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind);
     bool check_edge(NodeRef src, NodeRef dst) const {
-        return window.contains(src) && window.contains(dst);
+        return exec_window.contains(src) && exec_window.contains(dst);
     }
     
     struct EdgeRef {
@@ -61,7 +61,8 @@ protected:
     Actions actions;
     z3::expr init_mem;
     Mems mems;
-    NodeRefSet window, notwindow;
+    NodeRefSet exec_window, exec_notwindow;
+    NodeRefSet trans_window, trans_notwindow;
     
     z3::expr mem(NodeRef ref) const;
     

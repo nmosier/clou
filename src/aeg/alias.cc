@@ -5,6 +5,8 @@
 #include "timer.h"
 #include "util/z3.h"
 #include "util/llvm.h"
+#include "mon/proto.h"
+#include "mon/client.h"
 #include "util/output.h"
 
 namespace aeg {
@@ -144,6 +146,13 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
 
 
 llvm::AliasResult AEG::compute_alias(const AddrInfo& a, const AddrInfo& b) const {
+    /* check if we already found result */
+    if (const auto result = check_alias(a.vl(), b.vl())) {
+        if (result != llvm::MayAlias) {
+            return result;
+        }
+    }
+    
     /* check if LLVM's built-in alias analysis is valid */
     if (po.llvm_alias_valid(a.id, b.id)) {
         return AA.alias(a.V, b.V);
@@ -389,6 +398,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 
 
 #if 1
+    // NOTE: This clause is causing some to timeout.
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
         logv(1, __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...");
@@ -400,8 +410,47 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
         constraints(z3::distinct2(v), "alloca-addrs-distinct");
         logv_(1, v.size() << "\n");
+        
+        mon::Message msg;
+        client.send_property(po.function_name(), "aa-distinct", v.size());
     }
+    
 #endif
+    
+    
+#if 1
+    /* AA: GEP of distinct Alloca bases have different values */
+    {
+        logv(1, __FUNCTION__ << ": GEPs with distinct alloca bases...");
+        std::vector<std::pair<const llvm::AllocaInst *, AddrInfoVec::const_iterator>> map; // map from alloca base to GEP
+        for (auto it = addrs.begin(); it != addrs.end(); ++it) {
+            const auto& addr = *it;
+            if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(addr.V)) {
+                const auto *ptr_op = GEP->getPointerOperand();
+                if (const auto *AI = llvm::dyn_cast<llvm::AllocaInst>(ptr_op)) {
+                    map.emplace_back(AI, it);
+                }
+            }
+        }
+        
+        unsigned i = 0;
+        util::for_each_unordered_pair(map, [&] (const auto& p1, const auto& p2) {
+            if (p1.first != p2.first) {
+                add_aa(*p1.second, *p2.second, llvm::AliasResult::NoAlias, "geps-with-alloca-pointer-operands");
+                ++i;
+            }
+        });
+        
+        logv_(1, i << " items\n");
+    }
+    
+    
+    /* AA: GEP w/ Alloca base, GlobalObject, BlockAddress have distinct addresses */
+    
+    
+#endif
+    
+    
     
 #if 1
     /* AA: all pairs of AllocaInsts and Arguments cannot alias */
