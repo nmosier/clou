@@ -5,7 +5,8 @@ namespace lkg {
 
 void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mode) {
     if (mode == CheckMode::SLOW) {
-        std::cerr << __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n";
+        using output::operator<<;
+        logv(1, __FUNCTION__ << ": transmitter=" << transmitter << " access=" << access << " loads=" << loads << "\n");
         
         // lookahead
         if (!lookahead([&] () {
@@ -19,7 +20,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
     if (loads.size() == deps().size()) {
         if (mode == CheckMode::SLOW) {
             if (solver.check() != z3::sat) {
-                trace("backtrack: unsat");
+                logv(1, "backtrack: unsat\n");
                 return;
             }
             
@@ -31,7 +32,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
                 .transmitter2 = transmitter,
             };
             
-            std::cerr << "spectre-v1 leak found\n";
+            logv(1, "spectre-v1 leak found\n");
             
             output_execution(leak);
             return;
@@ -55,19 +56,19 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
         
         if (mode == CheckMode::SLOW) {
             if (solver.check() == z3::unsat) {
-                trace("backtrack: unsat");
-                std::cerr << "mark:unsat\n";
+                logv(1, "backtrack: unsat\n");
                 dbg::append_core(solver);
                 return;
             }
 
-            trace("trying to commit %lu (%zu deps)", access, deps.size());
+            logv(1, "trying to commit " << access << " (" << deps.size() << " deps)\n");
         }
         
         for (const auto& dep : deps) {
-            z3_cond_scope;
             const NodeRef load = dep.first;
             const auto push_load = util::push(loads, load);
+            if (!check_edge(load, access)) { continue; }
+            z3_cond_scope;
             if (mode == CheckMode::SLOW) {
                 assert_edge(load, access, dep.second, dep_kind);
             }
@@ -79,7 +80,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
             
             const auto action = util::push(actions, util::to_string(load, " -", dep_kind, "-> ", access));
             if (mode == CheckMode::SLOW) {
-                std::cerr << __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n";
+                logv(1, __FUNCTION__ << ": committed " << load << " -" << dep_kind << "-> " << access << "\n");
             }
             run1(transmitter, load, mode);
         }
@@ -93,7 +94,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
             std::optional<Timer> timer;
             if (mode == CheckMode::SLOW) {
                 timer = Timer();
-                std::cerr << name() << ": traceback " << access << " to " << load << "\n";
+                logv(1, name() << ": traceback " << access << " to " << load << "\n");
             }
             run1(transmitter, load, mode);
         }, mode);

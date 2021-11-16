@@ -180,16 +180,16 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
     // Sources new_sources;
     for (const auto& store_pair : rf_sources(load)) {
         const NodeRef store = store_pair.first;
+#if 1
+        assert(window.contains(load));
+        if (!window.contains(store)) { continue; }
+#endif
         
         z3_cond_scope;
         const std::string desc = util::to_string(store, " -rf-> ", load);
         if (mode == CheckMode::SLOW) {
             const z3::expr& cond = store_pair.second;
             solver.add(cond, desc.c_str());
-#if 0
-            // NOTE: not checking actually speeds up execution by 0.5X
-            if (solver.check() != z3::sat) { continue; }
-#endif
         }
         
         const auto action = util::push(actions, desc);
@@ -203,6 +203,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
 void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
     for (const auto& edge : edges) {
+        if (!check_edge(edge.first, ref)) { continue; }
         z3_cond_scope;
         if (mode == CheckMode::SLOW) {
             assert_edge(edge.first, ref, edge.second, kind);
@@ -258,6 +259,18 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     for (NodeRef transmitter : candidate_transmitters) {
         ++i;
         logv(1, i << "/" << candidate_transmitters.size() << "\n");
+        
+        // MAKE WINDOW
+        {
+            window.clear();
+            notwindow.clear();
+            aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
+                window.insert(ref);
+            }, [&] (NodeRef ref) {
+                notwindow.insert(ref);
+            });
+            mems = get_mems1(window);
+        }
 
         if (!lookahead([&] () {
             func(transmitter, CheckMode::FAST);
@@ -298,18 +311,13 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         vec.push_back(transmitter_node.trans);
         
         // window size
+#if 0
         const auto saved_mems = util::save(mems);
-        {
-            NodeRefSet window;
-            aeg.for_each_pred_in_window(transmitter, window_size, [&window] (NodeRef ref) {
-                window.insert(ref);
-            }, [&] (NodeRef ref) {
-                const aeg::Node& node = aeg.lookup(ref);
-                vec.push_back(!node.exec());
-            });
-#if 1
-            mems = get_mems1(window);
 #endif
+        {
+            for (NodeRef ref : notwindow) {
+                vec.push_back(!aeg.lookup(ref).exec());
+            }
         }
         
         if (solver.check(vec) != z3::unsat) {
@@ -334,6 +342,7 @@ void Detector::precompute_rf(NodeRef load) {
     // TODO: only use partial order, not ref2order
     
     std::cerr << "precomputing rf " << load << "\n";
+    Timer timer;
     
     auto& out = rf[load];
     
@@ -388,7 +397,7 @@ void Detector::precompute_rf(NodeRef load) {
 #endif
         
         if (aeg.lookup(ref).may_write()) {
-            switch (aeg.check_alias(load, ref)) {
+            switch (aeg.compute_alias(load, ref)) {
                 case llvm::NoAlias: break;
                     
                 case llvm::MayAlias:
@@ -404,6 +413,16 @@ void Detector::precompute_rf(NodeRef load) {
         
         // how to check when 
     }
+    
+#if 1
+    for (auto it = out.begin(); it != out.end(); ) {
+        if (window.contains(it->first)) {
+            ++it;
+        } else {
+            it = out.erase(it);
+        }
+    }
+#endif
     
 }
 

@@ -143,98 +143,56 @@ bool AEG::compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2) {
 }
 
 
-std::optional<llvm::AliasResult> AEG::compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA) {
-    const AddrInfo *x = &a;
-    const AddrInfo *y = &b;
-    
+llvm::AliasResult AEG::compute_alias(const AddrInfo& a, const AddrInfo& b) const {
     /* check if LLVM's built-in alias analysis is valid */
     if (po.llvm_alias_valid(a.id, b.id)) {
         return AA.alias(a.V, b.V);
     }
     
-    if (alias_mode.llvm_only) {
-        return std::nullopt;
-    }
     
-    // EXPERIMENTAL: try inter-procedural alias analysis
-    if (!compatible_types(a.V->getType(), b.V->getType())) {
-        return llvm::AliasResult::NoAlias;
-    }
-    
-#if 0
-    // NOTE: This is already addressed in the AA rule that makes all alloca's distinct.
-    /* unless alloca's scope is a prefix of another scope, it can't alias */
+    /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
-        if (!util::prefixeq(y->id.func, x->id.func)) {
-            std::swap(x, y);
-        }
-        if (!util::prefixeq(x->id.func, y->id.func)) {
-            if (llvm::isa<llvm::AllocaInst>(x->V)) {
-                return llvm::NoAlias;
-            }
-        }
-    }
-#endif
-    
-#if 0
-    // NOTE: I also think this is covered elsewhere.
-    /* check if address kinds differ */
-    {
-        const AddressKind k1 = get_addr_kind(a.V);
-        const AddressKind k2 = get_addr_kind(b.V);
-        if (k1 != AddressKind::UNKNOWN && k2 != AddressKind::UNKNOWN && k1 != k2) {
+        const auto is = [] (const llvm::Value *V) -> bool {
+            return llvm::isa<llvm::AllocaInst, llvm::GlobalObject, llvm::BlockAddress>(V);
+        };
+        if (is(a.V) && is(b.V) && a.V != b.V) {
             return llvm::AliasResult::NoAlias;
         }
     }
-#endif
     
-#if 0
-    // NOTE: This is covered elsewhere.
+    /* AA: all pairs of AllocaInsts and Arguments cannot alias */
     {
-        if (llvm::isa<llvm::Argument>(x->V)) {
-            std::swap(x, y);
-        }
-        if (llvm::isa<llvm::Argument>(x->V) && llvm::isa<llvm::AllocaInst>(y->V)) {
+        const auto is = [] (const AddrInfo& a, const AddrInfo& b) -> bool {
+            return llvm::isa<llvm::AllocaInst>(a.V) && llvm::isa<llvm::Argument>(b.V);
+        };
+        if (is(a, b) || is(b, a)) {
             return llvm::AliasResult::NoAlias;
         }
     }
-#endif
     
-    {
-        /*
-         * If the types of the alloca and the getelementptr base aren't equal, then we know that the getelementptr result can't alias.
-         */
-        if (llvm::isa<llvm::AllocaInst>(y->V)) {
-            std::swap(x, y);
-        }
-        if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(x->V)) {
-            const llvm::Type *T1 = AI->getType()->getPointerElementType();
-            if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(y->V)) {
-                if (!llvm::getelementptr_can_zero(GEP)) {
-                    return llvm::AliasResult::NoAlias;
-                }
-                
-                const llvm::Type *T2 = GEP->getPointerOperand()->getType()->getPointerElementType();
-                if (T1 != T2) {
-                    return llvm::AliasResult::NoAlias;
-                }
-            }
-            
-            const llvm::Type *T2 = y->V->getType()->getPointerElementType();
-            if (!T1->isStructTy() && T2->isStructTy()) {
-                return llvm::AliasResult::NoAlias;
-            }
-        }
-    }
     
-    {
-        logv(3, "alias-fail: " << *a.V << " -- " << *b.V << "\n");
-    }
-    
-    /* check whether pointers point to different address spaces */
-    
-    return std::nullopt;
+    return llvm::AliasResult::MayAlias;
 }
+
+
+llvm::AliasResult AEG::compute_alias(NodeRef a, NodeRef b) const {
+    const auto special = [&] (NodeRef ref) -> bool {
+        return ref == entry || exits.contains(ref);
+    };
+    if (special(a) || special(b)) {
+        return llvm::AliasResult::MayAlias;
+    }
+    
+    // TODO: find out why some loookups fail
+    const auto it1 = vl2addr.find(get_value_loc(a));
+    const auto it2 = vl2addr.find(get_value_loc(b));
+    if (it1 == vl2addr.end() || it2 == vl2addr.end()) {
+        return llvm::AliasResult::MayAlias;
+    } else {
+        return compute_alias(it1->second, it2->second);
+    }
+}
+
 
 
 bool AEG::compatible_types(const llvm::Type *P1, const llvm::Type *P2) {
@@ -341,6 +299,10 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 #endif
     
     
+    // map vls to addrs
+    for (const AddrInfo& addr : addrs) {
+        vl2addr.emplace(addr.vl(), addr);
+    }
     
     unsigned nos = 0, musts = 0, mays = 0;
     const auto add_aa = [&] (const AddrInfo& a, const AddrInfo& b, llvm::AliasResult result, const char *desc) {
@@ -371,11 +333,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         add_alias_result(a.vl(), b.vl(), result);
     };
 
-    
+
+#if BABA
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
-        std::cerr << __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...\n";
-        Timer timer;
+        logv(1, __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...");
         z3::expr_vector v {context.context};
         for (const AddrInfo& addr : addrs) {
             if (llvm::isa<llvm::AllocaInst, llvm::GlobalValue, llvm::BlockAddress>(addr.V)) {
@@ -383,8 +345,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
         }
         constraints(z3::distinct2(v), "alloca-addrs-distinct");
+        logv_(1, v.size() << "\n");
     }
+#endif
     
+#if BABA
     /* AA: all pairs of AllocaInsts and Arguments cannot alias */
     {
         std::cerr << __FUNCTION__ << ": allocas and arguments cannot alias...\n";
@@ -406,7 +371,9 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
         }
     }
+#endif
     
+#if BABA
     /* AA: apply LLVM's built-in alias analysis if possible
      * Restrictions: both VLs must have the same call stack and loops must nest.
      * We can make this efficient by sorting all addresses into different buckets by function callstack.
@@ -431,6 +398,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         
         logv(1, "processed " << count << " pairs\n");
     }
+#endif
     
     /* AA: allocas cannot alias with getelementptrs */
     {
@@ -515,6 +483,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 #endif
         
         
+#if 0
         /* Alloca isn't struct, GEP is struct */
         {
             z3::expr_vector allocas(context.context);
@@ -537,7 +506,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 allocas.pop_back();
             }
         }
-        
+#endif
         
     }
     

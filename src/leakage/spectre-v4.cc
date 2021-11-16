@@ -36,7 +36,7 @@ void SpectreV4_Detector::run_load(NodeRef access) {
             if (solver.check() == z3::sat) {
                 run_bypassed_store();
             } else {
-                std::cerr << "unsat, backtracking\n";
+                logv(1, "unsat, backtracking\n");
             }
         }
     }
@@ -44,7 +44,7 @@ void SpectreV4_Detector::run_load(NodeRef access) {
     // traceback
     traceback(access, [&] (NodeRef load, CheckMode mode) {
         if (mode == CheckMode::FAST) { throw lookahead_found(); }
-        std::cerr << "traceback " << load << "\n";
+        logv(1, "traceback " << load << "\n");
         run_load(load);
     }, CheckMode::SLOW);
 }

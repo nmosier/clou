@@ -209,7 +209,7 @@ struct LCMPass: public llvm::ModulePass {
             
             logv(1, "Constructing AEG for " << F.getName() << "\n");
             client.send_step("aeg", F.getName().str());
-            aeg::AEG aeg {cfg_expanded};
+            aeg::AEG aeg {cfg_expanded, AA};
             aeg.construct(AA, rob_size);
 
             client.send_step("leakage", F.getName().str());

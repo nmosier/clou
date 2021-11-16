@@ -41,6 +41,9 @@ protected:
     bool lookahead(std::function<void ()> thunk);
     
     void assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind);
+    bool check_edge(NodeRef src, NodeRef dst) const {
+        return window.contains(src) && window.contains(dst);
+    }
     
     struct EdgeRef {
         NodeRef src;
@@ -58,6 +61,7 @@ protected:
     Actions actions;
     z3::expr init_mem;
     Mems mems;
+    NodeRefSet window, notwindow;
     
     z3::expr mem(NodeRef ref) const;
     

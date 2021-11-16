@@ -24,11 +24,16 @@
 
 class CFG_Expanded;
 
+namespace lkg {
+class Detector;
+}
+
 namespace aeg {
 
 class AEG {
 public:
     const CFG_Expanded& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
+    llvm::AliasAnalysis& AA;
     Context context; /*!<  The context for AEG construction. */
 
   using Node = aeg::Node;
@@ -51,7 +56,7 @@ public:
     const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
     Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
     
-    explicit AEG(const CFG_Expanded& po): po(po), context(), constraints() {}
+    explicit AEG(const CFG_Expanded& po, llvm::AliasAnalysis& aa): po(po), AA(aa), context(), constraints() {}
     
     void dump_graph(std::ostream& os) const;
     void dump_graph(const std::string& path) const;
@@ -253,8 +258,14 @@ private:
         
         ValueLoc vl() const { return {id, V}; }
     };
+    std::map<ValueLoc, AddrInfo> vl2addr;
+
     
-    std::optional<llvm::AliasResult> compute_alias(const AddrInfo& a, const AddrInfo& b, llvm::AliasAnalysis& AA);
+    friend class lkg::Detector;
+    
+    llvm::AliasResult compute_alias(const AddrInfo& a, const AddrInfo& b) const;
+    llvm::AliasResult compute_alias(NodeRef a, NodeRef b) const;
+    
     void add_alias_result(const ValueLoc& vl1, const ValueLoc& vl2, llvm::AliasResult res);
     static bool compatible_types(const llvm::Type *P1, const llvm::Type *P2);
     static bool compatible_types_pointee(const llvm::Type *T1, const llvm::Type *T2);
