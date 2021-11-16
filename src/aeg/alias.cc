@@ -402,11 +402,10 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
         logv(1, __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...");
-        constexpr std::size_t limit = 2500;
         std::vector<z3::expr_vector> vs;
         for (const AddrInfo& addr : addrs) {
             if (llvm::isa<llvm::AllocaInst, llvm::GlobalValue, llvm::BlockAddress>(addr.V)) {
-                if (vs.empty() || vs.back().size() >= limit) {
+                if (vs.empty() || vs.back().size() >= distinct_limit) {
                     vs.emplace_back(context.context);
                 }
                 vs.back().push_back(addr.e);

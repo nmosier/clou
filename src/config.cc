@@ -47,6 +47,7 @@ SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
 unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
+std::size_t distinct_limit = 2500;
 
 namespace {
 std::optional<std::string> logdir;
@@ -100,6 +101,7 @@ only examine given functions
 --window <uint>      sliding window size
 --log <dir>          redirect stderr to log directory
 --profile            enable profiler
+--distinct <limit>   set distinct limit (default: 2500)
 )=";
     fprintf(f, "%s", s);
 }
@@ -196,6 +198,7 @@ int parse_args() {
         WINDOW,
         LOG,
         PROFILE,
+        DISTINCT_LIMIT,
     };
     
     struct option opts[] = {
@@ -226,6 +229,7 @@ int parse_args() {
         {"window", required_argument, nullptr, WINDOW},
         {"log", required_argument, nullptr, LOG},
         {"profile", optional_argument, nullptr, PROFILE},
+        {"distinct", required_argument, nullptr, DISTINCT_LIMIT},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -462,6 +466,11 @@ int parse_args() {
                 
             case PROFILE: {
                 profile = parse_bool_opt(optarg);
+                break;
+            }
+                
+            case DISTINCT_LIMIT: {
+                distinct_limit = std::stoul(optarg);
                 break;
             }
                 
