@@ -149,13 +149,17 @@ llvm::AliasResult AEG::compute_alias(const AddrInfo& a, const AddrInfo& b) const
         return AA.alias(a.V, b.V);
     }
     
+    if (a.vl() == b.vl()) {
+        return llvm::MustAlias;
+    }
+    
     
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
         const auto is = [] (const llvm::Value *V) -> bool {
             return llvm::isa<llvm::AllocaInst, llvm::GlobalObject, llvm::BlockAddress>(V);
         };
-        if (is(a.V) && is(b.V) && a.V != b.V) {
+        if (is(a.V) && is(b.V)) {
             return llvm::AliasResult::NoAlias;
         }
     }
@@ -169,6 +173,56 @@ llvm::AliasResult AEG::compute_alias(const AddrInfo& a, const AddrInfo& b) const
             return llvm::AliasResult::NoAlias;
         }
     }
+    
+    /* Allocas and nonzero GEPs cannot alias */
+    {
+        const auto is = [] (const AddrInfo& a, const AddrInfo& b) -> bool {
+            if (llvm::isa<llvm::AllocaInst>(a.V)) {
+                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(b.V)) {
+                    if (!llvm::getelementptr_can_zero(GEP)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        if (is(a, b) || is(b, a)) {
+            return llvm::AliasResult::NoAlias;
+        }
+    }
+    
+    /* Allocas and GEPs where alloca isn't struct and GEP is struct cannot alias */
+    {
+        const auto is = [] (const AddrInfo& a, const AddrInfo& b) -> bool {
+            // check if alloca
+            if (llvm::isa<llvm::AllocaInst>(a.V)) {
+                // check if doesn't contain struct
+                if (!llvm::contains_struct(a.V->getType()->getPointerElementType())) {
+                    // check if GEP is struct
+                    if (b.V->getType()->getPointerElementType()->isStructTy()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        if (is(a, b) || is(b, a)) {
+            return llvm::AliasResult::NoAlias;
+        }
+    }
+    
+#if 0
+    /* GEPs on AllocaInst, GlobalObjects, BlockAddresses values have distinct addresses */
+    {
+        const auto is = [] (const AddrInfo& a, const AddrInfo& b) -> bool {
+            if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(a.V)) {
+                const auto *ptr_op = GEP->getPointerOperand();
+                if ()
+            }
+            return false;
+        };
+    }
+#endif
     
     
     return llvm::AliasResult::MayAlias;
@@ -482,8 +536,24 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
 #endif
         
+        // DEBUG: print out how many GEPs have alloca's as indices
+        {
+            unsigned i = 0;
+            for (const AddrInfo& addr : addrs) {
+                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(addr.V)) {
+                    if (llvm::isa<llvm::AllocaInst>(GEP->getPointerOperand())) {
+                        if (!llvm::getelementptr_const_offset(GEP)) {
+                            ++i;
+                        }
+                    }
+                }
+            }
+            logv(1, __FUNCTION__ << ": " << i << " nonconstant GEPs have alloca's as indices\n");
+        }
+      
         
-#if 0
+        
+        
         /* Alloca isn't struct, GEP is struct */
         {
             z3::expr_vector allocas(context.context);
@@ -498,15 +568,16 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 }
             }
             
-            logv(1, "alloca struct, gep not struct " << geps.size() << "\n");
+            logv(1, "alloca struct, gep not struct " << allocas.size() * geps.size() << "\n");
             
+#if 0
             for (const z3::expr& gep : geps) {
                 allocas.push_back(gep);
                 constraints(z3::distinct2(allocas), "alloca-struct-not-gep");
                 allocas.pop_back();
             }
-        }
 #endif
+        }
         
     }
     

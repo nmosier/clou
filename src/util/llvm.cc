@@ -47,4 +47,22 @@ std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP
     return offset;
 }
 
+bool contains_struct(const llvm::Type *T) {
+    if (const auto *AT = llvm::dyn_cast<llvm::ArrayType>(T)) {
+        return contains_struct(AT->getElementType());
+    } else if (const auto *FT = llvm::dyn_cast<llvm::FunctionType>(T)) {
+        return false;
+    } else if (const auto *IT = llvm::dyn_cast<llvm::IntegerType>(T)) {
+        return false;
+    } else if (const auto *PT = llvm::dyn_cast<llvm::PointerType>(T)) {
+        return false;
+    } else if (const auto *ST = llvm::dyn_cast<llvm::StructType>(T)) {
+        return true;
+    } else if (const auto *VT = llvm::dyn_cast<llvm::VectorType>(T)) {
+        return contains_struct(VT->getElementType());
+    } else {
+        std::abort();
+    }
+}
+
 }

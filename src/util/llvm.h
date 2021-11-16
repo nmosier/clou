@@ -19,6 +19,8 @@ std::string to_string(const T& x) {
 bool getelementptr_can_zero(const llvm::GetElementPtrInst *GEP);
 std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP);
 
+bool contains_struct(const llvm::Type *T);
+
 }
 
 template <typename T>
@@ -29,5 +31,4 @@ std::ostream& llvm_to_cxx_os(std::ostream& os, const T& x) {
 inline std::ostream& operator<<(std::ostream& os, const llvm::Instruction& I) {
    return llvm_to_cxx_os(os, I);
 }
-
 
