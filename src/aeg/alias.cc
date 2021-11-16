@@ -396,8 +396,19 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         add_alias_result(a.vl(), b.vl(), result);
     };
 
+    {
+        std::unordered_set<const llvm::AllocaInst *> AIs;
+        for (const AddrInfo& addr : addrs) {
+            if (const auto *AI = llvm::dyn_cast<llvm::AllocaInst>(addr.V)) {
+                AIs.insert(AI);
+            }
+        }
+        logv(1, __FUNCTION__ << ": " << AIs.size() << " AllocaInsts\n");
+    }
+    
+    
 
-#if 1
+#if 0
     // NOTE: This clause is causing some to timeout.
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
