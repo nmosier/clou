@@ -402,17 +402,26 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     /* AA: all AllocaInst, GlobalObject, BlockAddress values have distinct addresses */
     {
         logv(1, __FUNCTION__ << ": ensuring allocas, globals, blocks have distinct addresses...");
-        z3::expr_vector v {context.context};
+        constexpr std::size_t limit = 2500;
+        std::vector<z3::expr_vector> vs;
         for (const AddrInfo& addr : addrs) {
             if (llvm::isa<llvm::AllocaInst, llvm::GlobalValue, llvm::BlockAddress>(addr.V)) {
-                v.push_back(addr.e);
+                if (vs.empty() || vs.back().size() >= limit) {
+                    vs.emplace_back(context.context);
+                }
+                vs.back().push_back(addr.e);
             }
         }
-        constraints(z3::distinct2(v), "alloca-addrs-distinct");
-        logv_(1, v.size() << "\n");
+        for (const z3::expr_vector& v : vs) {
+            constraints(z3::distinct2(v), "alloca-addrs-distinct");
+        }
+        std::size_t size = std::transform_reduce(vs.begin(), vs.end(), 0, std::plus<std::size_t>(), [] (const z3::expr_vector& v) -> std::size_t {
+            return v.size();
+        });
+        logv_(1, size << " (" << vs.size() << " groups)\n");
         
         mon::Message msg;
-        client.send_property(po.function_name(), "aa-distinct", v.size());
+        client.send_property(po.function_name(), "aa-distinct", util::to_string(size));
     }
     
 #endif
