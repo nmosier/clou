@@ -335,7 +335,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             }
             for (NodeRef ref : trans_notwindow) {
                 if (!exec_notwindow.contains(ref)) {
-                    // vec.push_back(!aeg.lookup(ref).trans);
+                    vec.push_back(!aeg.lookup(ref).trans);
                 }
             }
         }

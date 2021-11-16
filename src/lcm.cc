@@ -27,6 +27,7 @@
 #include "mon/client.h"
 #include "cfg/block.h"
 #include "util/exception.h"
+#include "util/output.h"
 #include "util/scope.h"
 #include "timer.h"
 
@@ -211,6 +212,15 @@ struct LCMPass: public llvm::ModulePass {
             client.send_step("aeg", F.getName().str());
             aeg::AEG aeg {cfg_expanded, AA};
             aeg.construct(AA, rob_size);
+            
+            // DEBUG INFO
+            {
+                unsigned i = 0;
+                aeg.for_each_edge(aeg::Edge::ADDR_GEP, [&i] (NodeRef, NodeRef, const auto&) { ++i; });
+                logv(1, "num ADDR_GEP edges: " << i << "\n");
+            }
+            
+            
 
             client.send_step("leakage", F.getName().str());
             llvm::errs() << "Testing...\n";

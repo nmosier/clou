@@ -21,6 +21,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
         if (mode == CheckMode::SLOW) {
             if (solver.check() != z3::sat) {
                 logv(1, "backtrack: unsat\n");
+                dbg::append_core(solver);
                 return;
             }
             
