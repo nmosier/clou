@@ -83,6 +83,9 @@ protected:
     void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
     void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func);
+    template <class OutputIt>
+    OutputIt for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out);
+    void for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func);
     
     auto push_edge(const EdgeRef& edge) {
         return util::push(flag_edges, edge);

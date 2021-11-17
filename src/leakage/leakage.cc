@@ -17,6 +17,8 @@
 #include "util/algorithm.h"
 #include "leakage/spectre-v1.h"
 #include "leakage/spectre-v4.h"
+#include "util/protobuf.h"
+#include "leakage/proto.h"
 
 namespace aeg {
 
@@ -367,6 +369,138 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     traceback_edge(aeg::Edge::ADDR, load, func, mode);
 }
 
+void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func) {
+    rf.clear();
+    
+    bool window_changed = false;
+    {
+        logv(1, "windows ");
+        Timer timer;
+        // MAKE EXEC WINDOW
+        {
+            exec_window.clear();
+            exec_notwindow.clear();
+            aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
+                exec_window.insert(ref);
+            }, [&] (NodeRef ref) {
+                exec_notwindow.insert(ref);
+            });
+            mems = get_mems1(exec_window);
+        }
+        
+        // MAKE TRANS WINDOW
+        {
+            trans_window.clear();
+            trans_notwindow.clear();
+            aeg.for_each_pred_in_window(transmitter, *max_transient_nodes, [&] (NodeRef ref) {
+                trans_window.insert(ref);
+            }, [&] (NodeRef ref) {
+                trans_notwindow.insert(ref);
+            });
+        }
+        
+        // TODO: conditionally set this properly
+        window_changed = true;
+    }
+
+    if (!lookahead([&] () {
+        func(transmitter, CheckMode::FAST);
+    })) {
+        logv(1, __FUNCTION__ << "skipping transmitter: failed lookahead\n");
+        return;
+    }
+    
+    Timer timer;
+    
+    if (transmitters.find(aeg.lookup(transmitter).inst->get_inst()) != transmitters.end()) {
+        return;
+    }
+    
+    const auto action = util::push(actions, util::to_string("transmitter ", transmitter));
+    
+    const aeg::Node& transmitter_node = aeg.lookup(transmitter);
+    
+    if (aeg.exits.find(transmitter) != aeg.exits.end()) {
+        return;
+    }
+    
+    z3::expr_vector vec {ctx()};
+    
+    // require transmitter is access
+    vec.push_back(transmitter_node.access());
+    
+    // require transmitter.trans
+    vec.push_back(transmitter_node.trans);
+    
+    // window size
+    {
+        for (NodeRef ref : exec_notwindow) {
+            vec.push_back(!aeg.lookup(ref).exec());
+        }
+        for (NodeRef ref : trans_notwindow) {
+            if (!exec_notwindow.contains(ref)) {
+                vec.push_back(!aeg.lookup(ref).trans);
+            }
+        }
+    }
+    
+    if (solver.check(vec) != z3::unsat) {
+        z3_scope;
+        solver.add(vec);
+        
+        aeg.assert_xsaccess_order(exec_window, solver);
+        
+        try {
+            func(transmitter, CheckMode::SLOW);
+        } catch (const next_transmitter& e) {
+            // continue
+        }
+    } else {
+        std::cerr << "skipping transmitter\n";
+        std::cerr << "access: " << transmitter_node.access() << "\n";
+        std::cerr << "trans: " << transmitter_node.trans << "\n";
+        dbg::append_core(solver);
+    }
+}
+
+template <class OutputIt>
+OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out) {
+    int fds[2];
+    io::pipe(fds);
+    
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        std::perror("fork");
+        std::abort();
+    } else if (pid == 0) {
+        ::close(fds[0]);
+        for_one_transmitter(transmitter, func);
+        
+        // write leakage to parent
+        for (const auto& leakage_pair : leaks) {
+            lkg::LeakageMsg msg;
+            for (NodeRef ref : leakage_pair.first.vec) {
+                msg.mutable_vec()->Add(ref);
+            }
+            assert(msg.vec().size() > 1);
+            msg.set_transmitter(leakage_pair.first.transmitter);
+            msg.set_desc(leakage_pair.second);
+            
+            if (!proto::write(fds[1], msg)) {
+                std::cerr << "failed to write leakage\n";
+                std::abort();
+            }
+        }
+        ::close(fds[1]);
+
+        std::_Exit(0); // quick exit
+    } else {
+        *out++ = std::make_pair(pid, fds[0]);
+        ::close(fds[1]);
+        return out;
+    }
+}
+
 void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
     NodeRefSet candidate_transmitters;
     {
@@ -382,115 +516,111 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         });
     }
     
+    solver.check();
+
+    constexpr unsigned max_threads = 8;
+    unsigned num_threads = 0;
+    std::unordered_map<pid_t, int> pipes;
+    std::size_t total_candidate_transmitters = candidate_transmitters.size();
+    std::size_t i = 0;
+    while (true) {
+        /* spawn new child if possible */
+        if (num_threads < max_threads && !candidate_transmitters.empty()) {
+            const auto it = candidate_transmitters.begin();
+            const NodeRef transmitter = *it;
+            candidate_transmitters.erase(it);
+            for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
+            ++num_threads;
+            
+            ++i;
+            logv(1, i << "/" << total_candidate_transmitters << "\n");
+            
+#if 1
+            if (client) {
+                mon::Message msg;
+                auto *progress = msg.mutable_func_progress();
+                progress->mutable_func()->set_name(aeg.po.function_name());
+                const float frac = static_cast<float>(i) / static_cast<float>(candidate_transmitters.size());
+                progress->set_frac(frac);
+                client.send(msg);
+            }
+#endif
+        }
+        
+        /* reap dead children if necessary */
+        if (num_threads == max_threads || (num_threads > 0 && candidate_transmitters.empty())) {
+            int status;
+            pid_t pid;
+            while (true) {
+                pid = ::wait(&status);
+                if (pid < 0 && errno != EINTR) {
+                    std::perror("wait");
+                    std::abort();
+                }
+                if (pid >= 0) {
+                    break;
+                }
+            }
+
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                std::cerr << "child aborted or had nonzero exit code\n";
+                std::abort();
+            }
+            
+            const int fd = pipes.at(pid);
+            
+            std::vector<char> buf;
+            if (io::readall(fd, buf) < 0) {
+                std::perror("read");
+                std::abort();
+            }
+            ::close(fd);
+            
+            std::size_t rem = buf.size();
+            const char *ptr = buf.data();
+            while (ptr < buf.data() + buf.size()) {
+                lkg::LeakageMsg msg;
+                uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
+                std::cerr << "message size " << size << "\n";
+                rem -= 4;
+                ptr += 4;
+                if (!msg.ParseFromArray(ptr, size)) {
+                    std::cerr << "bad message\n";
+                    std::abort();
+                }
+                ptr += size;
+                rem -= size;
+                
+                NodeRefVec vec;
+                util::copy(msg.vec(), std::back_inserter(vec));
+                assert(msg.vec().size() > 1);
+                assert(vec.size() > 1);
+                NodeRef transmitter = msg.transmitter();
+                std::string desc = msg.desc();
+                leaks.emplace_back(Leakage {
+                    .vec = vec,
+                    .transmitter = transmitter
+                }, desc);
+            }
+            
+            --num_threads;
+        }
+        
+        if (num_threads == 0 && candidate_transmitters.empty()) {
+            break;
+        }
+    }
+    
+#if 0
+    
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
         ++i;
         logv(1, i << "/" << candidate_transmitters.size() << "\n");
         
-        rf.clear();
-        
-        bool window_changed = false;
-        {
-            logv(1, "windows ");
-            Timer timer;
-            // MAKE EXEC WINDOW
-            {
-                exec_window.clear();
-                exec_notwindow.clear();
-                aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
-                    exec_window.insert(ref);
-                }, [&] (NodeRef ref) {
-                    exec_notwindow.insert(ref);
-                });
-                mems = get_mems1(exec_window);
-            }
-            
-            // MAKE TRANS WINDOW
-            {
-                trans_window.clear();
-                trans_notwindow.clear();
-                aeg.for_each_pred_in_window(transmitter, *max_transient_nodes, [&] (NodeRef ref) {
-                    trans_window.insert(ref);
-                }, [&] (NodeRef ref) {
-                    trans_notwindow.insert(ref);
-                });
-            }
-            
-            // TODO: conditionally set this properly
-            window_changed = true;
-        }
-
-        if (!lookahead([&] () {
-            func(transmitter, CheckMode::FAST);
-        })) {
-            logv(1, __FUNCTION__ << "skipping transmitter: failed lookahead\n");
-            continue;
-        }
-        
-        Timer timer;
-                
-        if (client) {
-            mon::Message msg;
-            auto *progress = msg.mutable_func_progress();
-            progress->mutable_func()->set_name(aeg.po.function_name());
-            const float frac = static_cast<float>(i) / static_cast<float>(candidate_transmitters.size());
-            progress->set_frac(frac);
-            client.send(msg);
-        }
-        
-        if (transmitters.find(aeg.lookup(transmitter).inst->get_inst()) != transmitters.end()) {
-            continue;
-        }
-        
-        const auto action = util::push(actions, util::to_string("transmitter ", transmitter));
-        
-        const aeg::Node& transmitter_node = aeg.lookup(transmitter);
-        
-        if (aeg.exits.find(transmitter) != aeg.exits.end()) {
-            continue;
-        }
-        
-        z3::expr_vector vec {ctx()};
-        
-        // require transmitter is access
-        vec.push_back(transmitter_node.access());
-        
-        // require transmitter.trans
-        vec.push_back(transmitter_node.trans);
-        
-        // window size
-#if 0
-        const auto saved_mems = util::save(mems);
-#endif
-        {
-            for (NodeRef ref : exec_notwindow) {
-                vec.push_back(!aeg.lookup(ref).exec());
-            }
-            for (NodeRef ref : trans_notwindow) {
-                if (!exec_notwindow.contains(ref)) {
-                    vec.push_back(!aeg.lookup(ref).trans);
-                }
-            }
-        }
-        
-        if (solver.check(vec) != z3::unsat) {
-            z3_scope;
-            solver.add(vec);
-            
-            aeg.assert_xsaccess_order(exec_window, solver);
-            
-            try {
-                func(transmitter, CheckMode::SLOW);
-            } catch (const next_transmitter& e) {
-                // continue
-            }
-        } else {
-            std::cerr << "skipping transmitter\n";
-            std::cerr << "access: " << transmitter_node.access() << "\n";
-            std::cerr << "trans: " << transmitter_node.trans << "\n";
-            dbg::append_core(solver);
-        }
+        for_one_transmitter(transmitter, func);
     }
+#endif
 }
 
 void Detector::precompute_rf(NodeRef load) {
