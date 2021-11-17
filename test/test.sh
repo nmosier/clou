@@ -82,4 +82,9 @@ cat "$OUTDIR/ref.txt"
 echo "COMM:"
 comm -23 "$OUTDIR/ref.txt" "$OUTDIR/leakage.txt.tmp"
 COMM=$(comm -23 "$OUTDIR/ref.txt" "$OUTDIR/leakage.txt.tmp")
-! [[ "$COMM" ]]
+
+if [[ -s "$OUTDIR/ref.txt" ]]; then
+    ! [[ "$COMM" ]]
+else
+    ! [[ -s "$OUTDIR/leakage.txt.tmp" ]]
+fi

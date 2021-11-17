@@ -24,16 +24,17 @@ X(OTHER)
     
     XM_ENUM_DEF(Kind, INST2_KIND_X);
     
-    virtual Kind kind() const = 0;
-    virtual bool is_special() const { return false; }
-    virtual bool is_entry() const { return false; }
-    virtual bool is_exit() const { return false; }
-    virtual bool is_memory() const { return false; }
+    virtual Kind kind() const noexcept = 0;
+    virtual bool is_special() const noexcept { return false; }
+    virtual bool is_entry() const noexcept { return false; }
+    virtual bool is_exit() const noexcept { return false; }
+    virtual bool is_memory() const noexcept { return false; }
+    virtual bool is_fence() const noexcept { return false; }
     
-    virtual Option may_read() const { return Option::NO; }
-    virtual Option may_write() const { return Option::NO; }
-    virtual Option may_xsread() const { return Option::NO; }
-    virtual Option may_xswrite() const { return Option::NO; }
+    virtual Option may_read() const noexcept { return Option::NO; }
+    virtual Option may_write() const noexcept { return Option::NO; }
+    virtual Option may_xsread() const noexcept { return Option::NO; }
+    virtual Option may_xswrite() const noexcept { return Option::NO; }
     
     virtual const llvm::Instruction *get_inst() const = 0;
 
@@ -55,27 +56,27 @@ inline std::ostream& operator<<(std::ostream& os, Inst::Kind kind) {
 }
 
 struct SpecialInst: Inst {
-    virtual bool is_special() const override { return true; }
+    virtual bool is_special() const noexcept override { return true; }
     
     virtual const llvm::Instruction *get_inst() const override { return nullptr; }
 };
 
 struct EntryInst: SpecialInst {
-    virtual Kind kind() const override { return ENTRY; }
+    virtual Kind kind() const noexcept override { return ENTRY; }
     
-    virtual bool is_entry() const override { return true; }
+    virtual bool is_entry() const noexcept override { return true; }
     
-    virtual Option may_write() const override { return Option::MUST; }
-    virtual Option may_xswrite() const override { return Option::MUST; }
+    virtual Option may_write() const noexcept override { return Option::MUST; }
+    virtual Option may_xswrite() const noexcept override { return Option::MUST; }
 };
 
 struct ExitInst: SpecialInst {
-    virtual Kind kind() const override { return EXIT; }
+    virtual Kind kind() const noexcept override { return EXIT; }
     
-    virtual bool is_exit() const override { return true; }
+    virtual bool is_exit() const noexcept override { return true; }
     
-    virtual Option may_read() const override { return Option::MUST; }
-    virtual Option may_xsread() const override { return Option::MUST; }
+    virtual Option may_read() const noexcept override { return Option::MUST; }
+    virtual Option may_xsread() const noexcept override { return Option::MUST; }
 };
 
 struct RegularInst: Inst {
@@ -97,13 +98,14 @@ struct RegularInst: Inst {
 };
 
 struct FenceInst: RegularInst {
-    virtual Kind kind() const override { return FENCE; }
+    virtual Kind kind() const noexcept override { return FENCE; }
+    virtual bool is_fence() const noexcept override { return true; }
     
     FenceInst(const llvm::Instruction *I): RegularInst(I) {}
 };
 
 struct MemoryInst: RegularInst {
-    virtual bool is_memory() const override { return true; }
+    virtual bool is_memory() const noexcept override { return true; }
     
     virtual const llvm::Value *get_memory_operand() const = 0;
     
@@ -111,11 +113,11 @@ struct MemoryInst: RegularInst {
 };
 
 struct LoadInst: MemoryInst {
-    virtual Kind kind() const override { return LOAD; }
+    virtual Kind kind() const noexcept override { return LOAD; }
     
-    virtual Option may_read() const override { return Option::MUST; }
-    virtual Option may_xsread() const override { return Option::MUST; }
-    virtual Option may_xswrite() const override { return Option::MAY; }
+    virtual Option may_read() const noexcept override { return Option::MUST; }
+    virtual Option may_xsread() const noexcept override { return Option::MUST; }
+    virtual Option may_xswrite() const noexcept override { return Option::MAY; }
     
     virtual const llvm::Value *get_memory_operand() const override {
         return I->getOperand(0);
@@ -125,11 +127,11 @@ struct LoadInst: MemoryInst {
 };
 
 struct StoreInst: MemoryInst {
-    virtual Kind kind() const override { return STORE; }
+    virtual Kind kind() const noexcept override { return STORE; }
     
-    virtual Option may_write() const override { return Option::MUST; }
-    virtual Option may_xsread() const override { return Option::MUST; }
-    virtual Option may_xswrite() const override { return Option::MUST; } // TODO: relax this to 'MAY' once we do silent stores
+    virtual Option may_write() const noexcept override { return Option::MUST; }
+    virtual Option may_xsread() const noexcept override { return Option::MUST; }
+    virtual Option may_xswrite() const noexcept override { return Option::MUST; } // TODO: relax this to 'MAY' once we do silent stores
     
     virtual const llvm::Value *get_memory_operand() const override {
         if (const auto *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
@@ -153,12 +155,12 @@ struct StoreInst: MemoryInst {
 struct CallInst: MemoryInst {
     const llvm::Value *arg;
     
-    virtual Kind kind() const override { return CALL; }
+    virtual Kind kind() const noexcept override { return CALL; }
     
-    virtual Option may_read() const override { return Option::MAY; }
-    virtual Option may_write() const override { return Option::MAY; }
-    virtual Option may_xsread() const override { return Option::MAY; }
-    virtual Option may_xswrite() const override { return Option::MAY; }
+    virtual Option may_read() const noexcept override { return Option::MAY; }
+    virtual Option may_write() const noexcept override { return Option::MAY; }
+    virtual Option may_xsread() const noexcept override { return Option::MAY; }
+    virtual Option may_xswrite() const noexcept override { return Option::MAY; }
     
     // TODO: this might need more fine-grained control over adding assertions, since write -> xswrite, etc.
     
@@ -171,7 +173,7 @@ struct CallInst: MemoryInst {
 };
 
 struct OtherInst: RegularInst {
-    virtual Kind kind() const override { return OTHER; }
+    virtual Kind kind() const noexcept override { return OTHER; }
     
     OtherInst(const llvm::Instruction *I): RegularInst(I) {}
 };

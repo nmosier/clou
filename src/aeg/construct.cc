@@ -95,6 +95,28 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
 }
 
 void AEG::construct_nodes() {
+#if 1
+    const auto get_arch = [&] (NodeRef ref) -> z3::expr {
+        if (ref == entry) {
+            return context.TRUE;
+        } else if (exits.contains(ref)) {
+            return context.make_bool("arch");
+        } else {
+            const auto& preds = po.po.rev.at(ref);
+            if (preds.size() == 1) {
+                const NodeRef pred = *preds.begin();
+                if (!po.may_introduce_speculation(pred)) {
+                    return lookup(pred).arch;
+                }
+            }
+            return context.make_bool("arch");
+        }
+    };
+    
+    for (NodeRef ref : po.reverse_postorder()) {
+        lookup(ref).arch = get_arch(ref);
+    }
+#else
     // initialize `arch`
     // DEBUG: make sure that we hit all nodes
     // TODO: extract this to common function
@@ -118,9 +140,39 @@ void AEG::construct_nodes() {
             }
         }
         assert(std::all_of(done.begin(), done.end(), [] (bool b) { return b; }));
+        // TODO: This is a bug.
     }
+#endif
     
     // initalize `trans`
+#if 1
+    
+    const auto get_trans = [&] (NodeRef ref) -> z3::expr {
+        if (ref == entry) {
+            return context.FALSE;
+        } else if (exits.contains(ref)) {
+            return context.FALSE;
+        } else if (lookup(ref).inst->is_fence()) {
+            return context.FALSE;
+        } else {
+            const auto& preds = po.po.rev.at(ref);
+            for (const NodeRef pred : preds) {
+                if (po.may_introduce_speculation(pred)) {
+                    return context.make_bool("trans");
+                }
+                if (!lookup(pred).trans.is_false()) {
+                    return context.make_bool("trans");
+                }
+            }
+            return context.FALSE;
+        }
+    };
+    
+    for (NodeRef ref : po.reverse_postorder()) {
+        lookup(ref).trans = get_trans(ref);
+    }
+    
+#else
     for (NodeRef ref : po.reverse_postorder()) {
         Node& node = lookup(ref);
         if (ref == entry || exits.find(ref) != exits.end()) {
@@ -129,6 +181,7 @@ void AEG::construct_nodes() {
             node.trans = context.make_bool("trans");
         }
     }
+#endif
     
     // initialize `xsread`, `xswrite`
     {

@@ -324,7 +324,12 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Va
 bool CFG::may_introduce_speculation(NodeRef ref) const {
     switch (leakage_class) {
         case LeakageClass::SPECTRE_V1:
-            return po.fwd.at(ref).size() > 1;
+            // check if branch inst
+            if (auto *Ip = std::get_if<const llvm::Instruction *>(&lookup(ref).v)) {
+                return llvm::isa<llvm::BranchInst>(*Ip) && po.fwd.at(ref).size() > 1;
+            } else {
+                return false;
+            }
 
         case LeakageClass::SPECTRE_V4:
             for (const NodeRef ref : po.fwd.at(ref)) {
