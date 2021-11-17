@@ -106,7 +106,7 @@ void SpectreV4_Detector::run_sourced_store() {
                 .dst = sourced_store,
                 .kind = aeg::Edge::RFX,
             });
-            output_execution(leak);
+            output_execution(leak.leakage());
         }
     }
 }

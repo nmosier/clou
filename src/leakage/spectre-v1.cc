@@ -35,7 +35,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
             
             logv(1, "spectre-v1 leak found\n");
             
-            output_execution(leak);
+            output_execution(leak.leakage());
             return;
             
         } else {

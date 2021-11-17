@@ -4,11 +4,18 @@
 
 namespace lkg {
 
-struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
+struct SpectreV4_Leakage {
     NodeRef transmitter;
     NodeRef bypassed_store;
     NodeRef sourced_store;
     NodeRef load;
+    
+    Leakage leakage() const {
+        return Leakage {
+            .vec = {sourced_store, bypassed_store, load, transmitter},
+            .transmitter = transmitter,
+        };
+    }
     
     NodeRefVec vec() const {
         return {sourced_store, bypassed_store, load, transmitter};
@@ -17,9 +24,9 @@ struct SpectreV4_Leakage: Leakage<SpectreV4_Leakage> {
     NodeRef get_transmitter() const { return transmitter; }
 };
 
-class SpectreV4_Detector: public Detector_<SpectreV4_Leakage> {
+class SpectreV4_Detector: public Detector {
 public:
-    SpectreV4_Detector(aeg::AEG& aeg, Solver& solver): Detector_(aeg, solver) {}
+    SpectreV4_Detector(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}
 private:
     SpectreV4_Leakage leak;
     

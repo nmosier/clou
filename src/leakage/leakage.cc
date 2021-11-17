@@ -55,6 +55,121 @@ namespace lkg {
 z3::context& Detector::ctx() { return aeg.context.context; }
 
 
+
+void Detector::run() {
+    run_();
+    
+    const std::ios::openmode openmode = batch_mode ? (std::ios::out | std::ios::app) : (std::ios::out);
+    
+    {
+        // open file
+        const std::string path = util::to_string(output_dir, "/leakage.txt");
+        std::ofstream ofs {
+            path,
+            openmode,
+        };
+        
+        // dump leakage
+        if (batch_mode) {
+            ofs << "\n" << aeg.function_name() << ": \n";
+        }
+        for (const auto& leak : leaks) {
+            leak.first.print_short(ofs);
+            ofs << " : " << leak.second << " --";
+            leak.first.print_long(ofs, aeg);
+            ofs << "\n";
+        }
+    }
+    
+    {
+        const std::string path = util::to_string(output_dir, "/transmitters.txt");
+        std::ofstream ofs {
+            path,
+            openmode,
+        };
+        
+        // print out set of transmitters
+        std::unordered_set<const llvm::Instruction *> transmitters;
+        for (const auto& leak : leaks) {
+            transmitters.insert(aeg.lookup(leak.first.transmitter).inst->get_inst());
+        }
+        llvm::errs() << "transmitters:\n";
+        for (const auto transmitter : transmitters) {
+            llvm::errs() << *transmitter << "\n";
+            ofs << *transmitter << "\n";
+        }
+    }
+}
+
+
+void Detector::output_execution(const Leakage& leak) {
+    assert(lookahead_tmp);
+    
+    leaks.emplace_back(leak, std::accumulate(actions.rbegin(), actions.rend(), std::string(), [] (const std::string& a, const std::string& b) -> std::string {
+        std::string res = a;
+        if (!res.empty()) {
+            res += "; ";
+        }
+        res += b;
+        return res;
+    }));
+        
+    std::stringstream ss;
+    ss << output_dir << "/" << name();
+    for (const NodeRef ref : leak.vec) {
+        ss << "-" << ref;
+    }
+    ss << ".dot";
+    const std::string path = ss.str();
+    assert(solver.check() == z3::sat);
+    const z3::eval eval {solver.get_model()};
+    const auto edge = push_edge(EdgeRef {
+        .src = leak.transmitter,
+        .dst = aeg.exit_con(eval),
+        .kind = aeg::Edge::RFX,
+    });
+    
+    // TODO: shouldn't need to do this
+    std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>> flag_edges_;
+    std::transform(flag_edges.begin(), flag_edges.end(), std::back_inserter(flag_edges_), [] (const EdgeRef& e) {
+        return std::make_tuple(e.src, e.dst, e.kind);
+    });
+    
+    // add to detector's transmitters list
+    {
+        const aeg::Node& transmitter_node = aeg.lookup(leak.transmitter);
+        transmitters.insert(transmitter_node.inst->get_inst());
+    }
+    
+    if (witness_executions) {
+        aeg.output_execution(path, eval, flag_edges_);
+    }
+    
+    if (fast_mode) {
+        throw next_transmitter {};
+    }
+}
+
+
+void Leakage::print_long(std::ostream& os, const aeg::AEG& aeg) const {
+    for (auto it = vec.begin(); it != vec.end(); ++it) {
+        if (it != vec.begin()) {
+            os << "; ";
+        }
+        os << *aeg.lookup(*it).inst;
+    }
+}
+
+void Leakage::print_short(std::ostream& os) const {
+    for (auto it = vec.begin(); it != vec.end(); ++it) {
+        if (it != vec.begin()) {
+            os << " ";
+        }
+        os << *it;
+    }
+}
+
+
 /* LEAKAGE DETECTOR METHODS */
 
 Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
