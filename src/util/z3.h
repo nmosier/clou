@@ -575,18 +575,14 @@ inline z3::expr no_intersect(const char *name, const z3::sort& sort, const z3::e
     return no_intersect(set1.ctx(), sort, name, sets);
 }
 
-template <class BinaryOp>
-z3::expr lfold(const z3::expr_vector& v, const z3::expr& init, BinaryOp op) {
-    if (v.empty()) {
-        throw z3::exception("lfold on empty vector");
-    }
+template <class InputIt, class BinaryOp>
+z3::expr lfold(InputIt begin, InputIt end, const z3::expr& init, BinaryOp op) {
     z3::expr acc = init;
-    for (const z3::expr& e : v) {
-        acc = op(acc, e);
+    for (auto it = begin; it != end; ++it) {
+        acc = op(acc, *it);
     }
     return acc;
 }
-
 
 
 

@@ -9,10 +9,11 @@ z3::expr max(const z3::expr_vector& v) {
     if (v.empty()) {
         throw z3::exception("max taken of empty vector");
     }
+    
     auto it = v.begin();
     const auto& init = *it++;
-    return std::reduce(it, v.end(), init, [] (const z3::expr& a, const z3::expr& b) -> z3::expr {
-        return z3::min(a, b);
+    return lfold(it, v.end(), init, [] (const z3::expr& a, const z3::expr& b) -> z3::expr {
+        return z3::max(a, b);
     });
 }
 
@@ -20,9 +21,10 @@ z3::expr min(const z3::expr_vector& v) {
     if (v.empty()) {
         throw z3::exception("min taken of empty vector");
     }
+    
     auto it = v.begin();
     const auto& init = *it++;
-    return std::reduce(it, v.end(), init, [] (const z3::expr& a, const z3::expr& b) -> z3::expr {
+    return lfold(it, v.end(), init, [] (const z3::expr& a, const z3::expr& b) -> z3::expr {
         return z3::min(a, b);
     });
 }
