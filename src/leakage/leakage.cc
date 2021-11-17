@@ -267,36 +267,6 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         });
     }
     
-#if 0
-    /* NOTE: This shared data structure only guarantees that each NodeRef element is processed at least once. */
-    struct shm_t {
-        std::size_t size;
-        std::size_t next;
-        NodeRef refs[];
-        
-        bool done() const { return next == size; }
-        NodeRef pop() {
-            const std::size_t cur = next++;
-            return refs[cur];
-        }
-    };
-    
-    /* create shared memory */
-    void *map;
-    {
-        std::size_t size = sizeof(shm_t) + candidate_transmitters.size() * sizeof(NodeRef);
-        if ((map = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0)) == MAP_FAILED) {
-            std::perror("mmap");
-            std::abort();
-        }
-    }
-    
-    shm_t *shm = reinterpret_cast<shm_t *>(map);
-    util::copy(candidate_transmitters, &shm->refs);
-    shm->size = candidate_transmitters.size();
-    shm->next = 0;
-#endif
-    
     std::size_t i = 0;
     for (NodeRef transmitter : candidate_transmitters) {
         ++i;
@@ -304,6 +274,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         
         rf.clear();
         
+        bool window_changed = false;
         {
             logv(1, "windows ");
             Timer timer;
@@ -329,6 +300,9 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
                     trans_notwindow.insert(ref);
                 });
             }
+            
+            // TODO: conditionally set this properly
+            window_changed = true;
         }
 
         if (!lookahead([&] () {
@@ -387,6 +361,8 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         if (solver.check(vec) != z3::unsat) {
             z3_scope;
             solver.add(vec);
+            
+            aeg.assert_xsaccess_order(exec_window, solver);
             
             try {
                 func(transmitter, CheckMode::SLOW);

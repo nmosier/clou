@@ -8,6 +8,8 @@
 #include <optional>
 #include <algorithm>
 #include <array>
+#include <numeric>
+#include <iterator>
 
 #include <z3++.h>
 
@@ -29,6 +31,7 @@ inline z3::expr& operator|=(z3::expr& a, const z3::expr& b) {
 namespace z3 {
 
 z3::expr max(const z3::expr_vector& exprs);
+z3::expr min(const z3::expr_vector& v);
 z3::expr atmost2(const z3::expr_vector& exprs, unsigned count);
 z3::expr atleast2(const z3::expr_vector& exprs, unsigned count);
 z3::expr exactly(const z3::expr_vector& exprs, unsigned count);
@@ -571,6 +574,22 @@ inline z3::expr no_intersect(const char *name, const z3::sort& sort, const z3::e
     const std::array<z3::expr_vector, 2> sets = {set1, set2};
     return no_intersect(set1.ctx(), sort, name, sets);
 }
+
+template <class BinaryOp>
+z3::expr lfold(const z3::expr_vector& v, const z3::expr& init, BinaryOp op) {
+    if (v.empty()) {
+        throw z3::exception("lfold on empty vector");
+    }
+    z3::expr acc = init;
+    for (const z3::expr& e : v) {
+        acc = op(acc, e);
+    }
+    return acc;
+}
+
+
+
+
 
 
 }

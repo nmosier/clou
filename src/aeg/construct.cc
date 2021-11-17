@@ -88,6 +88,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_data();
     logv(2, "Constructing ctrl\n");
     construct_ctrl();
+    logv(2, "Constructing fences\n");
     
     if (partial_executions || stb_size) {
         compute_min_store_paths();
@@ -787,10 +788,60 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
         Node& node = lookup(ref);
         node.xsaccess_order = context.make_int("xsaccess_order");
     }
+}
+
+
+void AEG::assert_xsaccess_order(const NodeRefSet& window, Solver& solver) {
+    z3::context& ctx = context.context;
+    const z3::expr xsaccess_order_init = ctx.int_val(0);
     
-    // require that all exits have same sequence number (not absolutely necessary)
-    for (auto it1 = exits.begin(), it2 = std::next(it1); it2 != exits.end(); ++it1, ++it2) {
-        constraints(lookup(*it1).xsread == lookup(*it2).xsread, "xswrite-exits-eq");
+    /* Assert that xsaccess order respects po among same-address writes */
+    {
+        z3::expr mem = z3::const_array(ctx.int_sort(), xsaccess_order_init);
+        for (NodeRef ref : po.reverse_postorder()) {
+            if (!window.contains(ref)) { continue; }
+            
+            const Node& node = lookup(ref);
+            
+            if (!node.xstate) { continue; }
+            
+            if (node.can_xsread()) {
+                // assert order
+                solver.add(z3::implies(node.arch && node.xsread, mem[*node.xstate] < *node.xsaccess_order), util::to_string("xsread xswrite arch order ", ref));
+            }
+            
+            if (node.can_xswrite()) {
+                // assert that access is in-order here
+                mem = z3::conditional_store(mem, *node.xstate, *node.xsaccess_order, node.arch && node.xswrite);
+            }
+        }
+    }
+    
+    
+    /* Assert that xsaccess order respects fences
+     * 1. Get set of xsaccesses before fence.
+     * 2. Get set of xsaccesses after fence.
+     * 3. Assert that the max of the before is less than the min of the after.
+     */
+    for (NodeRef fence : window) {
+        if (!lookup(fence).inst->is_fence()) { continue; }
+        
+        z3::expr_vector before(ctx);
+        z3::expr_vector after(ctx);
+        bool seen_fence = false;
+        for (NodeRef ref : po.reverse_postorder()) {
+            if (!window.contains(ref)) { continue; }
+            const Node& node = lookup(ref);
+            if (ref == fence) {
+                seen_fence = true;
+                continue;
+            }
+            if (!node.xsaccess_order) { continue; }
+            z3::expr_vector& vec = seen_fence ? after : before;
+            vec.push_back(z3::ite(node.xsaccess(), *node.xsaccess_order, xsaccess_order_init));
+        }
+        
+        solver.add(z3::max(before) < z3::min(after), util::to_string("fence order ", fence));
     }
 }
 

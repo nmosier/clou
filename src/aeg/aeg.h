@@ -111,6 +111,7 @@ private:
     
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
+    
 
 public:
 #if 0
@@ -122,7 +123,10 @@ private:
     Solver make_solver();
     
     
+
 public:
+    void assert_xsaccess_order(const NodeRefSet& window, Solver& solver);
+
     void for_each_pred_in_window(NodeRef ref, unsigned window, std::function<void (NodeRef)> is, std::function<void (NodeRef)> isnt);
 
     bool may_source_stb(NodeRef load, NodeRef store) const {
@@ -346,5 +350,8 @@ struct AEG::Execution {
     NodeRefVec trans;
     NodeRef spec_gadget;
 };
+
+
+
 
 }

@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdatomic.h>
 
 #define SIZE 16                 /* Size fo secretarray and publicarray */
 uint32_t array_size = 16;
@@ -13,3 +14,5 @@ uint8_t secretarray[SIZE] = { 10,21,32,43,54,65,76,87,98,109,110,121,132,143,154
 
 // This is mostly used to prevent the compiler from optimizing out certain operations
 volatile uint8_t temp = 0;
+
+#define lfence atomic_thread_fence(memory_order_acquire)
