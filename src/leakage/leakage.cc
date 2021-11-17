@@ -540,7 +540,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
                 mon::Message msg;
                 auto *progress = msg.mutable_func_progress();
                 progress->mutable_func()->set_name(aeg.po.function_name());
-                const float frac = static_cast<float>(i) / static_cast<float>(candidate_transmitters.size());
+                const float frac = static_cast<float>(i) / static_cast<float>(total_candidate_transmitters);
                 progress->set_frac(frac);
                 client.send(msg);
             }
