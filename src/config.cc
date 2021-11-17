@@ -29,7 +29,7 @@ bool include_expr_in_constraint_name = false;
 std::unordered_set<std::string> function_names;
 std::unordered_set<unsigned> include_edges;
 unsigned spec_depth = 2;
-unsigned num_jobs = 1;
+unsigned max_parallel = 1;
 unsigned rob_size = 10;
 unsigned max_traceback = 1;
 std::ofstream log_;
@@ -230,6 +230,7 @@ int parse_args() {
         {"log", required_argument, nullptr, LOG},
         {"profile", optional_argument, nullptr, PROFILE},
         {"distinct", required_argument, nullptr, DISTINCT_LIMIT},
+        {"parallel", required_argument, nullptr, 'j'},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -272,7 +273,7 @@ int parse_args() {
                 break;
                 
             case 'j':
-                num_jobs = std::stoul(optarg);
+                max_parallel = std::stoul(optarg);
                 break;
                 
             case MAX_TRANSIENT:

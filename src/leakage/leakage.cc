@@ -29,7 +29,7 @@ unsigned AEG::leakage(Solver& solver) {
             detector->run();
             return 0;
         }
-          
+            
         case LeakageClass::SPECTRE_V1: {
             std::unique_ptr<lkg::Detector> detector;
             switch (spectre_v1_mode.mode) {
@@ -115,7 +115,7 @@ void Detector::output_execution(const Leakage& leak) {
         res += b;
         return res;
     }));
-        
+    
     std::stringstream ss;
     ss << output_dir << "/" << name();
     for (const NodeRef ref : leak.vec) {
@@ -188,7 +188,7 @@ z3::expr Detector::mem(NodeRef ref) const {
 Detector::Mems Detector::get_mems() {
     z3::context& ctx = this->ctx();
     auto& po = aeg.po;
-
+    
     Mems ins;
     Mems outs = {{aeg.entry, init_mem}};
     for (const NodeRef cur : po.reverse_postorder()) {
@@ -322,7 +322,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
         }
         
         const auto action = util::push(actions, desc);
-
+        
         // new_sources.insert(store_pair);
         // TODO: need to separately check if this is due to something else
         func(store, mode);
@@ -402,7 +402,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         // TODO: conditionally set this properly
         window_changed = true;
     }
-
+    
     if (!lookahead([&] () {
         func(transmitter, CheckMode::FAST);
     })) {
@@ -492,7 +492,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             }
         }
         ::close(fds[1]);
-
+        
         std::_Exit(0); // quick exit
     } else {
         *out++ = std::make_pair(pid, fds[0]);
@@ -516,111 +516,116 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         });
     }
     
-    solver.check();
-
-    constexpr unsigned max_threads = 8;
-    unsigned num_threads = 0;
-    std::unordered_map<pid_t, int> pipes;
-    std::size_t total_candidate_transmitters = candidate_transmitters.size();
-    std::size_t i = 0;
-    while (true) {
-        /* spawn new child if possible */
-        if (num_threads < max_threads && !candidate_transmitters.empty()) {
-            const auto it = candidate_transmitters.begin();
-            const NodeRef transmitter = *it;
-            candidate_transmitters.erase(it);
-            for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
-            ++num_threads;
-            
-            ++i;
-            logv(1, i << "/" << total_candidate_transmitters << "\n");
-            
-#if 1
-            if (client) {
-                mon::Message msg;
-                auto *progress = msg.mutable_func_progress();
-                progress->mutable_func()->set_name(aeg.po.function_name());
-                const float frac = static_cast<float>(i) / static_cast<float>(total_candidate_transmitters);
-                progress->set_frac(frac);
-                client.send(msg);
-            }
-#endif
-        }
+    if (max_parallel > 1) {
         
-        /* reap dead children if necessary */
-        if (num_threads == max_threads || (num_threads > 0 && candidate_transmitters.empty())) {
-            int status;
-            pid_t pid;
-            while (true) {
-                pid = ::wait(&status);
-                if (pid < 0 && errno != EINTR) {
-                    std::perror("wait");
-                    std::abort();
-                }
-                if (pid >= 0) {
-                    break;
-                }
-            }
+        std::cerr << "using " << max_parallel << " threads\n";
 
-            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                std::cerr << "child aborted or had nonzero exit code\n";
-                std::abort();
-            }
-            
-            const int fd = pipes.at(pid);
-            
-            std::vector<char> buf;
-            if (io::readall(fd, buf) < 0) {
-                std::perror("read");
-                std::abort();
-            }
-            ::close(fd);
-            
-            std::size_t rem = buf.size();
-            const char *ptr = buf.data();
-            while (ptr < buf.data() + buf.size()) {
-                lkg::LeakageMsg msg;
-                uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                std::cerr << "message size " << size << "\n";
-                rem -= 4;
-                ptr += 4;
-                if (!msg.ParseFromArray(ptr, size)) {
-                    std::cerr << "bad message\n";
-                    std::abort();
-                }
-                ptr += size;
-                rem -= size;
+        solver.check();
+        
+        
+        constexpr unsigned max_threads = 8;
+        unsigned num_threads = 0;
+        std::unordered_map<pid_t, int> pipes;
+        std::size_t total_candidate_transmitters = candidate_transmitters.size();
+        std::size_t i = 0;
+        while (true) {
+            /* spawn new child if possible */
+            if (num_threads < max_threads && !candidate_transmitters.empty()) {
+                const auto it = candidate_transmitters.begin();
+                const NodeRef transmitter = *it;
+                candidate_transmitters.erase(it);
+                for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
+                ++num_threads;
                 
-                NodeRefVec vec;
-                util::copy(msg.vec(), std::back_inserter(vec));
-                assert(msg.vec().size() > 1);
-                assert(vec.size() > 1);
-                NodeRef transmitter = msg.transmitter();
-                std::string desc = msg.desc();
-                leaks.emplace_back(Leakage {
-                    .vec = vec,
-                    .transmitter = transmitter
-                }, desc);
+                ++i;
+                logv(1, i << "/" << total_candidate_transmitters << "\n");
+                
+#if 1
+                if (client) {
+                    mon::Message msg;
+                    auto *progress = msg.mutable_func_progress();
+                    progress->mutable_func()->set_name(aeg.po.function_name());
+                    const float frac = static_cast<float>(i) / static_cast<float>(total_candidate_transmitters);
+                    progress->set_frac(frac);
+                    client.send(msg);
+                }
+#endif
             }
             
-            --num_threads;
+            /* reap dead children if necessary */
+            if (num_threads == max_threads || (num_threads > 0 && candidate_transmitters.empty())) {
+                int status;
+                pid_t pid;
+                while (true) {
+                    pid = ::wait(&status);
+                    if (pid < 0 && errno != EINTR) {
+                        std::perror("wait");
+                        std::abort();
+                    }
+                    if (pid >= 0) {
+                        break;
+                    }
+                }
+                
+                if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                    std::cerr << "child aborted or had nonzero exit code\n";
+                    std::abort();
+                }
+                
+                const int fd = pipes.at(pid);
+                
+                std::vector<char> buf;
+                if (io::readall(fd, buf) < 0) {
+                    std::perror("read");
+                    std::abort();
+                }
+                ::close(fd);
+                
+                std::size_t rem = buf.size();
+                const char *ptr = buf.data();
+                while (ptr < buf.data() + buf.size()) {
+                    lkg::LeakageMsg msg;
+                    uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
+                    std::cerr << "message size " << size << "\n";
+                    rem -= 4;
+                    ptr += 4;
+                    if (!msg.ParseFromArray(ptr, size)) {
+                        std::cerr << "bad message\n";
+                        std::abort();
+                    }
+                    ptr += size;
+                    rem -= size;
+                    
+                    NodeRefVec vec;
+                    util::copy(msg.vec(), std::back_inserter(vec));
+                    assert(msg.vec().size() > 1);
+                    assert(vec.size() > 1);
+                    NodeRef transmitter = msg.transmitter();
+                    std::string desc = msg.desc();
+                    leaks.emplace_back(Leakage {
+                        .vec = vec,
+                        .transmitter = transmitter
+                    }, desc);
+                }
+                
+                --num_threads;
+            }
+            
+            if (num_threads == 0 && candidate_transmitters.empty()) {
+                break;
+            }
         }
         
-        if (num_threads == 0 && candidate_transmitters.empty()) {
-            break;
+    } else {
+        std::cerr << "using 1 thread\n";
+        std::size_t i = 0;
+        for (NodeRef transmitter : candidate_transmitters) {
+            ++i;
+            logv(1, i << "/" << candidate_transmitters.size() << "\n");
+            
+            for_one_transmitter(transmitter, func);
         }
     }
-    
-#if 0
-    
-    std::size_t i = 0;
-    for (NodeRef transmitter : candidate_transmitters) {
-        ++i;
-        logv(1, i << "/" << candidate_transmitters.size() << "\n");
-        
-        for_one_transmitter(transmitter, func);
-    }
-#endif
 }
 
 void Detector::precompute_rf(NodeRef load) {
@@ -648,7 +653,7 @@ void Detector::precompute_rf(NodeRef load) {
 #endif
     
     assert(alias_mode.transient);
-
+    
     NodeRefVec todo;
     util::copy(aeg.po.po.rev.at(load), std::back_inserter(todo));
     NodeRefSet seen;
@@ -693,10 +698,10 @@ void Detector::precompute_rf(NodeRef load) {
                 default: std::abort();
             }
         }
-
+        
         util::copy(aeg.po.po.rev.at(ref), std::back_inserter(todo));
         
-        // how to check when 
+        // how to check when
     }
     
 #if 1

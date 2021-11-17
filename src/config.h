@@ -17,7 +17,7 @@ extern std::string output_dir;
 extern std::unordered_set<std::string> function_names;
 extern unsigned verbose;
 extern unsigned spec_depth;
-extern unsigned num_jobs;
+extern unsigned max_parallel;
 extern unsigned rob_size;
 extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
 extern std::optional<unsigned> max_transient_nodes;
