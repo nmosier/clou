@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <arpa/inet.h>
 
+#include "util/protobuf.h"
+
 namespace mon {
 
 class Message;

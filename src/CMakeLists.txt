@@ -1,13 +1,12 @@
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -pedantic)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 add_subdirectory(cfg)
 add_subdirectory(aeg)
 add_subdirectory(leakage)
 add_subdirectory(util)
 add_subdirectory(mon)
-
 
 add_library(lcm MODULE
   lcm.cc           lcm.h
