@@ -20,11 +20,10 @@
 #include <curses.h>
 
 #include "mon/proto.h"
+#include "timer.h"
 #include "util/algorithm.h"
 
 const char *prog;
-
-
 
 namespace {
 int argc;
@@ -32,6 +31,13 @@ char **argv;
 
 const char *fifo_path = nullptr;
 const char *table_path = nullptr;
+
+std::ofstream table_os;
+
+Timer timer;
+std::ostream& table_log() {
+    return table_os << "[" << timer.get_str() << "] ";
+}
 
 void perror_exit(const char *s) {
     fprintf(stderr, "%s: %s: %s\n", prog, s, std::strerror(errno));
@@ -380,7 +386,6 @@ struct Monitor: Component {
     /* Control stuff */
     std::mutex mutex;
     int server_sock;
-    std::ofstream table_os;
     std::thread listen_thd;
     std::vector<std::thread> client_thds;
     std::thread display_thd;
@@ -465,12 +470,6 @@ private:
         ++msgs;
         return true;
     }
-    
-#if 0
-    void table_output(pid_t pid, const std::string& func, const char *kind) {
-        table_os << clock.duration().secs << " " << pid << " " << func << " " << kind << "\n";
-    }
-#endif
 };
 
 #if 0
@@ -642,7 +641,7 @@ bool Monitor::run_body(FILE *client_f, int owner, pid_t pid) {
 
 void Monitor::handle_func_started(const mon::FunctionStarted& msg, int owner, ::pid_t pid) {
     running_jobs.vec.emplace_back(msg.func().name(), owner, pid);
-    table_os << "START" << " " << clock.duration().secs << " " << pid << " " << msg.func().name() << "\n";
+    table_log() << "START" << " " << clock.duration().secs << " " << pid << " " << msg.func().name() << "\n";
 }
 
 void Monitor::handle_func_completed(const mon::FunctionCompleted& msg, pid_t pid) {
@@ -657,7 +656,7 @@ void Monitor::handle_func_completed(const mon::FunctionCompleted& msg, pid_t pid
     RunningJob job = *it;
     running_jobs.vec.erase(it);
     completed_jobs.vec.emplace_back(job);
-    table_os << "COMPLETE" << " " << clock.duration().secs << " " << pid << " " << msg.func().name() << "\n";
+    table_log() << "COMPLETE" << " " << clock.duration().secs << " " << pid << " " << msg.func().name() << "\n";
 }
 
 void Monitor::handle_func_progress(const mon::FunctionProgress& msg, pid_t pid) {
@@ -672,7 +671,7 @@ void Monitor::handle_funcs_analyzed(const mon::FunctionsAnalyzed& msg) {
     util::transform(msg.funcs(), std::inserter(analyzed_functions, analyzed_functions.end()), [] (const mon::Function& func) -> std::string {
         return func.name();
     });
-    table_os << "ANALYZE" << " " << clock.duration().secs << " " << msg.funcs().size() << "\n";
+    table_log() << "ANALYZE" << " " << clock.duration().secs << " " << msg.funcs().size() << "\n";
 }
 
 void Monitor::handle_func_step(const mon::FunctionStep& msg, pid_t pid) {
@@ -691,7 +690,7 @@ void Monitor::handle_func_properties(const mon::FunctionProperties& msg, pid_t p
             }
         }
     }
-    table_os << "PROPERTIES" << " " << pid << " " << msg.func().name() << " ";
+    table_log() << "PROPERTIES" << " " << pid << " " << msg.func().name() << " ";
     for (auto it = msg.properties().begin(); it != msg.properties().end(); ++it) {
         if (it != msg.properties().begin()) {
             table_os << ",";
