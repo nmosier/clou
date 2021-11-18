@@ -395,8 +395,9 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             bad = cond->simplify().is_false();
 #endif
             if (bad) {
-                std::cerr << "AA error: " << vec << "\n";
+                std::cerr << "AA error: impossible AA assertion\n";
                 std::cerr << "condition: " << *cond << "\n";
+                std::cerr << "values:\n";
                 llvm::errs() << *a.V << "\n";
                 llvm::errs() << *b.V << "\n";
                 std::abort();
