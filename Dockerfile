@@ -31,7 +31,7 @@ RUN git clone https://github.com/jedisct1/libsodium.git libsodium-v1
 RUN cp -r libsodium-v1 libsodium-v4
 RUN cp -r libsodium-v1 libsodium-ll
 
-ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H"
+ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS -UHAVE_ALLOCA"
 
 WORKDIR "$LCM_BUILD/libsodium-v1"
 RUN autoreconf -i
