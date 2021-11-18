@@ -529,12 +529,20 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         });
     }
     
+    /* make sure that the AEG constraints are satisfiable.
+     * NOTE: I should probably move this to AEG::leakage(). */
+    {
+        const auto check_res = solver.check();
+        if (check_res != z3::sat) {
+            std::cerr << __FUNCTION__ << ": AEG constraints unsat!\n";
+            std::cerr << solver.unsat_core() << "\n";
+            std::abort();
+        }
+    }
+    
     if (max_parallel > 1) {
         
         std::cerr << "using " << max_parallel << " threads\n";
-
-        solver.check();
-        
         
         unsigned num_threads = 0;
         std::unordered_map<pid_t, int> pipes;
@@ -552,7 +560,6 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
                 ++i;
                 logv(1, i << "/" << total_candidate_transmitters << "\n");
                 
-#if 1
                 if (client) {
                     mon::Message msg;
                     auto *progress = msg.mutable_func_progress();
@@ -561,7 +568,6 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
                     progress->set_frac(frac);
                     client.send(msg);
                 }
-#endif
             }
             
             /* reap dead children if necessary */
@@ -626,6 +632,9 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             if (num_threads == 0 && candidate_transmitters.empty()) {
                 break;
             }
+            
+            /* update number of live threads */
+            client.send_property(aeg.function_name(), "threads", num_threads);
         }
         
     } else {
