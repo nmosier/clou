@@ -96,93 +96,56 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
 }
 
 void AEG::construct_nodes() {
-#if 1
-    const auto get_arch = [&] (NodeRef ref) -> z3::expr {
-        if (ref == entry) {
-            return context.TRUE;
-        } else if (exits.contains(ref)) {
-            return context.make_bool("arch");
-        } else {
-            const auto& preds = po.po.rev.at(ref);
-            if (preds.size() == 1) {
-                const NodeRef pred = *preds.begin();
-                if (!po.may_introduce_speculation(pred)) {
-                    return lookup(pred).arch;
-                }
-            }
-            return context.make_bool("arch");
-        }
-    };
-    
-    for (NodeRef ref : po.reverse_postorder()) {
-        lookup(ref).arch = get_arch(ref);
-    }
-#else
-    // initialize `arch`
-    // DEBUG: make sure that we hit all nodes
-    // TODO: extract this to common function
     {
-        std::vector<bool> done(size(), false);
-        for (NodeRef ref : node_range()) {
-            if (po.is_block_entry(ref)) {
-                // beginning of basic block
-                const z3::expr arch = ref == entry ? context.TRUE : context.make_bool("arch");
-                NodeRef cur = ref;
-                while (true) {
-                    lookup(cur).arch = arch;
-                    assert(!done[cur]);
-                    done[cur] = true;
-                    if (const auto succ = po.get_block_successor(cur)) {
-                        cur = *succ;
-                    } else {
-                        break;
+        const auto get_arch = [&] (NodeRef ref) -> z3::expr {
+            if (ref == entry) {
+                return context.TRUE;
+            } else if (exits.contains(ref)) {
+                return context.make_bool("arch");
+            } else {
+                const auto& preds = po.po.rev.at(ref);
+                if (preds.size() == 1) {
+                    const NodeRef pred = *preds.begin();
+                    if (!po.may_introduce_speculation(pred)) {
+                        return lookup(pred).arch;
                     }
                 }
+                return context.make_bool("arch");
             }
+        };
+        
+        for (NodeRef ref : po.reverse_postorder()) {
+            lookup(ref).arch = get_arch(ref);
         }
-        assert(std::all_of(done.begin(), done.end(), [] (bool b) { return b; }));
-        // TODO: This is a bug.
     }
-#endif
     
     // initalize `trans`
-#if 1
-    
-    const auto get_trans = [&] (NodeRef ref) -> z3::expr {
-        if (ref == entry) {
-            return context.FALSE;
-        } else if (exits.contains(ref)) {
-            return context.FALSE;
-        } else if (lookup(ref).inst->is_fence()) {
-            return context.FALSE;
-        } else {
-            const auto& preds = po.po.rev.at(ref);
-            for (const NodeRef pred : preds) {
-                if (po.may_introduce_speculation(pred)) {
-                    return context.make_bool("trans");
+    {
+        const auto get_trans = [&] (NodeRef ref) -> z3::expr {
+            if (ref == entry) {
+                return context.FALSE;
+            } else if (exits.contains(ref)) {
+                return context.FALSE;
+            } else if (lookup(ref).inst->is_fence()) {
+                return context.FALSE;
+            } else {
+                const auto& preds = po.po.rev.at(ref);
+                for (const NodeRef pred : preds) {
+                    if (po.may_introduce_speculation(pred)) {
+                        return context.make_bool("trans");
+                    }
+                    if (!lookup(pred).trans.is_false()) {
+                        return context.make_bool("trans");
+                    }
                 }
-                if (!lookup(pred).trans.is_false()) {
-                    return context.make_bool("trans");
-                }
+                return context.FALSE;
             }
-            return context.FALSE;
-        }
-    };
-    
-    for (NodeRef ref : po.reverse_postorder()) {
-        lookup(ref).trans = get_trans(ref);
-    }
-    
-#else
-    for (NodeRef ref : po.reverse_postorder()) {
-        Node& node = lookup(ref);
-        if (ref == entry || exits.find(ref) != exits.end()) {
-            node.trans = context.FALSE;
-        } else {
-            node.trans = context.make_bool("trans");
+        };
+        
+        for (NodeRef ref : po.reverse_postorder()) {
+            lookup(ref).trans = get_trans(ref);
         }
     }
-#endif
     
     // initialize `xsread`, `xswrite`
     {
