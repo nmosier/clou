@@ -12,6 +12,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Analysis/CallGraph.h>
+#include <llvm/IR/IRBuilder.h>
 
 #include "lcm.h"
 #include "config.h"
@@ -49,6 +50,8 @@ struct LCMPass: public llvm::ModulePass {
     static char ID;
     
     LCMPass(): llvm::ModulePass(ID) {}
+    
+    using Transmitters = std::vector<const llvm::Instruction *>;
     
     virtual void getAnalysisUsage(llvm::AnalysisUsage& usage) const override {
         usage.addRequiredTransitive<llvm::AAResultsWrapperPass>();
@@ -89,7 +92,8 @@ struct LCMPass: public llvm::ModulePass {
         return order;
     }
     
-    void runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA) {
+    bool runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA) {
+        bool module_changed = false;
         const std::string func = F.getName().str();
         
         llvm::errs() << "processing function '" << F.getName() << "'\n";
@@ -132,7 +136,7 @@ struct LCMPass: public llvm::ModulePass {
                     client.send(msg);
                 }
                 
-                return;
+                return false;
             }
             
             if (!function_names.empty()) {
@@ -143,7 +147,7 @@ struct LCMPass: public llvm::ModulePass {
                         break;
                     }
                 }
-                if (!match) { return; }
+                if (!match) { return false; }
             }
             
             const unsigned num_unrolls = 2;
@@ -224,8 +228,12 @@ struct LCMPass: public llvm::ModulePass {
 
             client.send_step("leakage", F.getName().str());
             llvm::errs() << "Testing...\n";
-            aeg.test();
+            Transmitters transmitters;
+            aeg.test(transmitters);
             llvm::errs() << "done\n";
+            
+            logv(1, "inserting fences...\n");
+            module_changed = insert_fences(transmitters);
             
             // add analyzed functions
             {
@@ -258,6 +266,24 @@ struct LCMPass: public llvm::ModulePass {
         }
         
         std::cerr << "done analyzing function " << F.getName().str() << "\n";
+        
+        return module_changed;
+    }
+    
+    
+    bool insert_fences(const Transmitters& transmitters) const {
+        std::cerr << transmitters.size() << " transmitters\n";
+        for (const llvm::Instruction *transmitter_ : transmitters) {
+            llvm::Instruction *transmitter = const_cast<llvm::Instruction *>(transmitter_);
+            llvm::IRBuilder<> builder(transmitter);
+            builder.SetInsertPoint(transmitter);
+            llvm::FenceInst *FI = builder.CreateFence(llvm::AtomicOrdering::Acquire);
+#if 0
+            builder.Insert(FI);
+#endif
+            llvm::errs() << "INSERTED FENCE: " << *FI << "\n";
+        }
+        return !transmitters.empty();
     }
 };
 
@@ -277,4 +303,10 @@ llvm::RegisterStandardPasses RegisterMyPass0 {
     llvm::PassManagerBuilder::EP_ModuleOptimizerEarly,
     registerLCMPass
 };
+
+llvm::RegisterPass<LCMPass> X {
+    "lcm", "LCM Pass"
+};
+
+
 }

@@ -63,7 +63,7 @@ public:
     
     void simplify();
     
-    void test();
+    void test(std::vector<const llvm::Instruction *>& transmitters);
     
     std::string function_name() const;
     
@@ -159,7 +159,8 @@ private:
     void construct_control_equivalents();
 #endif
     
-    unsigned leakage(Solver& solver);
+    /** Check for leakage in the AEG. Outputs set of transmitter gadgets. */
+    void leakage(Solver& solver, std::vector<const llvm::Instruction *>& transmitters);
     
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
     

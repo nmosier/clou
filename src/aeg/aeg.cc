@@ -79,7 +79,8 @@ void AEG::simplify() {
     progress.done();
 }
 
-void AEG::test() {
+
+void AEG::test(std::vector<const llvm::Instruction *>& transmitters) {
     unsigned naddrs = 0;
     for_each_edge(Edge::ADDR, [&] (NodeRef, NodeRef, const Edge&) {
         ++naddrs;
@@ -152,20 +153,9 @@ void AEG::test() {
     constraints.add_to_progress(solver);
     logv_(0, "done\n");
     
-#if 0
-    std::cerr << solver.statistics() << "\n";
-#endif
-
-#if 0
-    std::optional<Timer> timer = Timer();
-    z3::scope scope {solver};
-    timer = std::nullopt;
-#endif
-    
-    // TODO: clean this crap up
     {
         Timer timer;
-        leakage(solver);
+        leakage(solver, transmitters);
     }
 }
 

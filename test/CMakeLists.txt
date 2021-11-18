@@ -1,9 +1,14 @@
 # configure_file(${CMAKE_CURRENT_SOURCE_DIR}/test.sh ${CMAKE_CURRENT_BINARY_DIR}/test.sh)
 set(TEST_SH ${CMAKE_CURRENT_SOURCE_DIR}/test.sh)
+set(TEST_FENCE_SH ${CMAKE_CURRENT_SOURCE_DIR}/test-fence.sh)
 
 file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c)
 
-foreach(PHT_SRC ${PHT_SRCS})
+find_program(LLVM_OPT NAMES opt opt-12 PATHS ${LLVM_BINARY_DIR} REQUIRED)
+
+set(PHTS 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+foreach(PHT ${PHTS})
+  set(PHT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/pht${PHT}.c)
   get_filename_component(PHT_NAME ${PHT_SRC} NAME_WLE)
   set(PHT_ARGFILE ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.args)
   unset(PHT_ARGS)
@@ -11,14 +16,27 @@ foreach(PHT_SRC ${PHT_SRCS})
     file(STRINGS ${PHT_ARGFILE} PHT_ARGLIST)
     list(JOIN PHT_ARGLIST " " PHT_ARGS)
   endif()
+
+  set(PHT_ARGS "-Epo,tfo,addr,addr_gep,rf,rfx -d20 --max-transient=15 -fvictim_function_.* --spectre-v1=mode=classic --aa=transient --partial ${PHT_ARGS}")
+  
   add_test(NAME ${PHT_NAME}
     COMMAND ${TEST_SH}
     -O ${CMAKE_CURRENT_BINARY_DIR}/${PHT_NAME}
     -T ${PHT_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.ref
     -L $<TARGET_FILE:lcm>
-    -A "-Epo,tfo,addr,addr_gep,rf,rfx -d20 -fvictim_function_.* --spectre-v1=mode=classic --aa=transient --partial ${PHT_ARGS}"
+    -A "${PHT_ARGS}"
     )
+
+  add_test(NAME ${PHT_NAME}f
+    COMMAND ${TEST_FENCE_SH}
+    -O ${CMAKE_CURRENT_BINARY_DIR}/${PHT_NAME}f
+    -T ${PHT_SRC}
+    -L $<TARGET_FILE:lcm>
+    -A "${PHT_ARGS}"
+    )
+  set_tests_properties(${PHT_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
+  
 endforeach()
 
 

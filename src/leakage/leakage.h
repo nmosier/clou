@@ -32,6 +32,8 @@ public:
     virtual void run_() = 0;
     virtual ~Detector() {}
     
+    const auto& get_transmitters() const { return transmitters; }
+    
 protected:
     std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};

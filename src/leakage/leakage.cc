@@ -22,16 +22,16 @@
 
 namespace aeg {
 
-unsigned AEG::leakage(Solver& solver) {
+void AEG::leakage(Solver& solver, std::vector<const llvm::Instruction *>& transmitters) {
+    std::unique_ptr<lkg::Detector> detector;
+    
     switch (leakage_class) {
         case LeakageClass::SPECTRE_V4: {
-            auto detector = std::make_unique<lkg::SpectreV4_Detector>(*this, solver);
-            detector->run();
-            return 0;
+            detector = std::make_unique<lkg::SpectreV4_Detector>(*this, solver);
+            break;
         }
             
         case LeakageClass::SPECTRE_V1: {
-            std::unique_ptr<lkg::Detector> detector;
             switch (spectre_v1_mode.mode) {
                 case SpectreV1Mode::Mode::CLASSIC:
                     detector = std::make_unique<lkg::SpectreV1_Classic_Detector>(*this, solver);
@@ -41,12 +41,16 @@ unsigned AEG::leakage(Solver& solver) {
                     break;
                 default: std::abort();
             }
-            detector->run();
-            return 0;
+            break;
         }
             
         default: std::abort();
     }
+    
+    detector->run();
+    
+    std::cerr << detector->get_transmitters().size() << " trasnmitters\n";
+    util::copy(detector->get_transmitters(), std::back_inserter(transmitters));
 }
 
 }
@@ -91,7 +95,6 @@ void Detector::run() {
         };
         
         // print out set of transmitters
-        std::unordered_set<const llvm::Instruction *> transmitters;
         for (const auto& leak : leaks) {
             transmitters.insert(aeg.lookup(leak.first.transmitter).inst->get_inst());
         }

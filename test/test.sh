@@ -55,7 +55,9 @@ shift $((OPTIND-1))
 mkdir -p "$OUTDIR"
 rm -f "$OUTDIR/functions.txt"
 
-LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c "$TEST"
+OBJ="${OUTDIR}/$(basename "${TEST}" .c)"
+
+LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${OBJ}.o" "$TEST"
 
 preprocess() {
     grep -v '^$' | sort | tr -s ' '
