@@ -287,6 +287,9 @@ Detector::Mems Detector::get_mems1(const NodeRefSet& set) {
 }
 
 bool Detector::lookahead(std::function<void ()> thunk) {
+    if (!use_lookahead) {
+        return true;
+    }
     try {
         thunk();
         lookahead_tmp = false;
@@ -309,7 +312,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
         assert(exec_window.contains(load));
         if (!exec_window.contains(store)) { continue; }
 #endif
-        if (!lookahead([&] () {
+        if (mode == CheckMode::SLOW && use_lookahead && !lookahead([&] () {
             func(store, CheckMode::FAST);
         })) {
             if (mode == CheckMode::SLOW) {
@@ -341,6 +344,13 @@ void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<v
             assert_edge(edge.first, ref, edge.second, kind);
         }
         const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
+        
+        if (mode == CheckMode::SLOW && use_lookahead && !lookahead([&] () {
+            func(edge.first, CheckMode::FAST);
+        })) {
+            continue;
+        }
+        
         func(edge.first, mode);
     }
 }
@@ -406,7 +416,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         window_changed = true;
     }
     
-    if (!lookahead([&] () {
+    if (use_lookahead && !lookahead([&] () {
         func(transmitter, CheckMode::FAST);
     })) {
         logv(1, __FUNCTION__ << "skipping transmitter: failed lookahead\n");
@@ -526,14 +536,13 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         solver.check();
         
         
-        constexpr unsigned max_threads = 8;
         unsigned num_threads = 0;
         std::unordered_map<pid_t, int> pipes;
         std::size_t total_candidate_transmitters = candidate_transmitters.size();
         std::size_t i = 0;
         while (true) {
             /* spawn new child if possible */
-            if (num_threads < max_threads && !candidate_transmitters.empty()) {
+            if (num_threads < max_parallel && !candidate_transmitters.empty()) {
                 const auto it = candidate_transmitters.begin();
                 const NodeRef transmitter = *it;
                 candidate_transmitters.erase(it);
@@ -556,7 +565,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
             }
             
             /* reap dead children if necessary */
-            if (num_threads == max_threads || (num_threads > 0 && candidate_transmitters.empty())) {
+            if (num_threads == max_parallel || (num_threads > 0 && candidate_transmitters.empty())) {
                 int status;
                 pid_t pid;
                 while (true) {
@@ -748,7 +757,7 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
         return util::to_string(name, "-", src, "-", dst);
     };
     
-    solver.add(edge, desc(util::to_string(kind)));
+    solver.add(edge, desc(util::to_string(kind)).c_str());
     
     const auto& src_node = aeg.lookup(src);
     const auto& dst_node = aeg.lookup(dst);
