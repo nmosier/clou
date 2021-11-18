@@ -33,7 +33,7 @@ foreach(PHT ${PHTS})
     -O ${CMAKE_CURRENT_BINARY_DIR}/${PHT_NAME}f
     -T ${PHT_SRC}
     -L $<TARGET_FILE:lcm>
-    -A "${PHT_ARGS}"
+    -A "${PHT_ARGS} --fence"
     )
   set_tests_properties(${PHT_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
   

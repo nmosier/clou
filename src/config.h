@@ -32,6 +32,7 @@ extern bool use_lookahead;
 extern unsigned window_size;
 extern bool profile;
 extern std::size_t distinct_limit;
+extern bool fence_insertion;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

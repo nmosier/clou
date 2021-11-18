@@ -55,13 +55,16 @@ mkdir -p "${PASS_DIRS[@]}"
 OBJ_PREFIX="${OUTDIR}/$(basename "${TEST}" .c)"
 LL="${OBJ_PREFIX}.ll"
 
-export LCM_ARGS="-o${OUTDIR} ${ARGS}"
-
 # Run first pass with fence insertion
-"$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${LL}" "$TEST"
+LCM_ARGS="${ARGS} -o${OUTDIR}/pass1" "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${LL}" "$TEST"
 
 # Run second pass to verify there's no leakage
-"$OPT" -load "$LCM" -lcm < "${LL}" > "${OBJ_PREFIX}.bc"
+LCM_ARGS="${ARGS} -o${OUTDIR}/pass2" "$OPT" -load "$LCM" -lcm < "${LL}" > "${OBJ_PREFIX}.bc"
+
+if ! [[ -f "$OUTDIR/pass2/leakage.txt" ]]; then
+    echo "FAIL: no leakage.txt emitted for pass 2"
+    exit 1
+fi
 
 # Check there's no leakage
 if [[ -s "$OUTDIR/pass2/leakage.txt" ]]; then
@@ -69,6 +72,6 @@ if [[ -s "$OUTDIR/pass2/leakage.txt" ]]; then
     echo "leakage.txt:"
     cat "$OUTDIR/leakage.txt"
     exit 1
-else
-    echo "PASS"
 fi
+
+echo PASS

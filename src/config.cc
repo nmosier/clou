@@ -48,6 +48,7 @@ bool use_lookahead = false;
 unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
 std::size_t distinct_limit = 2500;
+bool fence_insertion = false;
 
 namespace {
 std::optional<std::string> logdir;
@@ -102,6 +103,7 @@ only examine given functions
 --log <dir>          redirect stderr to log directory
 --profile            enable profiler
 --distinct <limit>   set distinct limit (default: 2500)
+--fence=[<bool>]     perform automatic fence insertion
 )=";
     fprintf(f, "%s", s);
 }
@@ -199,6 +201,7 @@ int parse_args() {
         LOG,
         PROFILE,
         DISTINCT_LIMIT,
+        FENCE,
     };
     
     struct option opts[] = {
@@ -231,6 +234,7 @@ int parse_args() {
         {"profile", optional_argument, nullptr, PROFILE},
         {"distinct", required_argument, nullptr, DISTINCT_LIMIT},
         {"parallel", required_argument, nullptr, 'j'},
+        {"fence", optional_argument, nullptr, FENCE},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -472,6 +476,11 @@ int parse_args() {
                 
             case DISTINCT_LIMIT: {
                 distinct_limit = std::stoul(optarg);
+                break;
+            }
+                
+            case FENCE: {
+                fence_insertion = parse_bool_opt(optarg);
                 break;
             }
                 

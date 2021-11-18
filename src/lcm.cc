@@ -31,6 +31,7 @@
 #include "util/output.h"
 #include "util/scope.h"
 #include "timer.h"
+#include "util/algorithm.h"
 
 Timer timer {nullptr};
 std::string get_time() {
@@ -61,6 +62,8 @@ struct LCMPass: public llvm::ModulePass {
     virtual bool runOnModule(llvm::Module& M) override {
         ::signal(SIGABRT, SIG_DFL);
         
+        std::unordered_set<const llvm::Instruction *> transmitters;
+        
         for (llvm::Function *F : getFunctionOrder(M)) {
             if (F->isDeclaration()) {
                 std::cerr << "skipping function declaration " << F->getName().str() << "\n";
@@ -68,11 +71,18 @@ struct LCMPass: public llvm::ModulePass {
                 llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
                 open_log(F->getName().str());
                 timer = Timer(nullptr); // reset timer
-                runOnFunction(*F, AA);
+                runOnFunction(*F, AA, std::inserter(transmitters, transmitters.end()));
                 close_log();
             }
         }
-        return false;
+        
+        bool res = false;
+        if (fence_insertion) {
+            res = insert_fences(transmitters);
+            
+        }
+        
+        return res;
     }
     
     std::vector<llvm::Function *> getFunctionOrder(llvm::Module& M) {
@@ -92,8 +102,8 @@ struct LCMPass: public llvm::ModulePass {
         return order;
     }
     
-    bool runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA) {
-        bool module_changed = false;
+    template <typename OutputIt>
+    void runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA, OutputIt out) {
         const std::string func = F.getName().str();
         
         llvm::errs() << "processing function '" << F.getName() << "'\n";
@@ -136,7 +146,7 @@ struct LCMPass: public llvm::ModulePass {
                     client.send(msg);
                 }
                 
-                return false;
+                return;
             }
             
             if (!function_names.empty()) {
@@ -147,7 +157,7 @@ struct LCMPass: public llvm::ModulePass {
                         break;
                     }
                 }
-                if (!match) { return false; }
+                if (!match) { return; }
             }
             
             const unsigned num_unrolls = 2;
@@ -231,9 +241,7 @@ struct LCMPass: public llvm::ModulePass {
             Transmitters transmitters;
             aeg.test(transmitters);
             llvm::errs() << "done\n";
-            
-            logv(1, "inserting fences...\n");
-            module_changed = insert_fences(transmitters);
+            util::copy(transmitters, out);
             
             // add analyzed functions
             {
@@ -267,10 +275,10 @@ struct LCMPass: public llvm::ModulePass {
         
         std::cerr << "done analyzing function " << F.getName().str() << "\n";
         
-        return module_changed;
+        return;
     }
     
-    
+    template <typename Transmitters>
     bool insert_fences(const Transmitters& transmitters) const {
         std::cerr << transmitters.size() << " transmitters\n";
         for (const llvm::Instruction *transmitter_ : transmitters) {
@@ -278,9 +286,6 @@ struct LCMPass: public llvm::ModulePass {
             llvm::IRBuilder<> builder(transmitter);
             builder.SetInsertPoint(transmitter);
             llvm::FenceInst *FI = builder.CreateFence(llvm::AtomicOrdering::Acquire);
-#if 0
-            builder.Insert(FI);
-#endif
             llvm::errs() << "INSERTED FENCE: " << *FI << "\n";
         }
         return !transmitters.empty();
