@@ -347,6 +347,8 @@ bool CFG::may_introduce_speculation(NodeRef ref) const {
                         } else {
                             assert(!res);
                         }
+                    } else if (llvm::isa<llvm::FenceInst>(I)) {
+                        res = false;
                     } else {
                         if (res) {
                             llvm::errs() << node << "\n";
