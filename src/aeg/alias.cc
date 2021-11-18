@@ -356,12 +356,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     
     std::cerr << addrs.size() << " addrs\n";
     
-    // optimization parameters
-#if 0
-    alias_rel.reserve(addrs.size() * addrs.size());
-#endif
-    
-    
+
     // map vls to addrs
     for (const AddrInfo& addr : addrs) {
         vl2addr.emplace(addr.vl(), addr);
@@ -390,22 +385,22 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
         
         if (cond) {
+            bool bad = false;
 #ifndef NDEBUG
             z3::solver solver(context.context);
             z3::expr_vector vec(context.context);
             vec.push_back(*cond);
-            if (solver.check(vec) != z3::sat) {
+            bad = (solver.check(vec) != z3::sat);
+#else
+            bad = cond->simplify().is_false();
+#endif
+            if (bad) {
                 std::cerr << "AA error: " << vec << "\n";
+                std::cerr << "condition: " << *cond << "\n";
                 llvm::errs() << *a.V << "\n";
                 llvm::errs() << *b.V << "\n";
                 std::abort();
             }
-#else
-            if ((*cond = cond->simplify()).is_false()) {
-                std::cerr << "AA error: false alias condition\n";
-                std::abort();
-            }
-#endif
         }
         
         if (cond) {
@@ -531,7 +526,13 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         for (const auto& p : groups) {
             const auto& group = p.second;
             util::for_each_unordered_pair(group, [&] (AddrInfoVec::const_iterator it1, AddrInfoVec::const_iterator it2) {
+                // check if we're in the same context
                 if (!util::prefixeq_bi(it1->id.loop, it2->id.loop)) { return; }
+                
+                // verify that at least one pointer is written to
+                if (llvm::pointer_is_read_only(it1->V) && llvm::pointer_is_read_only(it2->V)) { return; }
+
+                // apply alias result
                 const auto alias_result = AA.alias(it1->V, it2->V);
                 if (alias_result == llvm::AliasResult::MayAlias) { return; }
                 add_aa(*it1, *it2, alias_result, "llvm");
