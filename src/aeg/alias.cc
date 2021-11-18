@@ -390,6 +390,25 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
         
         if (cond) {
+#ifndef NDEBUG
+            z3::solver solver(context.context);
+            z3::expr_vector vec(context.context);
+            vec.push_back(*cond);
+            if (solver.check(vec) != z3::sat) {
+                std::cerr << "AA error: " << vec << "\n";
+                llvm::errs() << *a.V << "\n";
+                llvm::errs() << *b.V << "\n";
+                std::abort();
+            }
+#else
+            if ((*cond = cond->simplify()).is_false()) {
+                std::cerr << "AA error: false alias condition\n";
+                std::abort();
+            }
+#endif
+        }
+        
+        if (cond) {
             constraints(*cond, util::to_string("AA:", desc));
         }
         

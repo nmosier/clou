@@ -167,9 +167,14 @@ void AEG::construct_addr_defs() {
                 
                 if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(RI->get_inst())) {
                     // TODO: lift out datalayout
-                    llvm::DataLayout layout {AI->getParent()->getParent()->getParent()};
+                    llvm::DataLayout DL {AI->getParent()->getParent()->getParent()};
                     node.addr_def = Address(context.context.int_val(stack_counter));
-                    stack_counter += layout.getTypeSizeInBits(AI->getType());
+                    const auto bits = AI->getAllocationSizeInBits(DL);
+                    if (!bits) {
+                        std::cerr << __FUNCTION__ << ": could not determine size of allocation\n";
+                        std::abort();
+                    }
+                    stack_counter += *bits;
                     continue;
                 }
                 
@@ -179,9 +184,11 @@ void AEG::construct_addr_defs() {
                             const auto& refs = po.lookup(ref).refs.at(I);
                             if (refs.size() == 1) {
                                 const NodeRef base_ref = *refs.begin();
-                                node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset).simplify());
+                                node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
 #if 0
-                                llvm::errs() << "GEP address: " << util::to_string(node.addr_def->addr) << ": " << *GEP << "\n";
+                                {
+                                llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
+                                }
 #endif
                                 continue;
                             }
@@ -770,7 +777,7 @@ void AEG::assert_xsaccess_order(const NodeRefSet& window, Solver& solver) {
             
             if (node.can_xsread()) {
                 // assert order
-                solver.add(z3::implies(node.arch && node.xsread, mem[*node.xstate] < *node.xsaccess_order), util::to_string("xsread xswrite arch order ", ref));
+                solver.add(z3::implies(node.arch && node.xsread, mem[*node.xstate] < *node.xsaccess_order), util::to_string("xsread xswrite arch order ", ref).c_str());
             }
             
             if (node.can_xswrite()) {
@@ -804,7 +811,7 @@ void AEG::assert_xsaccess_order(const NodeRefSet& window, Solver& solver) {
             vec.push_back(z3::ite(node.xsaccess(), *node.xsaccess_order, xsaccess_order_init));
         }
         
-        solver.add(z3::max(before) < z3::min(after), util::to_string("fence order ", fence));
+        solver.add(z3::max(before) < z3::min(after), util::to_string("fence order ", fence).c_str());
     }
 }
 
