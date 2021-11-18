@@ -21,6 +21,8 @@ std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP
 
 bool contains_struct(const llvm::Type *T);
 
+bool pointer_is_read_only(const llvm::Value *P);
+
 }
 
 template <typename T>

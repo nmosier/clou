@@ -65,4 +65,22 @@ bool contains_struct(const llvm::Type *T) {
     }
 }
 
+
+bool pointer_is_read_only(const llvm::Value *P) {
+    for (const llvm::User *U : P->users()) {
+        if (const auto *I = llvm::dyn_cast<llvm::Instruction>(U)) {
+            if (I->mayWriteToMemory()) {
+                if (const auto *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
+                    if (SI->getPointerOperand() == P) {
+                        return false;
+                    }
+                } else {
+                    llvm::errs() << __FUNCTION__ << ": unrecognized instruction that may write to memory: " << *I << "\n";
+                }
+            }
+        }
+    }
+    return true;
+}
+
 }
