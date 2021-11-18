@@ -74,8 +74,20 @@ bool pointer_is_read_only(const llvm::Value *P) {
                     if (SI->getPointerOperand() == P) {
                         return false;
                     }
+                } else if (const auto *CI = llvm::dyn_cast<llvm::CallInst>(I)) {
+                    // don't care if P == CI->getCalledOperand()
+                    if (!CI->data_operands_empty()) {
+                        llvm::errs() << __FUNCTION__ << ": data operands to CallBase instruction nonempty: " << *CI << "\n";
+                    }
+                    for (unsigned i = 0; i < CI->getNumArgOperands(); ++i) {
+                        const auto *A = CI->getArgOperand(i);
+                        if (P == A && !CI->doesNotAccessMemory(i) && !CI->onlyReadsMemory(i)) {
+                            return true;
+                        }
+                    }
                 } else {
                     llvm::errs() << __FUNCTION__ << ": unrecognized instruction that may write to memory: " << *I << "\n";
+                    std::abort();
                 }
             }
         }
