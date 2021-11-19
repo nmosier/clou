@@ -586,8 +586,6 @@ z3::expr lfold(InputIt begin, InputIt end, const z3::expr& init, BinaryOp op) {
 
 
 
-
-
 }
 
 namespace std {
