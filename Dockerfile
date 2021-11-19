@@ -11,7 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
     libz3-dev \
     lldb-12 \
     tmux \
-    less emacs-nox htop
+    less emacs-nox htop valgrind psmisc
 
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"
@@ -33,15 +33,15 @@ RUN cp -r libsodium-v1 libsodium-ll
 
 ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS -UHAVE_ALLOCA"
 
-WORKDIR "$LCM_BUILD/libsodium-v1"
+WORKDIR "$LCM_BUILD/libsodium"
 RUN autoreconf -i
 RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
 RUN mkdir lcm
 
-WORKDIR "$LCM_BUILD/libsodium-v4"
-RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
-RUN mkdir lcm
+# WORKDIR "$LCM_BUILD/libsodium-v4"
+# RUN autoreconf -i
+# RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
+# RUN mkdir lcm
 
 # WORKDIR "$LCM_BUILD/libsodium-ll"
 # RUN autoreconf -i
