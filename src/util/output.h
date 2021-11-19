@@ -240,3 +240,20 @@ fprintf(stderr, "\n"); \
 
 
 #define todo() std::cerr << __FILE__ << ":" << __LINE__ << ": todo\n"; std::abort()
+
+
+
+
+
+// print status
+inline void print_status(std::ostream& os, int status) {
+    if (WIFEXITED(status)) {
+        os << "exited " << WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+        os << "signaled " << WTERMSIG(status);
+    } else if (WIFSTOPPED(status)) {
+        os << "stopped " << WSTOPSIG(status);
+    } else {
+        os << "(unknown status)";
+    }
+}
