@@ -576,12 +576,15 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 std::cerr << "child aborted or had nonzero exit code: ";
                 print_status(std::cerr, status);
                 std::cerr << "\n";
+                logv(0, "restarting " << child.ref << "\n");
                 
                 // try to recover
                 --i;
                 candidate_transmitters.insert(child.ref);
                 
             } else {
+                
+                logv(0, "finished " << child.ref << "\n");
                 
                 const int fd = children.at(pid).fd;
                 
