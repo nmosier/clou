@@ -457,9 +457,11 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             }
         }
     }
-    
+
+    std::optional<Timer> timer_opt = Timer();
     z3_scope;
     for (const z3::expr& e : vec) { solver.add(e); }
+    timer_opt = std::nullopt;
     
     std::cerr << "Assertions: " << solver.assertions() << "\n";
     if (solver.check() != z3::unsat) {
