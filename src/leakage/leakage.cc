@@ -462,6 +462,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     std::optional<Timer> timer_opt = Timer();
     z3_scope;
     for (const z3::expr& e : vec) { solver.add(e); }
+    logv(0, __FUNCTION__ << ": added window constraints in " << timer_opt->get_str() << "\n");
     timer_opt = std::nullopt;
     
     if (solver.check() != z3::unsat) {

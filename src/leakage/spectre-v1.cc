@@ -19,10 +19,21 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
     // check if done
     if (loads.size() == deps().size()) {
         if (mode == CheckMode::SLOW) {
-            if (solver.check() != z3::sat) {
-                logv(1, "backtrack: unsat\n");
-                dbg::append_core(solver);
-                return;
+            z3::check_result res = solver.check();
+            switch (res) {
+                case z3::unsat: {
+                    logv(1, "backtrack: unsat\n");
+                    dbg::append_core(solver);
+                    return;
+                }
+                case z3::sat: {
+                    break;
+                }
+                case z3::unknown: {
+                    std::cerr << "Z3 ERROR: result unknown: " << solver.reason_unknown() << "\n";
+                    std::abort();
+                }
+                default: std::abort();
             }
             
             z3_eval;

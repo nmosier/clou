@@ -154,6 +154,8 @@ private:
  */
 template <typename OutputIt>
 OutputIt enumerate(z3::solver& solver, const z3::expr& expr, OutputIt out) {
+    std::cerr << "TODO: " << __FUNCTION__ << "\n";
+    std::abort();
     z3_scope;
     while (solver.check() == z3::sat) {
         const z3::eval eval {solver.get_model()};
@@ -165,12 +167,6 @@ OutputIt enumerate(z3::solver& solver, const z3::expr& expr, OutputIt out) {
 
 inline std::ostream& operator<<(std::ostream& os, const z3::concrete_value& x) {
     return os << x.e;
-}
-
-inline bool always_true(z3::solver& solver, const z3::expr& pred) {
-    z3::expr_vector vec {solver.ctx()};
-    vec.push_back(!pred);
-    return solver.check(vec) == z3::unsat;
 }
 
 z3::solver duplicate(const z3::solver& orig);

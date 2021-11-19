@@ -38,7 +38,7 @@ void SpectreV4_Detector::run_load(NodeRef access, CheckMode mode) {
                 solver.add(aeg.lookup(load).trans, "load.trans");
             }
             const auto action = util::push(actions, desc);
-            if (mode == CheckMode::FAST || solver.check() == z3::sat) {
+            if (mode == CheckMode::FAST || solver.check() != z3::unsat) {
                 run_bypassed_store(mode);
             } else {
                 if (mode == CheckMode::SLOW) {
@@ -114,13 +114,26 @@ void SpectreV4_Detector::run_sourced_store(CheckMode mode) {
         const auto action = util::push(actions, util::to_string("sourced ", sourced_store));
         
         if (mode == CheckMode::SLOW) {
-            if (solver.check() == z3::sat) {
-                const auto edge = push_edge(EdgeRef {
-                    .src = leak.load,
-                    .dst = sourced_store,
-                    .kind = aeg::Edge::RFX,
-                });
-                output_execution(leak.leakage());
+            const z3::check_result res = solver.check();
+            switch (res) {
+                case z3::sat: {
+                    const auto edge = push_edge(EdgeRef {
+                        .src = leak.load,
+                        .dst = sourced_store,
+                        .kind = aeg::Edge::RFX,
+                    });
+                    output_execution(leak.leakage());
+                    break;
+                }
+                case z3::unsat: {
+                    logv(0, __FUNCTION__ << ": backtrack: unsat\n");
+                    break;
+                }
+                case z3::unknown: {
+                    std::cerr << "Z3 ERROR: unknown: " << solver.reason_unknown() << "\n";
+                    std::abort();
+                }
+                default: std::abort();
             }
         } else {
             throw lookahead_found();
