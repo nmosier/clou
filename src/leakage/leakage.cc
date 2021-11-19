@@ -486,6 +486,21 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         std::perror("fork");
         std::abort();
     } else if (pid == 0) {
+        /* acquire semaphore */
+        if (sem != SEM_FAILED) {
+            while (true) {
+                if (::sem_wait(sem) < 0) {
+                    if (errno != EAGAIN && errno != EINTR) {
+                        std::perror("sem_wait");
+                        std::abort();
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        
         ::close(fds[0]);
         for_one_transmitter(transmitter, func);
         
@@ -530,20 +545,6 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
             const NodeRef transmitter = *it;
             candidate_transmitters.erase(it);
             
-            /* acquire semaphore */
-            if (sem != SEM_FAILED) {
-                while (true) {
-                    if (::sem_wait(sem) < 0) {
-                        if (errno != EAGAIN && errno != EINTR) {
-                            std::perror("sem_wait");
-                            std::abort();
-                        }
-                    } else {
-                        break;
-                    }
-                }
-            }
-            
             for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
             ++num_threads;
             
@@ -575,12 +576,14 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 }
             }
             
+#if 0
             if (sem != SEM_FAILED) {
                 if (::sem_post(sem) < 0) {
                     std::perror("sem_post");
                     std::abort();
                 }
             }
+#endif
             
             if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
                 std::cerr << "child aborted or had nonzero exit code: ";
@@ -636,25 +639,6 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
         client.send_property(aeg.function_name(), "threads", num_threads);
     }
 }
-
-
-void Detector::for_each_transmitter_parallel_shared(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func) {
-    std::cerr << "using shared parallel mode\n";
-    
-    std::unordered_map<pid_t, int> pipes;
-    std::size_t total_candidate_transmitters = candidate_transmitters.size();
-    std::size_t i = 0;
-    
-    while (true) {
-        if (!candidate_transmitters.empty()) {
-            /* try to spawn a new child */
-        }
-        
-        /* wait until we can spawn a new child */
-    }
-}
-
-
 
 
 void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
