@@ -362,6 +362,9 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         vl2addr.emplace(addr.vl(), addr);
     }
     
+    unsigned filtered = 0;
+
+    
     unsigned nos = 0, musts = 0, mays = 0;
     const auto add_aa = [&] (const AddrInfo& a, const AddrInfo& b, llvm::AliasResult result, const char *desc) {
         std::optional<z3::expr> cond;
@@ -392,7 +395,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             vec.push_back(*cond);
             bad = (solver.check(vec) != z3::sat);
 #else
-            bad = cond->simplify().is_false();
+            cond = cond->simplify();
+            bad = cond->is_false();
 #endif
             if (bad) {
                 std::cerr << "AA error: impossible AA assertion\n";
@@ -405,7 +409,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
         
         if (cond) {
-            constraints(*cond, util::to_string("AA:", desc));
+            if (cond->is_true()) {
+                ++filtered;
+            } else {
+                constraints(*cond, util::to_string("AA:", desc));
+            }
         }
         
         add_alias_result(a.vl(), b.vl(), result);
@@ -669,6 +677,10 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
 #endif
         }
+        
+        
+        /* INFO */
+        logv(1, __FUNCTION__ << ": filtered " << filtered << " tautological constraints\n");
         
     }
     

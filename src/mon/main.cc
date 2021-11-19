@@ -36,6 +36,7 @@ const char *fifo_path = nullptr;
 const char *table_path = nullptr;
 const char *sem_path = nullptr;
 int semid = -1;
+std::optional<unsigned> num_threads;
 
 
 void cleanup() {
@@ -91,10 +92,10 @@ int main(int argc, char *argv[]) {
     ::argv = argv;
     ::prog = argv[0];
     
-    ::signal(SIGINT, [] (int) { cleanup(); });
-    
-    std::optional<unsigned> num_threads;
-    
+    ::signal(SIGINT, [] (int) {
+        std::exit(EXIT_SUCCESS);
+    });
+        
     const char *optstr = "hf:t:j:";
     int optchar;
     while ((optchar = getopt(argc, argv, optstr)) >= 0) {
@@ -472,6 +473,7 @@ struct Monitor: Component {
         ::addstr("\nABORTED:\n");
         aborted_jobs.display();
         ::printw("\nANALYZED: %zu\n", analyzed_functions.size());
+        ::printw("THREADS: %d\n",  *num_threads - ::semctl(semid, 0, GETVAL));
     }
     
     void run();

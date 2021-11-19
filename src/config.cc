@@ -52,7 +52,7 @@ unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
 std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
-int sem = -1;
+int semid = -1;
 
 namespace {
 std::optional<std::string> logdir;
@@ -288,7 +288,7 @@ int parse_args() {
                     key_t key;
                     if ((key = ::ftok("/lcm", 0)) < 0) {
                         std::cerr << "ftok: invalid path '/lcm'\n";
-                    } else if ((sem = ::semget(key, 0,
+                    } else if ((semid = ::semget(key, 0,
 #ifndef __linux__
                                                SEM_R | SEM_A |
 #endif

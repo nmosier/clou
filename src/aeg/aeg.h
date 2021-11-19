@@ -116,8 +116,10 @@ private:
 public:
 #if 0
     using Solver = z3::trivial_solver<z3::lazy_solver<z3::solver>>;
-#else
+#elif 0
     using Solver = z3::trivial_solver<z3::solver>;
+#else
+    using Solver = z3::solver;
 #endif
 private:
     Solver make_solver();

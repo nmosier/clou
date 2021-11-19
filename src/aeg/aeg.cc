@@ -125,33 +125,38 @@ void AEG::test(std::vector<const llvm::Instruction *>& transmitters) {
         }
     }
     
-    // add edge constraints
     {
-        std::cerr << __FUNCTION__ << ": adding edge constraints...\n";
-        Progress progress {nedges};
-        std::unordered_map<std::string, unsigned> names;
-        graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
-            edge.constraints.add_to(solver);
-            ++progress;
-        });
-        progress.done();
-    }
-    
-    // add node constraints
-    {
-        std::cerr << __FUNCTION__ << ": adding node constraints...\n";
-        Progress progress {size()};
-        for (NodeRef ref : node_range()) {
-            lookup(ref).constraints.add_to(solver);
-            ++progress;
+        Timer timer;
+        
+        // add edge constraints
+        {
+            logv(0, __FUNCTION__ << ": adding edge constraints...\n");
+            Progress progress {nedges};
+            std::unordered_map<std::string, unsigned> names;
+            graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
+                edge.constraints.add_to(solver);
+                ++progress;
+            });
+            progress.done();
         }
-        progress.done();
+        
+        // add node constraints
+        {
+            logv(0, __FUNCTION__ << ": adding node constraints...\n");
+            Progress progress {size()};
+            for (NodeRef ref : node_range()) {
+                lookup(ref).constraints.add_to(solver);
+                ++progress;
+            }
+            progress.done();
+        }
+        
+        // add main constraints
+        logv(0, __FUNCTION__ << ": adding main constraints...");
+        constraints.add_to_progress(solver);
+
+        logv(0, __FUNCTION__ << ": added constraints ");
     }
-    
-    // add main constraints
-    logv(0, __FUNCTION__ << ": adding main constraints...");
-    constraints.add_to_progress(solver);
-    logv_(0, "done\n");
     
     {
         Timer timer;

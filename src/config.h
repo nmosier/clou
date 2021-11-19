@@ -34,7 +34,7 @@ extern unsigned window_size;
 extern bool profile;
 extern std::size_t distinct_limit;
 extern bool fence_insertion;
-extern int sem;
+extern int semid;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

@@ -19,6 +19,7 @@
 #include "leakage/spectre-v4.h"
 #include "util/protobuf.h"
 #include "leakage/proto.h"
+#include "util/sem.h"
 
 namespace aeg {
 
@@ -493,22 +494,10 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         std::perror("fork");
         std::abort();
     } else if (pid == 0) {
-        /* acquire semaphore */
-        if (sem >= 0) {
-            struct sembuf sop = {.sem_num = 0, .sem_op = -1, SEM_UNDO};
-            while (true) {
-                if (::semop(sem, &sop, 1) < 0) {
-                    if (!(errno == EINTR || errno == EAGAIN)) {
-                        std::perror("semop");
-                        sem = -1;
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
         
+        if (semid >= 0) {
+            semutil::acquire(semid);
+        }
         
         ::close(fds[0]);
         for_one_transmitter(transmitter, func);
@@ -532,7 +521,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         
         std::_Exit(0); // quick exit
     } else {
-        *out++ = std::make_pair(pid, fds[0]);
+        *out++ = std::make_pair(pid, Child {.ref = transmitter, .fd = fds[0]});
         ::close(fds[1]);
         return out;
     }
@@ -543,7 +532,7 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
     std::cerr << "using " << max_parallel << " threads\n";
     
     unsigned num_threads = 0;
-    std::unordered_map<pid_t, int> pipes;
+    std::unordered_map<pid_t, Child> children;
     std::size_t total_candidate_transmitters = candidate_transmitters.size();
     std::size_t i = 0;
     while (true) {
@@ -554,7 +543,7 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
             const NodeRef transmitter = *it;
             candidate_transmitters.erase(it);
             
-            for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
+            for_new_transmitter(transmitter, func, std::inserter(children, children.end()));
             ++num_threads;
             
             ++i;
@@ -585,56 +574,54 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 }
             }
             
-#if 0
-            if (sem != SEM_FAILED) {
-                if (::sem_post(sem) < 0) {
-                    std::perror("sem_post");
-                    std::abort();
-                }
-            }
-#endif
-            
+            const Child& child = children.at(pid);
             if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
                 std::cerr << "child aborted or had nonzero exit code: ";
                 print_status(std::cerr, status);
                 std::cerr << "\n";
-                std::abort();
-            }
-            
-            const int fd = pipes.at(pid);
-            
-            std::vector<char> buf;
-            if (io::readall(fd, buf) < 0) {
-                std::perror("read");
-                std::abort();
-            }
-            ::close(fd);
-            
-            std::size_t rem = buf.size();
-            const char *ptr = buf.data();
-            while (ptr < buf.data() + buf.size()) {
-                lkg::LeakageMsg msg;
-                uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                std::cerr << "message size " << size << "\n";
-                rem -= 4;
-                ptr += 4;
-                if (!msg.ParseFromArray(ptr, size)) {
-                    std::cerr << "bad message\n";
+                
+                // try to recover
+                --i;
+                candidate_transmitters.insert(child.ref);
+                
+            } else {
+                
+                const int fd = children.at(pid).fd;
+                
+                std::vector<char> buf;
+                if (io::readall(fd, buf) < 0) {
+                    std::perror("read");
                     std::abort();
                 }
-                ptr += size;
-                rem -= size;
+                ::close(fd);
                 
-                NodeRefVec vec;
-                util::copy(msg.vec(), std::back_inserter(vec));
-                assert(msg.vec().size() > 1);
-                assert(vec.size() > 1);
-                NodeRef transmitter = msg.transmitter();
-                std::string desc = msg.desc();
-                leaks.emplace_back(Leakage {
-                    .vec = vec,
-                    .transmitter = transmitter
-                }, desc);
+                std::size_t rem = buf.size();
+                const char *ptr = buf.data();
+                while (ptr < buf.data() + buf.size()) {
+                    lkg::LeakageMsg msg;
+                    uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
+                    std::cerr << "message size " << size << "\n";
+                    rem -= 4;
+                    ptr += 4;
+                    if (!msg.ParseFromArray(ptr, size)) {
+                        std::cerr << "bad message\n";
+                        std::abort();
+                    }
+                    ptr += size;
+                    rem -= size;
+                    
+                    NodeRefVec vec;
+                    util::copy(msg.vec(), std::back_inserter(vec));
+                    assert(msg.vec().size() > 1);
+                    assert(vec.size() > 1);
+                    NodeRef transmitter = msg.transmitter();
+                    std::string desc = msg.desc();
+                    leaks.emplace_back(Leakage {
+                        .vec = vec,
+                        .transmitter = transmitter
+                    }, desc);
+                }
+            
             }
             
             --num_threads;
