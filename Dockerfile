@@ -19,12 +19,12 @@ ENV CXX="/usr/bin/clang++-12"
 ENV LCM_DIR="$HOME/lcm"
 ENV LCM_BUILD="$LCM_DIR/build"
 
-COPY . "$LCM_DIR"
-
-# Build lcm tool
-WORKDIR "$LCM_DIR/build"
-RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
-RUN make -j$(nproc)
+# Set up dummy liblcm.so
+WORKDIR "$LCM_BUILD"
+RUN mkdir -p src
+RUN echo 'static int i;' > dummy.c
+RUN clang-12 -shared -o src/liblcm.so dummy.c
+RUN rm -f dummy.c
 
 # Configure libsodium
 RUN git clone https://github.com/jedisct1/libsodium.git libsodium-v1
@@ -43,12 +43,15 @@ RUN autoreconf -i
 RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
 RUN mkdir lcm
 
-WORKDIR "$LCM_BUILD/libsodium-ll"
-RUN autoreconf -i
-RUN ./configure --disable-asm CC="$LCM_DIR/scripts/mycc.sh" CFLAGS="-Wno-cpp"
+# WORKDIR "$LCM_BUILD/libsodium-ll"
+# RUN autoreconf -i
+# RUN ./configure --disable-asm CC="$LCM_DIR/scripts/mycc.sh" CFLAGS="-Wno-cpp"
+# RUN make -j$(nproc)
+
+RUN ulimit -c unlimited
+
+# Build lcm tool
+WORKDIR "$LCM_BUILD"
+COPY . "$LCM_DIR"
+RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
 RUN make -j$(nproc)
-
-# Set up debugserver
-EXPOSE 11100/tcp
-
-WORKDIR "$LCM_DIR"
