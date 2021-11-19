@@ -5,6 +5,7 @@
 #include <fstream>
 #include <optional>
 #include <memory>
+#include <semaphore.h>
 
 /* FORWARD DECLARATIONS */
 namespace mon {
@@ -33,6 +34,7 @@ extern unsigned window_size;
 extern bool profile;
 extern std::size_t distinct_limit;
 extern bool fence_insertion;
+extern sem_t *sem;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

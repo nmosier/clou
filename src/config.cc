@@ -14,6 +14,7 @@
 #include "util/exception.h"
 #include "util/output.h"
 #include "aeg/edge.h"
+#include "thread_pool.h"
 
 /* TODO
  * [ ] Handle function names
@@ -49,6 +50,7 @@ unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
 std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
+sem_t *sem = SEM_FAILED;
 
 namespace {
 std::optional<std::string> logdir;
@@ -277,7 +279,17 @@ int parse_args() {
                 break;
                 
             case 'j':
-                max_parallel = std::stoul(optarg);
+                if (optarg) {
+                    max_parallel = std::stoul(optarg);
+                }
+                if ((sem = sem_open("/lcm", 0)) == SEM_FAILED) {
+                    std::perror("sem_open");
+                }
+                std::atexit([] () {
+                    if (sem != SEM_FAILED) {
+                        sem_close(sem);
+                    }
+                });
                 break;
                 
             case MAX_TRANSIENT:

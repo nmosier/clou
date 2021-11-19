@@ -514,6 +514,149 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
     }
 }
 
+void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func) {
+
+    std::cerr << "using " << max_parallel << " threads\n";
+    
+    unsigned num_threads = 0;
+    std::unordered_map<pid_t, int> pipes;
+    std::size_t total_candidate_transmitters = candidate_transmitters.size();
+    std::size_t i = 0;
+    while (true) {
+        
+        /* spawn new child if possible */
+        if (num_threads < max_parallel && !candidate_transmitters.empty()) {
+            const auto it = candidate_transmitters.begin();
+            const NodeRef transmitter = *it;
+            candidate_transmitters.erase(it);
+            
+            /* acquire semaphore */
+            if (sem != SEM_FAILED) {
+                while (true) {
+                    if (::sem_wait(sem) < 0) {
+                        if (errno != EAGAIN && errno != EINTR) {
+                            std::perror("sem_wait");
+                            std::abort();
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
+            ++num_threads;
+            
+            ++i;
+            logv(1, i << "/" << total_candidate_transmitters << "\n");
+            
+            if (client) {
+                mon::Message msg;
+                auto *progress = msg.mutable_func_progress();
+                progress->mutable_func()->set_name(aeg.po.function_name());
+                const float frac = static_cast<float>(i) / static_cast<float>(total_candidate_transmitters);
+                progress->set_frac(frac);
+                client.send(msg);
+            }
+        }
+        
+        /* reap dead children if necessary */
+        if (num_threads == max_parallel || (num_threads > 0 && candidate_transmitters.empty())) {
+            int status;
+            pid_t pid;
+            while (true) {
+                pid = ::wait(&status);
+                if (pid < 0 && errno != EINTR) {
+                    std::perror("wait");
+                    std::abort();
+                }
+                if (pid >= 0) {
+                    break;
+                }
+            }
+            
+            if (sem != SEM_FAILED) {
+                if (::sem_post(sem) < 0) {
+                    std::perror("sem_post");
+                    std::abort();
+                }
+            }
+            
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                std::cerr << "child aborted or had nonzero exit code: ";
+                print_status(std::cerr, status);
+                std::cerr << "\n";
+                std::abort();
+            }
+            
+            const int fd = pipes.at(pid);
+            
+            std::vector<char> buf;
+            if (io::readall(fd, buf) < 0) {
+                std::perror("read");
+                std::abort();
+            }
+            ::close(fd);
+            
+            std::size_t rem = buf.size();
+            const char *ptr = buf.data();
+            while (ptr < buf.data() + buf.size()) {
+                lkg::LeakageMsg msg;
+                uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
+                std::cerr << "message size " << size << "\n";
+                rem -= 4;
+                ptr += 4;
+                if (!msg.ParseFromArray(ptr, size)) {
+                    std::cerr << "bad message\n";
+                    std::abort();
+                }
+                ptr += size;
+                rem -= size;
+                
+                NodeRefVec vec;
+                util::copy(msg.vec(), std::back_inserter(vec));
+                assert(msg.vec().size() > 1);
+                assert(vec.size() > 1);
+                NodeRef transmitter = msg.transmitter();
+                std::string desc = msg.desc();
+                leaks.emplace_back(Leakage {
+                    .vec = vec,
+                    .transmitter = transmitter
+                }, desc);
+            }
+            
+            --num_threads;
+        }
+        
+        if (num_threads == 0 && candidate_transmitters.empty()) {
+            break;
+        }
+        
+        /* update number of live threads */
+        client.send_property(aeg.function_name(), "threads", num_threads);
+    }
+}
+
+
+void Detector::for_each_transmitter_parallel_shared(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func) {
+    std::cerr << "using shared parallel mode\n";
+    
+    std::unordered_map<pid_t, int> pipes;
+    std::size_t total_candidate_transmitters = candidate_transmitters.size();
+    std::size_t i = 0;
+    
+    while (true) {
+        if (!candidate_transmitters.empty()) {
+            /* try to spawn a new child */
+        }
+        
+        /* wait until we can spawn a new child */
+    }
+}
+
+
+
+
 void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
     NodeRefSet candidate_transmitters;
     {
@@ -542,102 +685,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
     
     if (max_parallel > 1) {
         
-        std::cerr << "using " << max_parallel << " threads\n";
-        
-        unsigned num_threads = 0;
-        std::unordered_map<pid_t, int> pipes;
-        std::size_t total_candidate_transmitters = candidate_transmitters.size();
-        std::size_t i = 0;
-        while (true) {
-            /* spawn new child if possible */
-            if (num_threads < max_parallel && !candidate_transmitters.empty()) {
-                const auto it = candidate_transmitters.begin();
-                const NodeRef transmitter = *it;
-                candidate_transmitters.erase(it);
-                for_new_transmitter(transmitter, func, std::inserter(pipes, pipes.end()));
-                ++num_threads;
-                
-                ++i;
-                logv(1, i << "/" << total_candidate_transmitters << "\n");
-                
-                if (client) {
-                    mon::Message msg;
-                    auto *progress = msg.mutable_func_progress();
-                    progress->mutable_func()->set_name(aeg.po.function_name());
-                    const float frac = static_cast<float>(i) / static_cast<float>(total_candidate_transmitters);
-                    progress->set_frac(frac);
-                    client.send(msg);
-                }
-            }
-            
-            /* reap dead children if necessary */
-            if (num_threads == max_parallel || (num_threads > 0 && candidate_transmitters.empty())) {
-                int status;
-                pid_t pid;
-                while (true) {
-                    pid = ::wait(&status);
-                    if (pid < 0 && errno != EINTR) {
-                        std::perror("wait");
-                        std::abort();
-                    }
-                    if (pid >= 0) {
-                        break;
-                    }
-                }
-                
-                if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                    std::cerr << "child aborted or had nonzero exit code: ";
-                    print_status(std::cerr, status);
-                    std::cerr << "\n";
-                    std::abort();
-                }
-                
-                const int fd = pipes.at(pid);
-                
-                std::vector<char> buf;
-                if (io::readall(fd, buf) < 0) {
-                    std::perror("read");
-                    std::abort();
-                }
-                ::close(fd);
-                
-                std::size_t rem = buf.size();
-                const char *ptr = buf.data();
-                while (ptr < buf.data() + buf.size()) {
-                    lkg::LeakageMsg msg;
-                    uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                    std::cerr << "message size " << size << "\n";
-                    rem -= 4;
-                    ptr += 4;
-                    if (!msg.ParseFromArray(ptr, size)) {
-                        std::cerr << "bad message\n";
-                        std::abort();
-                    }
-                    ptr += size;
-                    rem -= size;
-                    
-                    NodeRefVec vec;
-                    util::copy(msg.vec(), std::back_inserter(vec));
-                    assert(msg.vec().size() > 1);
-                    assert(vec.size() > 1);
-                    NodeRef transmitter = msg.transmitter();
-                    std::string desc = msg.desc();
-                    leaks.emplace_back(Leakage {
-                        .vec = vec,
-                        .transmitter = transmitter
-                    }, desc);
-                }
-                
-                --num_threads;
-            }
-            
-            if (num_threads == 0 && candidate_transmitters.empty()) {
-                break;
-            }
-            
-            /* update number of live threads */
-            client.send_property(aeg.function_name(), "threads", num_threads);
-        }
+        for_each_transmitter_parallel_private(candidate_transmitters, func);
         
     } else {
         std::cerr << "using 1 thread\n";

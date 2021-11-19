@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <variant>
 #include <fstream>
+#include <semaphore.h>
 
 #include <curses.h>
 
@@ -31,6 +32,20 @@ char **argv;
 
 const char *fifo_path = nullptr;
 const char *table_path = nullptr;
+const char *sem_path = nullptr;
+sem_t *sem = SEM_FAILED;
+
+
+void cleanup() {
+    if (fifo_path != nullptr) {
+        ::unlink(fifo_path);
+        fifo_path = nullptr;
+    }
+    if (sem_path != nullptr) {
+        sem_unlink(sem_path);
+        sem_path = nullptr;
+    }
+}
 
 std::ofstream table_os;
 
@@ -75,7 +90,11 @@ int main(int argc, char *argv[]) {
     ::argv = argv;
     ::prog = argv[0];
     
-    const char *optstr = "hf:t:";
+    ::signal(SIGINT, [] (int) { cleanup(); });
+    
+    std::optional<unsigned> num_threads;
+    
+    const char *optstr = "hf:t:j:";
     int optchar;
     while ((optchar = getopt(argc, argv, optstr)) >= 0) {
         switch (optchar) {
@@ -91,6 +110,10 @@ int main(int argc, char *argv[]) {
                 table_path = optarg;
                 break;
                 
+            case 'j':
+                num_threads = std::stoul(optarg);
+                break;
+                
             default:
                 usage(stderr);
                 return EXIT_FAILURE;
@@ -103,10 +126,8 @@ int main(int argc, char *argv[]) {
     }
     
     // cleanup
-    std::atexit([] () {
-        ::unlink(::fifo_path);
-    });
-    
+    std::atexit([] () { cleanup(); });
+        
     struct sockaddr_un addr;
     addr.sun_family = AF_LOCAL;
     std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fifo_path);
@@ -115,6 +136,14 @@ int main(int argc, char *argv[]) {
     }
     if (::listen(fd, 16) < 0) {
         perror_exit("listen");
+    }
+    
+    // open semaphore
+    if (num_threads) {
+        sem_path = "LCM";
+        if ((sem = ::sem_open(sem_path, O_CREAT | O_EXCL, 0664, *num_threads)) == SEM_FAILED) {
+            perror_exit("sem_open");
+        }
     }
 
     server(fd);
