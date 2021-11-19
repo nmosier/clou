@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
     
     // open semaphore
     if (num_threads) {
-        sem_path = "LCM";
+        sem_path = "/lcm";
         if ((sem = ::sem_open(sem_path, O_CREAT | O_EXCL, 0664, *num_threads)) == SEM_FAILED) {
             perror_exit("sem_open");
         }
