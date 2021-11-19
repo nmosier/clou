@@ -67,36 +67,46 @@ bool contains_struct(const llvm::Type *T) {
 
 
 bool pointer_is_read_only(const llvm::Value *P) {
-    for (const llvm::User *U : P->users()) {
-        if (const auto *I = llvm::dyn_cast<llvm::Instruction>(U)) {
-            if (I->mayWriteToMemory()) {
-                if (const auto *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
-                    if (SI->getPointerOperand() == P) {
-                        return false;
-                    }
-                } else if (const auto *CI = llvm::dyn_cast<llvm::CallInst>(I)) {
-                    // don't care if P == CI->getCalledOperand()
-                    for (unsigned i = 0; i < CI->getNumArgOperands(); ++i) {
-                        const auto *A = CI->getArgOperand(i);
-                        if (P == A && !CI->doesNotAccessMemory(i) && !CI->onlyReadsMemory(i)) {
+    if (llvm::isa<llvm::Argument, llvm::Instruction, llvm::GlobalValue>(P)) {
+        for (const llvm::User *U : P->users()) {
+            if (const auto *I = llvm::dyn_cast<llvm::Instruction>(U)) {
+                if (I->mayWriteToMemory()) {
+                    if (const auto *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
+                        if (SI->getPointerOperand() == P) {
                             return false;
                         }
-                    }
-                } else if (const auto *LI = llvm::dyn_cast<llvm::LoadInst>(I)) {
-                    if (LI->isVolatile()) {
-                        return false;
+                    } else if (const auto *CI = llvm::dyn_cast<llvm::CallInst>(I)) {
+                        // don't care if P == CI->getCalledOperand()
+                        for (unsigned i = 0; i < CI->getNumArgOperands(); ++i) {
+                            const auto *A = CI->getArgOperand(i);
+                            if (P == A && !CI->doesNotAccessMemory(i) && !CI->onlyReadsMemory(i)) {
+                                return false;
+                            }
+                        }
+                    } else if (const auto *LI = llvm::dyn_cast<llvm::LoadInst>(I)) {
+                        if (LI->isVolatile()) {
+                            return false;
+                        } else {
+                            llvm::errs() << __FUNCTION__ << ": non-volatile LoadInst may write to memory: " << *I << "\n";
+                            std::abort();
+                        }
                     } else {
-                        llvm::errs() << __FUNCTION__ << ": non-volatile LoadInst may write to memory: " << *I << "\n";
+                        llvm::errs() << __FUNCTION__ << ": unrecognized instruction that may write to memory: " << *I << "\n";
                         std::abort();
                     }
-                } else {
-                    llvm::errs() << __FUNCTION__ << ": unrecognized instruction that may write to memory: " << *I << "\n";
-                    std::abort();
                 }
             }
         }
+        
+        return true;
     }
-    return true;
+    
+    if (llvm::isa<llvm::ConstantPointerNull, llvm::BasicBlock>(P)) {
+        return true;
+    }
+
+    llvm::errs() << __FUNCTION__ << ": unrecognized value: " << *P << "\n";
+    std::abort();
 }
 
 }
