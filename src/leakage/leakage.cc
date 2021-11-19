@@ -586,7 +586,9 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
                 }
                 
                 if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                    std::cerr << "child aborted or had nonzero exit code\n";
+                    std::cerr << "child aborted or had nonzero exit code: ";
+                    print_status(std::cerr, status);
+                    std::cerr << "\n";
                     std::abort();
                 }
                 
