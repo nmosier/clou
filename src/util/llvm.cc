@@ -1,4 +1,5 @@
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/Operator.h>
 
 #include "llvm.h"
 
@@ -67,7 +68,9 @@ bool contains_struct(const llvm::Type *T) {
 
 
 bool pointer_is_read_only(const llvm::Value *P) {
-    if (llvm::isa<llvm::Argument, llvm::Instruction, llvm::GlobalValue>(P)) {
+    // TODO: To make this safer, we shouldn't even look at function calls (unfortunately).
+    
+    if (llvm::isa<llvm::Argument, llvm::Instruction, llvm::GlobalValue, llvm::Operator>(P)) {
         for (const llvm::User *U : P->users()) {
             if (const auto *I = llvm::dyn_cast<llvm::Instruction>(U)) {
                 if (I->mayWriteToMemory()) {
