@@ -452,7 +452,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
 #endif
     
     
-#if 1
+#if 0
     /* AA: GEP of distinct Alloca bases have different values */
     {
         logv(1, __FUNCTION__ << ": GEPs with distinct alloca bases...");
