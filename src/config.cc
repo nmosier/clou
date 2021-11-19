@@ -14,7 +14,6 @@
 #include "util/exception.h"
 #include "util/output.h"
 #include "aeg/edge.h"
-#include "thread_pool.h"
 
 /* TODO
  * [ ] Handle function names
