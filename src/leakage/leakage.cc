@@ -177,7 +177,7 @@ void Leakage::print_short(std::ostream& os) const {
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
+Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), alias_solver(ctx()), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
 
 z3::expr Detector::mem(NodeRef ref) const {
     const auto it = mems.find(ref);
@@ -668,21 +668,9 @@ void Detector::precompute_rf(NodeRef load) {
     
     auto& out = rf[load];
     
-    if (aeg.exits.find(load) != aeg.exits.end()) { return; }
+    if (aeg.exits.contains(load)) { return; }
     const aeg::Node& node = aeg.lookup(load);
     if (!node.may_read()) { return; }
-    
-#define FILTER_USING_ORDER 0
-    
-#if FILTER_USING_ORDER
-    NodeRefVec order;
-    aeg.po.reverse_postorder(std::back_inserter(order));
-    
-    std::unordered_map<NodeRef, NodeRefVec::const_iterator> ref2order;
-    for (auto it = order.begin(); it != order.end(); ++it) {
-        ref2order.emplace(*it, it);
-    }
-#endif
     
     assert(alias_mode.transient);
     
@@ -693,30 +681,7 @@ void Detector::precompute_rf(NodeRef load) {
         const NodeRef ref = todo.back();
         todo.pop_back();
         if (!seen.insert(ref).second) { continue; }
-        
-#if FILTER_USING_ORDER
-        if (ref2order.at(ref) > ref2order.at(load)) {
-            std::cerr << "skipping rf " << ref << " " << load << "\n";
-            continue;
-            
-        }
-        
-        if (!partial_order(ref, load)) {
-            std::cerr << "skipping rf due to partial order\n";
-            continue;
-        }
-#endif
-        
-#if 0
-        if (stb_size) {
-            if (aeg.lookup(ref).stores_in > aeg.lookup(load).stores_in + *stb_size) {
-                /* must exceed to store buffer size */
-                std::cerr << "skipping rf due to stb size\n";
-                continue;
-            }
-        }
-        // TODO: this isn't correct.
-#endif
+        if (!exec_window.contains(ref)) { continue; }
         
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.compute_alias(load, ref)) {
@@ -724,6 +689,7 @@ void Detector::precompute_rf(NodeRef load) {
                     
                 case llvm::MayAlias:
                 case llvm::MustAlias:
+                    /* necessary condition: the two pointers must alias */
                     out.emplace(ref, mem(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
                     break;
                     
@@ -732,11 +698,11 @@ void Detector::precompute_rf(NodeRef load) {
         }
         
         util::copy(aeg.po.po.rev.at(ref), std::back_inserter(todo));
-        
-        // how to check when
     }
     
-#if 1
+#if 0
+    // NOTE: This is now handled in above while loop.
+    // filter by exec window
     for (auto it = out.begin(); it != out.end(); ) {
         if (exec_window.contains(it->first)) {
             ++it;
@@ -746,6 +712,35 @@ void Detector::precompute_rf(NodeRef load) {
     }
 #endif
     
+#if 1
+    // filter by satisfiable aliases
+    unsigned filtered = 0;
+    for (auto it = out.begin(); it != out.end(); ) {
+        bool keep = true;
+
+        // check if alias expression is always false
+        if (it->first != aeg.entry) {
+            const z3::expr alias = (aeg.lookup(it->first).get_memory_address() == aeg.lookup(load).get_memory_address());
+            if (alias.simplify().is_false()) {
+                keep = false;
+            } else {
+                z3::expr_vector vec(ctx());
+                vec.push_back(alias);
+                if (alias_solver.check(vec) == z3::unsat) {
+                    keep = false;
+                }
+            }
+        }
+        
+        if (keep) {
+            ++it;
+        } else {
+            it = out.erase(it);
+            ++filtered;
+        }
+    }
+    logv(1, __FUNCTION__ << ": filtered " << filtered << "\n");
+#endif
 }
 
 const Detector::Sources& Detector::rf_sources(NodeRef load) {

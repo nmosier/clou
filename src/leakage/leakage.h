@@ -58,6 +58,7 @@ protected:
     
     aeg::AEG& aeg;
     Solver& solver;
+    z3::solver alias_solver;
 
     using Actions = std::vector<std::string>;
     using PushAction = util::push_scope<Actions>;
