@@ -5,6 +5,9 @@
 #include <getopt.h>
 #include <vector>
 #include <csignal>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -49,7 +52,7 @@ unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
 std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
-sem_t *sem = SEM_FAILED;
+int sem = -1;
 
 namespace {
 std::optional<std::string> logdir;
@@ -277,19 +280,24 @@ int parse_args() {
                 spec_depth = std::stoul(optarg);
                 break;
                 
-            case 'j':
+            case 'j': {
                 if (optarg) {
                     max_parallel = std::stoul(optarg);
                 }
-                if ((sem = sem_open("/lcm", 0)) == SEM_FAILED) {
-                    std::perror("sem_open");
-                }
-                std::atexit([] () {
-                    if (sem != SEM_FAILED) {
-                        sem_close(sem);
+                {
+                    key_t key;
+                    if ((key = ::ftok("/lcm", 0)) < 0) {
+                        std::cerr << "ftok: invalid path '/lcm'\n";
+                    } else if ((sem = ::semget(key, 0,
+#ifndef __linux__
+                                               SEM_R | SEM_A |
+#endif
+                                               IPC_CREAT)) < 0) {
+                        std::perror("semget");
                     }
-                });
+                }
                 break;
+            }
                 
             case MAX_TRANSIENT:
                 max_transient_nodes = std::stoul(optarg);

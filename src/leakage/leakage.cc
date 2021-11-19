@@ -459,7 +459,11 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     
     if (solver.check(vec) != z3::unsat) {
         z3_scope;
+#if 1
+        for (const z3::expr& e : vec) { solver.add(e); }
+#else
         solver.add(vec);
+#endif
         
         aeg.assert_xsaccess_order(exec_window, solver);
         
@@ -481,18 +485,23 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
     int fds[2];
     io::pipe(fds);
     
+    ::signal(SIGSEGV, SIG_DFL);
+    ::signal(SIGABRT, SIG_DFL);
+    
     const pid_t pid = ::fork();
     if (pid < 0) {
         std::perror("fork");
         std::abort();
     } else if (pid == 0) {
         /* acquire semaphore */
-        if (sem != SEM_FAILED) {
+        if (sem >= 0) {
+            struct sembuf sop = {.sem_num = 0, .sem_op = -1, SEM_UNDO};
             while (true) {
-                if (::sem_wait(sem) < 0) {
-                    if (errno != EAGAIN && errno != EINTR) {
-                        std::perror("sem_wait");
-                        std::abort();
+                if (::semop(sem, &sop, 1) < 0) {
+                    if (!(errno == EINTR || errno == EAGAIN)) {
+                        std::perror("semop");
+                        sem = -1;
+                        break;
                     }
                 } else {
                     break;

@@ -16,7 +16,9 @@
 #include <algorithm>
 #include <variant>
 #include <fstream>
-#include <semaphore.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
 
 #include <curses.h>
 
@@ -33,7 +35,7 @@ char **argv;
 const char *fifo_path = nullptr;
 const char *table_path = nullptr;
 const char *sem_path = nullptr;
-sem_t *sem = SEM_FAILED;
+int semid = -1;
 
 
 void cleanup() {
@@ -41,9 +43,8 @@ void cleanup() {
         ::unlink(fifo_path);
         fifo_path = nullptr;
     }
-    if (sem_path != nullptr) {
-        sem_unlink(sem_path);
-        sem_path = nullptr;
+    if (semid >= 0) {
+        semid = -1;
     }
 }
 
@@ -141,8 +142,24 @@ int main(int argc, char *argv[]) {
     // open semaphore
     if (num_threads) {
         sem_path = "/lcm";
-        if ((sem = ::sem_open(sem_path, O_CREAT | O_EXCL, 0664, *num_threads)) == SEM_FAILED) {
-            perror_exit("sem_open");
+        key_t key;
+        union semun {
+                int     val;            /* value for SETVAL */
+                struct  semid_ds *buf;  /* buffer for IPC_STAT & IPC_SET */
+                u_short *array;         /* array for GETALL & SETALL */
+        } semun = {.val = static_cast<int>(*num_threads)};
+        if ((key = ::ftok(sem_path, 0)) < 0) {
+            std::perror("ftok");
+        } else if ((semid = ::semget(key, 1,
+#ifndef __linux__
+                                     SEM_R | SEM_A |
+#endif
+                                     IPC_CREAT)) < 0) {
+            std::perror("semget");
+        } else if (::semctl(semid, 0, SETVAL, semun) < 0) {
+            std::perror("semctl");
+        } else {
+            std::cerr << "successfully opened semaphore for " << *num_threads << " threads\n";
         }
     }
 

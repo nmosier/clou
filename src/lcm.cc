@@ -60,6 +60,7 @@ struct LCMPass: public llvm::ModulePass {
     }
     
     virtual bool runOnModule(llvm::Module& M) override {
+        ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
         
         std::unordered_set<const llvm::Instruction *> transmitters;
