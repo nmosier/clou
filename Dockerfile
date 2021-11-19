@@ -49,6 +49,7 @@ RUN mkdir lcm
 # RUN make -j$(nproc)
 
 RUN ulimit -c unlimited
+RUN mkdir -p /tmp/cores
 
 # Build lcm tool
 WORKDIR "$LCM_BUILD"
