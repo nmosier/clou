@@ -458,14 +458,11 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         }
     }
     
-    if (solver.check(vec) != z3::unsat) {
-        z3_scope;
-#if 1
-        for (const z3::expr& e : vec) { solver.add(e); }
-#else
-        solver.add(vec);
-#endif
-        
+    z3_scope;
+    for (const z3::expr& e : vec) { solver.add(e); }
+    
+    std::cerr << "Assertions: " << solver.assertions() << "\n";
+    if (solver.check() != z3::unsat) {
         aeg.assert_xsaccess_order(exec_window, solver);
         
         try {
