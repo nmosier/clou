@@ -858,8 +858,8 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
         const aeg::Edge::Kind dep_kind = *it;
         const std::string dep_str = util::to_string(dep_kind);
         const auto deps = aeg.get_nodes(Direction::IN, from_ref, dep_kind);
-        
-#if 0
+    
+#if 1
         if (deps.empty()) {
             goto label;
         }
@@ -903,7 +903,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
         }
     }
     
-#if 0
+#if 1
     label:
 #endif
     
