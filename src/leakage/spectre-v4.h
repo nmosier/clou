@@ -31,9 +31,9 @@ private:
     SpectreV4_Leakage leak;
     
     virtual void run_() override final;
-    void run_load(NodeRef access, CheckMode mode); /*!< binds speculative load */
-    void run_bypassed_store(CheckMode mode); /*!< binds bypassed store */
-    void run_sourced_store(CheckMode mode); /*!< binds sourced stores */
+    void run_transmitter(NodeRef transmitter, CheckMode mode);
+    void run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode);
+    void run_sourced_store(NodeRef load, NodeRef bypassed_store, const NodeRefVec& vec, CheckMode mode);
     virtual std::string name() const override final { return "SpectreV4"; }
 };
 
