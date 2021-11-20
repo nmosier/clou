@@ -20,15 +20,33 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
         const NodeRef load = vec.back();
         assert(aeg.lookup(load).may_read());
         
+        /* add <ENTRY> -RFX-> load */
+        z3_cond_scope;
+        if (!spectre_v4_mode.concrete_sourced_stores) {
+            if (mode == CheckMode::SLOW) {
+                solver.add(aeg.rfx_exists(aeg.entry, load), "entry -RFX-> load");
+            }
+        }
+        
         run_bypassed_store(load, vec, mode);
         
     }, mode);
 }
 
 void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
+    if (mode == CheckMode::SLOW) {
+        // check if sat
+        if (solver.check() == z3::unsat) {
+            logv(1, __FUNCTION__ << ": backtrack: unsat\n");
+            return;
+        }
+    }
+    
     traceback_rf(load, [&] (NodeRef bypassed_store, CheckMode mode) {
         // store can't be bypassed if older than stb_size
-        if (bypassed_store != aeg.entry && !aeg.may_source_stb(load, bypassed_store)) {
+        if (bypassed_store == aeg.entry) { return; }
+        
+        if (!aeg.may_source_stb(load, bypassed_store)) {
             return;
         }
         
@@ -40,9 +58,50 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
             }
         }
 
-        run_sourced_store(load, bypassed_store, vec, mode);
+        if (spectre_v4_mode.concrete_sourced_stores) {
+            run_sourced_store(load, bypassed_store, vec, mode);
+        } else {
+            check_solution(load, bypassed_store, aeg.entry, vec, mode);
+        }
         
     }, mode);
+}
+
+void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode) {
+    if (mode == CheckMode::SLOW) {
+        switch (solver.check()) {
+            case z3::sat: {
+                const auto edge = push_edge(EdgeRef {
+                    .src = sourced_store,
+                    .dst = load,
+                    .kind = aeg::Edge::RFX,
+                });
+                const NodeRef universl_transmitter = vec.front();
+                const NodeRefVec vec2 = {sourced_store, bypassed_store, load, universl_transmitter};
+                output_execution(Leakage {
+                    .vec = vec2,
+                    .transmitter = universl_transmitter,
+                });
+                break;
+            }
+                
+            case z3::unsat: {
+                logv(0, __FUNCTION__ << ": backtrack: unsat\n");
+                break;
+            }
+                
+            case z3::unknown: {
+                std::cerr << "Z3 ERROR: unknown: " << solver.reason_unknown() << "\n";
+                std::abort();
+            }
+                
+            default: std::abort();
+        }
+    } else {
+        
+        throw lookahead_found();
+        
+    }
 }
 
 void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store, const NodeRefVec& vec, CheckMode mode) {
@@ -50,7 +109,9 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
     const auto bypassed_store_idx = aeg.po.postorder_idx(bypassed_store);
     assert(load_idx < bypassed_store_idx);
     
-    for (NodeRef sourced_store : exec_window) {
+    NodeRefSet sourced_store_candidates = exec_window;
+    
+    for (NodeRef sourced_store : sourced_store_candidates) {
         const auto sourced_store_idx = aeg.po.postorder_idx(sourced_store);
         const aeg::Node& sourced_store_node = aeg.lookup(sourced_store);
         
@@ -88,41 +149,7 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
         
         const auto action = util::push(actions, util::to_string("sourced ", sourced_store));
         
-        if (mode == CheckMode::SLOW) {
-            switch (solver.check()) {
-                case z3::sat: {
-                    const auto edge = push_edge(EdgeRef {
-                        .src = load,
-                        .dst = sourced_store,
-                        .kind = aeg::Edge::RFX,
-                    });
-                    const NodeRef universl_transmitter = vec.front();
-                    const NodeRefVec vec2 = {sourced_store, bypassed_store, load, universl_transmitter};
-                    output_execution(Leakage {
-                        .vec = vec2,
-                        .transmitter = universl_transmitter,
-                    });
-                    break;
-                }
-                    
-                case z3::unsat: {
-                    logv(0, __FUNCTION__ << ": backtrack: unsat\n");
-                    break;
-                }
-                    
-                case z3::unknown: {
-                    std::cerr << "Z3 ERROR: unknown: " << solver.reason_unknown() << "\n";
-                    std::abort();
-                }
-                    
-                default: std::abort();
-            }
-        } else {
-            
-            throw lookahead_found();
-            
-        }
-        
+        check_solution(load, bypassed_store, sourced_store, vec, mode);
         
     }
 }

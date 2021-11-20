@@ -15,6 +15,7 @@ private:
     virtual void run_transmitter(NodeRef transmitter, CheckMode mode) override;
     void run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode);
     void run_sourced_store(NodeRef load, NodeRef bypassed_store, const NodeRefVec& vec, CheckMode mode);
+    void check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode);
     virtual std::string name() const override final { return "SpectreV4"; }
 };
 

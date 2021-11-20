@@ -83,6 +83,7 @@ extern SpectreV1Mode spectre_v1_mode;
 
 struct SpectreV4Mode {
     bool psf = false; /// whether to allow psf
+    bool concrete_sourced_stores = true; /// if enabled, we will include all possible sourced stores in the search, not just program entry.
 };
 extern SpectreV4Mode spectre_v4_mode;
 

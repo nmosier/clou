@@ -372,19 +372,19 @@ int parse_args() {
                 
                 enum Key {
                     PSF,
-                    STB_SIZE,
+                    CONCRETE_SRC,
                     COUNT
                 };
 
                 const char *keylist[COUNT + 1] = {
                     [PSF] = "psf",
-                    [STB_SIZE] = "stb-size",
+                    [CONCRETE_SRC] = "concrete-src",
                     [COUNT] = nullptr
                 };
                 
                 bool args[COUNT] = {
                     [PSF] = false,
-                    [STB_SIZE] = true,
+                    [CONCRETE_SRC] = true,
                 };
                 
                 char *value;
@@ -396,6 +396,10 @@ int parse_args() {
                     switch (idx) {
                         case PSF:
                             spectre_v4_mode.psf = true;
+                            break;
+                            
+                        case CONCRETE_SRC:
+                            spectre_v4_mode.concrete_sourced_stores = parse_bool(value);
                             break;
                             
                         default: std::abort();
@@ -431,6 +435,7 @@ int parse_args() {
                     partial_executions = true;
                     output_cfgs.clearall();
                     use_lookahead = true;
+                    spectre_v4_mode.concrete_sourced_stores = false;
                 }
                 break;
             }

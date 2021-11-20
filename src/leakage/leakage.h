@@ -151,10 +151,10 @@ private:
 namespace dbg {
 
 template <typename Solver>
-void append_core(const Solver& solver) {
+void append_core(const Solver& solver, const std::string& label = "") {
     if (const char *corepath = std::getenv("CORES")) {
         std::ofstream ofs {corepath, std::ios::app};
-        ofs << __FILE__ << ":" << __LINE__ << ": " << solver.unsat_core() << "\n";
+        ofs << __FILE__ << ":" << __LINE__ << ": " << label << ": " << solver.unsat_core() << "\n";
     }
 }
 
