@@ -51,6 +51,9 @@ protected:
         return exec_window.contains(src) && exec_window.contains(dst);
     }
     
+    using DepVec = std::vector<aeg::Edge::Kind>;
+    virtual DepVec deps() const = 0; // TODO: rewrite as default_deps()
+    
     struct EdgeRef {
         NodeRef src;
         NodeRef dst;

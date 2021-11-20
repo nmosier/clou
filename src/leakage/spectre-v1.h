@@ -19,8 +19,6 @@ class SpectreV1_Detector: public Detector {
 public:
     
 protected:
-    using DepVec = std::vector<aeg::Edge::Kind>;
-    virtual DepVec deps() const = 0;
     virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
     
     SpectreV1_Detector(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}

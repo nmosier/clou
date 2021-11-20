@@ -35,7 +35,7 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
     traceback_rf(load, [&] (NodeRef bypassed_store, CheckMode mode) {
         // store can't be bypassed if older than stb_size
-        if (bypassed_store != aeg.entry && !aeg.may_source_stb(leak.load, bypassed_store)) {
+        if (bypassed_store != aeg.entry && !aeg.may_source_stb(load, bypassed_store)) {
             return;
         }
 
@@ -91,7 +91,7 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
             switch (solver.check()) {
                 case z3::sat: {
                     const auto edge = push_edge(EdgeRef {
-                        .src = leak.load,
+                        .src = load,
                         .dst = sourced_store,
                         .kind = aeg::Edge::RFX,
                     });
