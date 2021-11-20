@@ -1,7 +1,7 @@
 #include "stl.h"
 
 uint32_t case_10_do_mask(uint32_t idx) {
-  uint32_t ridx;
+  register uint32_t ridx;
   ridx = idx & (array_size - 1);
   return ridx;
 }
@@ -12,7 +12,7 @@ uint32_t case_10_do_mask(uint32_t idx) {
 // Same as 10 but result of function is forced in register so it cannot be
 // bypassed
 void case_12(uint32_t idx) {
-  uint32_t ridx;
+  register uint32_t ridx;
   ridx = case_10_do_mask(idx);
   
   /* Access overwritten secret */

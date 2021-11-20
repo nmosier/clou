@@ -4,7 +4,7 @@
 //
 // Similar to case_1 but without intermediate pointers
 void case_4(uint32_t idx) {
-  uint32_t ridx;
+  register uint32_t ridx;
   ridx = idx & (array_size - 1);
 
   /* Overwrite secret value */

@@ -5,7 +5,7 @@
 // Same as case_2 but the index is forced into a register so the example is now
 // secure
 void case_3(uint32_t idx) {
-  uint32_t ridx;
+  register uint32_t ridx;
   ridx = idx & (array_size - 1);
   
   /* Access overwritten secret */

@@ -7,13 +7,13 @@
 // overwrites the secret should be retired because the sequence of instruction
 // of the for loop is longer than the the reorder buffer.
 void case_9(uint32_t idx) {
-  uint32_t ridx;
+  register uint32_t ridx;
   ridx = idx & (array_size - 1);
 
   /* Overwrite secret value */
   secretarray[ridx] = 0;        // *Not* bypassed store
 
-  uint32_t i;
+  register uint32_t i;
   for (i = 0; i < 200; ++i) temp &= i;
   
   /* Access overwritten secret */

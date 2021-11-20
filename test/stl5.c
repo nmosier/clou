@@ -5,7 +5,7 @@
 // Overwrite private pointer with public pointer
 uint8_t *case5_ptr = secretarray;
 void case_5(uint32_t idx) {
-  uint32_t ridx;
+  register uint32_t ridx;
   ridx = idx & (array_size - 1);
 
   case5_ptr = publicarray;      // Bypassed store
