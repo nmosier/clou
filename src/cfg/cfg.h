@@ -127,9 +127,16 @@ public:
     
 private:
     mutable std::optional<NodeRefVec> cached_postorder;
+    mutable std::optional<std::vector<std::size_t>> cached_postorder_r;
     bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
     void compute_postorder(NodeRefVec& order) const;
 public:
+    std::size_t postorder_idx(NodeRef ref) const {
+        if (!cached_postorder_r) {
+            postorder();
+        }
+        return cached_postorder_r->at(ref);
+    }
     const NodeRefVec& postorder() const;
     using ReversePostorderIteratorRange = llvm::iterator_range<NodeRefVec::const_reverse_iterator>;
     auto reverse_postorder() const {

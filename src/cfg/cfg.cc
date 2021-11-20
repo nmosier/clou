@@ -118,6 +118,10 @@ const NodeRefVec& CFG::postorder() const {
 #else
         cached_postorder = NodeRefVec();
         compute_postorder(*cached_postorder);
+        cached_postorder_r = NodeRefVec(size());
+        for (unsigned i = 0; i < cached_postorder->size(); ++i) {
+            cached_postorder_r->at(cached_postorder->at(i)) = i;
+        }
 #endif
     }
 
