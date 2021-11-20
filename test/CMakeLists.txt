@@ -6,9 +6,9 @@ file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c)
 
 find_program(LLVM_OPT NAMES opt opt-12 PATHS ${LLVM_BINARY_DIR} REQUIRED)
 
-set(PHTS 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
-foreach(PHT ${PHTS})
-  set(PHT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/pht${PHT}.c)
+file(GLOB PHT_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/pht*.c ${CMAKE_CURRENT_SOURCE_DIR}/pht*r.ll)
+foreach(PHT_SRC ${PHT_SRCS})
+
   get_filename_component(PHT_NAME ${PHT_SRC} NAME_WLE)
   set(PHT_ARGFILE ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.args)
   unset(PHT_ARGS)
@@ -36,15 +36,19 @@ foreach(PHT ${PHTS})
     -A "${PHT_ARGS} --fence"
     )
   set_tests_properties(${PHT_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
-  
+
 endforeach()
 
 
-# file(GLOB STL_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/stl*.c)
-set(STLS 1 2 3 4 5 6 7 8 9 9_bis 10 11 12 13)
-foreach(STL ${STLS})
-  set(STL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/stl${STL}.c)
+file(GLOB STL_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/stl*.c ${CMAKE_CURRENT_SOURCE_DIR}/stl*r.ll)
+message(${STL_SRCS})
+# set(STLS 1 2 3 4 5 6 7 8 9 9_bis 10 11 12 13)
+# foreach(STL ${STLS})
+foreach(STL_SRC ${STL_SRCS})
+  # set(STL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/stl${STL}.c)
   get_filename_component(STL_NAME ${STL_SRC} NAME_WLE)
+  string(REGEX REPLACE "^stl" "" STL_TMP ${STL_NAME})
+  string(REGEX REPLACE "r$" "" STL ${STL_TMP})
   set(STL_ARGFILE ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.args)
   unset(STL_ARGS)
   if(EXISTS ${STL_ARGFILE})

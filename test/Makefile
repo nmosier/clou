@@ -4,13 +4,8 @@ CLANG ?= clang
 LLVM_DIS ?= llvm-dis
 CFLAGS += -fdeclspec
 
-
-%.bc: %.c
-	$(CLANG) $(CFLAGS) -c -emit-llvm -o $@ $<
-
-%.ll: %.bc
-	$(LLVM_DIS) < $< > $@
-
+%.ll: %.c
+	$(CLANG) $(CFLAGS) -c -S -emit-llvm -o $@ $<
 
 LIBSODIUM = ../../libsodium/src/libsodium
 
