@@ -23,6 +23,10 @@
 
 namespace aeg {
 
+bool AEG::may_source_stb(NodeRef load, NodeRef store) const {
+    return !stb_size || lookup(load).stores_in < lookup(store).stores_in + static_cast<int>(*stb_size);
+}
+
 AEG::Solver AEG::make_solver() {
     z3::context& c = context.context;
     

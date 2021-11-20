@@ -31,6 +31,14 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         if (bypassed_store != aeg.entry && !aeg.may_source_stb(load, bypassed_store)) {
             return;
         }
+        
+        if (mode == CheckMode::SLOW) {
+            // check if sat
+            if (solver.check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ": backtrack: unsat\n");
+                return;
+            }
+        }
 
         run_sourced_store(load, bypassed_store, vec, mode);
         

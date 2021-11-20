@@ -7,7 +7,7 @@
 
 #include <z3++.h>
 
-#include "config.h"
+// #include "config.h"
 #include "progress.h"
 
 namespace aeg {
@@ -50,11 +50,7 @@ private:
     void add_to(Solver& solver, const std::pair<z3::expr, std::string>& p) const {
         std::stringstream ss;
         ss << p.second << ":" << constraint_counter++;
-        if constexpr (should_name_constraints) {
-            solver.add(p.first, ss.str().c_str());
-        } else {
-            solver.add(p.first);
-        }
+        solver.add(p.first, ss.str().c_str());
     }
 };
 

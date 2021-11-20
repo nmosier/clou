@@ -7,5 +7,4 @@ struct Edge;
 struct Node;
 class Context;
 
-
 }

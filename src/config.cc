@@ -53,6 +53,7 @@ bool profile = false;
 std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
 int semid = -1;
+std::vector<aeg::Edge::Kind> custom_deps;
 
 namespace {
 std::optional<std::string> logdir;
@@ -108,6 +109,7 @@ only examine given functions
 --profile            enable profiler
 --distinct <limit>   set distinct limit (default: 2500)
 --fence=[<bool>]     perform automatic fence insertion
+--deps=[<vec>]       set custom dependencies (empty means use default)
 )=";
     fprintf(f, "%s", s);
 }
@@ -206,6 +208,7 @@ int parse_args() {
         PROFILE,
         DISTINCT_LIMIT,
         FENCE,
+        DEPS,
     };
     
     struct option opts[] = {
@@ -239,6 +242,7 @@ int parse_args() {
         {"distinct", required_argument, nullptr, DISTINCT_LIMIT},
         {"parallel", required_argument, nullptr, 'j'},
         {"fence", optional_argument, nullptr, FENCE},
+        {"deps", optional_argument, nullptr, DEPS},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -500,6 +504,15 @@ int parse_args() {
                 
             case FENCE: {
                 fence_insertion = parse_bool_opt(optarg);
+                break;
+            }
+                
+            case DEPS: {
+                custom_deps.clear();
+                const char *tok;
+                while ((tok = ::strsep(&optarg, ",")) != nullptr) {
+                    custom_deps.push_back(aeg::Edge::kind_fromstr(tok));
+                }
                 break;
             }
                 

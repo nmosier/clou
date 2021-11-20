@@ -809,7 +809,12 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
 
 void Detector::traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     NodeRefVec vec;
-    const auto deps = this->deps();
+    DepVec deps;
+    if (custom_deps.empty()) {
+        deps = this->deps();
+    } else {
+        deps = custom_deps;
+    }
     traceback_deps_rec(deps.rbegin(), deps.rend(), vec, from_ref, func, mode);
 }
 
@@ -832,6 +837,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
     // check if done (all dependencies found)
     if (it == end) {
         if (mode == CheckMode::SLOW) {
+            logv(1, __FUNCTION__ << ": all dependencies found\n");
             z3::check_result res = solver.check();
             switch (res) {
                 case z3::unsat: {

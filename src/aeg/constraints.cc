@@ -1,5 +1,6 @@
 #include "aeg/constraints.h"
 #include "util/z3.h"
+#include "config.h"
 
 namespace aeg {
 

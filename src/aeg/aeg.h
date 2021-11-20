@@ -131,9 +131,7 @@ public:
 
     void for_each_pred_in_window(NodeRef ref, unsigned window, std::function<void (NodeRef)> is, std::function<void (NodeRef)> isnt);
 
-    bool may_source_stb(NodeRef load, NodeRef store) const {
-        return !stb_size || lookup(load).stores_in < lookup(store).stores_in + static_cast<int>(*stb_size);
-    }
+    bool may_source_stb(NodeRef load, NodeRef store) const;
     
 private:
     void compute_min_store_paths();
