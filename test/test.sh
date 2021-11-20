@@ -12,6 +12,7 @@ ARGS="${ARGS-}"
 CLANG="$(which clang-12)"
 DEBUGGER=
 VALGRIND=
+CFLAGS=${CFLAGS-}
 
 while getopts "hO:T:R:L:A:C:gV" OPTC; do
     case $OPTC in
@@ -57,7 +58,7 @@ rm -f "$OUTDIR/functions.txt"
 
 OBJ="${OUTDIR}/$(basename "${TEST}" .c)"
 
-LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${OBJ}.o" "$TEST"
+LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec $CFLAGS -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${OBJ}.o" "$TEST"
 
 preprocess() {
     grep -v '^$' | sort | tr -s ' '
