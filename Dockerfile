@@ -27,9 +27,9 @@ RUN clang-12 -shared -o src/liblcm.so dummy.c
 RUN rm -f dummy.c
 
 # Configure libsodium
-RUN git clone https://github.com/jedisct1/libsodium.git libsodium-v1
-RUN cp -r libsodium-v1 libsodium-v4
-RUN cp -r libsodium-v1 libsodium-ll
+RUN git clone https://github.com/jedisct1/libsodium.git libsodium
+# RUN cp -r libsodium-v1 libsodium-v4
+# RUN cp -r libsodium-v1 libsodium-ll
 
 ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS -UHAVE_ALLOCA"
 
