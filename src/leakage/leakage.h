@@ -35,13 +35,19 @@ public:
     const auto& get_transmitters() const { return transmitters; }
     
 protected:
+    using DepVec = std::vector<aeg::Edge::Kind>;
     std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};
     struct lookahead_found {};
     
+    enum class CheckMode { FAST, SLOW };
+    
     bool lookahead(std::function<void ()> thunk);
     
     virtual std::string name() const = 0;
+    
+    virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
+    virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
     
     // TODO: Deal with this in a better way?
     virtual bool disallow_stale_alloca_rfs() const noexcept { return true; }
@@ -51,9 +57,8 @@ protected:
         return exec_window.contains(src) && exec_window.contains(dst);
     }
     
-    using DepVec = std::vector<aeg::Edge::Kind>;
-    virtual DepVec deps() const = 0; // TODO: rewrite as default_deps()
-    
+    virtual DepVec deps() const = 0;
+        
     struct EdgeRef {
         NodeRef src;
         NodeRef dst;
@@ -85,14 +90,13 @@ protected:
     /* UTILITIES FOR SUBCLASSES */
     
     /** Trace back load */
-    enum class CheckMode { FAST, SLOW };
     
     void traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     void traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
     using Deps = std::vector<aeg::Edge::Kind>;
-    void traceback_deps(const Deps& deps, NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func,
+    void traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func,
                         CheckMode mode);
     
     struct Child {
@@ -134,7 +138,8 @@ private:
     Mems get_mems(const NodeRefSet& set); /*!< only consider nodes in \p set */
     Mems get_mems1(const NodeRefSet& set); /*!< this uses topological order */
     
-    void traceback_deps_rec(Deps::const_iterator it, Deps::const_iterator end, NodeRefVec& vec, NodeRef from_ref,
+    using DepIt = DepVec::const_reverse_iterator;
+    void traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                             std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode);
 
     

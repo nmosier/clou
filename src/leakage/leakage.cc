@@ -807,12 +807,13 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
 
 
 
-void Detector::traceback_deps(const std::vector<aeg::Edge::Kind>& deps, NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+void Detector::traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     NodeRefVec vec;
-    traceback_deps_rec(deps.begin(), deps.end(), vec, from_ref, func, mode);
+    const auto deps = this->deps();
+    traceback_deps_rec(deps.rbegin(), deps.rend(), vec, from_ref, func, mode);
 }
 
-void Detector::traceback_deps_rec(Deps::const_iterator it, Deps::const_iterator end, NodeRefVec& vec, NodeRef from_ref,
+void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                                   std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     const auto push_ref = util::push(vec, from_ref);
 

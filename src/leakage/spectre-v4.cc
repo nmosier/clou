@@ -3,26 +3,19 @@
 
 namespace lkg {
 
+Detector::DepVec SpectreV4_Detector::deps() const {
+    return DepVec {aeg::Edge::ADDR_GEP, aeg::Edge::ADDR};
+}
+
 
 void SpectreV4_Detector::run_() {
     for_each_transmitter(aeg::Edge::ADDR, [&] (NodeRef transmitter, CheckMode mode) {
-#if 0
-        leak.transmitter = transmitter;
-        if (use_lookahead && !lookahead([&] () {
-            run_load(transmitter, CheckMode::FAST);
-        })) {
-            return;
-        }
-        run_load(transmitter, mode);
-#else
         run_transmitter(transmitter, mode);
-#endif
     });
 }
 
 void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
-    const Deps deps = {aeg::Edge::ADDR, aeg::Edge::ADDR_GEP};
-    traceback_deps(deps, transmitter, [&] (const NodeRefVec& vec, CheckMode mode) {
+    traceback_deps(transmitter, [&] (const NodeRefVec& vec, CheckMode mode) {
         
         const NodeRef load = vec.back();
         assert(aeg.lookup(load).may_read());
@@ -124,6 +117,12 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
         
         
     }
+}
+
+void SpectreV4_Detector::run_postdeps(const NodeRefVec& vec, CheckMode mode) {
+    const NodeRef load = vec.back();
+    assert(aeg.lookup(load).may_read());
+    run_bypassed_store(load, vec, mode);
 }
 
 

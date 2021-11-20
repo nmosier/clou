@@ -19,15 +19,19 @@ class SpectreV1_Detector: public Detector {
 public:
     
 protected:
+#if 0
     virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
+#endif
     
     SpectreV1_Detector(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}
 
 private:
     NodeRefVec loads;
     virtual void run_() override final;
+    
+    virtual void run_transmitter(NodeRef transmitter, CheckMode mode) override;
+    virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) override;
 
-    void run1(NodeRef transmitter, NodeRef access, CheckMode mode);
     void run2(NodeRef transmitter, NodeRef access, CheckMode mode);
     
 };
