@@ -496,7 +496,9 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
     } else if (pid == 0) {
         
         if (semid >= 0) {
+            logv(1, "waiting on semaphore...\n");
             semutil::acquire(semid);
+            logv(1, "starting\n");
         }
         
         ::close(fds[0]);
@@ -800,6 +802,122 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
     const auto& dst_node = aeg.lookup(dst);
     solver.add(z3::implies(src_node.trans, dst_node.trans), desc("trans->trans").c_str());
     solver.add(z3::implies(dst_node.arch, src_node.arch), desc("arch<-arch").c_str());
+}
+
+
+
+
+void Detector::traceback_deps(const std::vector<aeg::Edge::Kind>& deps, NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+    NodeRefVec vec;
+    traceback_deps_rec(deps.begin(), deps.end(), vec, from_ref, func, mode);
+}
+
+void Detector::traceback_deps_rec(Deps::const_iterator it, Deps::const_iterator end, NodeRefVec& vec, NodeRef from_ref,
+                                  std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+    const auto push_ref = util::push(vec, from_ref);
+
+    if (mode == CheckMode::SLOW) {
+        using output::operator<<;
+        logv(1, __FUNCTION__ << ": " << vec << "\n");
+        
+        // lookahead
+        if (use_lookahead && !lookahead([&] () {
+            traceback_deps_rec(it, end, vec, from_ref, func, CheckMode::FAST);
+        })) {
+            return;
+        }
+    }
+    
+    // check if done (all dependencies found)
+    if (it == end) {
+        if (mode == CheckMode::SLOW) {
+            z3::check_result res = solver.check();
+            switch (res) {
+                case z3::unsat: {
+                    logv(1, "backtrack: unsat\n");
+                    dbg::append_core(solver);
+                    return;
+                }
+                case z3::sat: {
+                    break;
+                }
+                case z3::unknown: {
+                    std::cerr << "Z3 ERROR: result unknown: " << solver.reason_unknown() << "\n";
+                    std::abort();
+                }
+                default: std::abort();
+            }
+        }
+        func(vec, mode);
+        return;
+    }
+    
+    // try committing load
+    {
+        const aeg::Edge::Kind dep_kind = *it;
+        const std::string dep_str = util::to_string(dep_kind);
+        const auto deps = aeg.get_nodes(Direction::IN, from_ref, dep_kind);
+        
+#if 0
+        if (deps.empty()) {
+            goto label;
+        }
+#endif
+        
+        if (mode == CheckMode::SLOW) {
+            if (solver.check() == z3::unsat) {
+                logv(1, "backtrack: unsat\n");
+                dbg::append_core(solver);
+                return;
+            }
+            logv(1, "trying to commit " << from_ref << " (" << deps.size() << " deps)\n");
+        }
+        
+        for (const auto& dep : deps) {
+            const NodeRef to_ref = dep.first;
+            if (!check_edge(to_ref, from_ref)) {
+                continue;
+            }
+            
+            z3_cond_scope;
+            
+            if (mode == CheckMode::SLOW) {
+                assert_edge(to_ref, from_ref, dep.second, dep_kind);
+            }
+            
+            const auto push_edge = util::push(flag_edges, EdgeRef {
+                .src = to_ref,
+                .dst = from_ref,
+                .kind = dep_kind
+            });
+            
+            const std::string desc = util::to_string(to_ref, "-", dep_kind, "->", from_ref);
+            const auto push_action = util::push(actions, desc);
+            
+            if (mode == CheckMode::SLOW) {
+                logv(1, __FUNCTION__ << ": committed " << desc << "\n");
+            }
+
+            traceback_deps_rec(std::next(it), end, vec, to_ref, func, mode);
+        }
+    }
+    
+#if 0
+    label:
+#endif
+    
+    /* traceback
+     * NOTE: only if it's not the universal transmitter.
+     */
+    assert(!vec.empty());
+    if (from_ref != vec.front()) {
+        traceback(from_ref, [&] (NodeRef to_ref, CheckMode mode) {
+            if (mode == CheckMode::SLOW) {
+                logv(1, "traceback " << to_ref << "-TB->" << from_ref << "\n");
+            }
+            traceback_deps_rec(it, end, vec, to_ref, func, mode);
+        }, mode);
+    }
 }
 
 

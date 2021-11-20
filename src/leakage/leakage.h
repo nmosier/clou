@@ -43,6 +43,9 @@ protected:
     
     virtual std::string name() const = 0;
     
+    // TODO: Deal with this in a better way?
+    virtual bool disallow_stale_alloca_rfs() const noexcept { return true; }
+    
     void assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind);
     bool check_edge(NodeRef src, NodeRef dst) const {
         return exec_window.contains(src) && exec_window.contains(dst);
@@ -85,6 +88,10 @@ protected:
     void traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
+    using Deps = std::vector<aeg::Edge::Kind>;
+    void traceback_deps(const Deps& deps, NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func,
+                        CheckMode mode);
+    
     struct Child {
         NodeRef ref;
         int fd;
@@ -123,6 +130,10 @@ private:
     Mems get_mems();
     Mems get_mems(const NodeRefSet& set); /*!< only consider nodes in \p set */
     Mems get_mems1(const NodeRefSet& set); /*!< this uses topological order */
+    
+    void traceback_deps_rec(Deps::const_iterator it, Deps::const_iterator end, NodeRefVec& vec, NodeRef from_ref,
+                            std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode);
+
     
     
     friend class Detector_;

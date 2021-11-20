@@ -115,7 +115,7 @@ void SpectreV1_Detector::run1(NodeRef transmitter, NodeRef access, CheckMode mod
 
 void SpectreV1_Detector::run_() {
     for_each_transmitter(deps().back(), [&] (NodeRef transmitter, CheckMode mode) {
-        run1(transmitter, transmitter, mode);
+        run2(transmitter, transmitter, mode);
     });
 }
 
@@ -126,6 +126,33 @@ SpectreV1_Classic_Detector::DepVec SpectreV1_Classic_Detector::deps() const {
 
 SpectreV1_Control_Detector::DepVec SpectreV1_Control_Detector::deps() const {
     return {aeg::Edge::ADDR_GEP, aeg::Edge::CTRL};
+}
+
+
+void SpectreV1_Detector::run2(NodeRef transmitter, NodeRef access, CheckMode mode) {
+    auto deps2 = deps();
+    std::reverse(deps2.begin(), deps2.end());
+    std::cerr << "deps: " << deps2 << "\n";
+    traceback_deps(deps2, transmitter, [&] (NodeRefVec vec, CheckMode mode) {
+        if (mode == CheckMode::FAST) {
+            throw lookahead_found();
+        }
+        
+        z3_eval;
+        
+        using output::operator<<;
+        logv(1, "spectre-v1 leak found: " << vec << "\n");
+        
+        const NodeRef universal_transmitter = vec.front();
+        
+        std::reverse(vec.begin(), vec.end());
+        
+        output_execution(Leakage {
+            .vec = vec,
+            .transmitter = universal_transmitter
+        });
+        
+    }, mode);
 }
 
 
