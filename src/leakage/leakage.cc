@@ -857,7 +857,6 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
     {
         const aeg::Edge::Kind dep_kind = it->first;
         const aeg::ExecMode dep_src_mode = it->second;
-        const std::string dep_str = util::to_string(dep_kind);
         const auto deps = aeg.get_nodes(Direction::IN, from_ref, dep_kind);
     
         if (deps.empty()) {
@@ -883,7 +882,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
             
             if (mode == CheckMode::SLOW) {
                 assert_edge(to_ref, from_ref, dep.second, dep_kind);
-                solver.add(aeg.lookup(to_ref).exec(dep_src_mode), (dep_str + aeg::to_string(dep_src_mode)).c_str());
+                solver.add(aeg.lookup(to_ref).exec(dep_src_mode), util::to_string(to_ref, " ", dep_kind, " ", from_ref, " ", dep_src_mode).c_str());
             }
             
             const auto push_edge = util::push(flag_edges, EdgeRef {
