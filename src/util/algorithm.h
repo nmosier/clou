@@ -153,5 +153,15 @@ T transform_min(const Container& container, UnaryOp u) {
     }, u);
 }
 
+template <class InputIt>
+auto average(InputIt first, InputIt last) {
+    return std::reduce(first, last, decltype(*first) {}) / std::distance(first, last);
+}
+
+template <class Container>
+auto average(const Container& container) {
+    return average(container.begin(), container.end());
+}
+
 
 }

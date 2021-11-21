@@ -12,6 +12,7 @@
 #include "util/z3.h"
 #include "util/scope.h"
 #include "aeg/aeg.h"
+#include "timer.h"
 
 namespace lkg {
 
@@ -30,24 +31,36 @@ public:
     
     void run();
     virtual void run_() = 0;
-    virtual ~Detector() {}
+    virtual ~Detector();
     
     const auto& get_transmitters() const { return transmitters; }
+    
+    struct CheckStats {
+        unsigned sat = 0;
+        unsigned unsat = 0;
+        unsigned unknown = 0;
+        unsigned total() const { return sat + unsat + unknown; }
+    };
     
 protected:
     using DepVec = std::vector<aeg::Edge::Kind>;
     std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};
     struct lookahead_found {};
+    CheckStats check_stats;
     
     enum class CheckMode { FAST, SLOW };
     
     bool lookahead(std::function<void ()> thunk);
     
     virtual std::string name() const = 0;
+    virtual std::optional<float> get_timeout() const { return std::nullopt; } // no timeout by default
+    virtual void set_timeout(z3::check_result check_res, float secs) {} // no timeout by default, so nothing to update
     
     virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
     virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
+    
+    z3::check_result solver_check();
     
     // TODO: Deal with this in a better way?
     virtual bool disallow_stale_alloca_rfs() const noexcept { return true; }
@@ -151,7 +164,7 @@ private:
 namespace dbg {
 
 template <typename Solver>
-void append_core(const Solver& solver, const std::string& label = "") {
+void append_core(const Solver& solver, const std::string& label) {
     if (const char *corepath = std::getenv("CORES")) {
         std::ofstream ofs {corepath, std::ios::app};
         ofs << __FILE__ << ":" << __LINE__ << ": " << label << ": " << solver.unsat_core() << "\n";

@@ -80,6 +80,10 @@ public:
         std::chrono::duration<double> elapsed = stop - start_;
         secs += elapsed.count();
     }
+    
+    float get() const {
+        return secs;
+    }
         
 private:
     using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;

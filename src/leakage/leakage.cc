@@ -102,6 +102,7 @@ void Detector::run() {
         llvm::errs() << "transmitters:\n";
         for (const auto transmitter : transmitters) {
             llvm::errs() << *transmitter << "\n";
+            using ::operator<<;
             ofs << *transmitter << "\n";
         }
     }
@@ -369,7 +370,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     z3_cond_scope;
     if (mode == CheckMode::SLOW) {
         solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
-        if (solver.check() == z3::unsat) { return; }
+        if (solver_check() == z3::unsat) { return; }
     }
     
     const auto inc_depth = util::inc_scope(traceback_depth);
@@ -465,7 +466,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     logv(0, __FUNCTION__ << ": added window constraints in " << timer_opt->get_str() << "\n");
     timer_opt = std::nullopt;
     
-    if (solver.check() != z3::unsat) {
+    if (solver_check() != z3::unsat) {
         aeg.assert_xsaccess_order(exec_window, solver);
         
         try {
@@ -477,7 +478,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         std::cerr << "skipping transmitter\n";
         std::cerr << "access: " << transmitter_node.access() << "\n";
         std::cerr << "trans: " << transmitter_node.trans << "\n";
-        dbg::append_core(solver);
+        dbg::append_core(solver, "skipped transmitter");
     }
 }
 
@@ -677,8 +678,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         std::size_t i = 0;
         for (NodeRef transmitter : candidate_transmitters) {
             ++i;
-            logv(1, i << "/" << candidate_transmitters.size() << "\n");
-            
+            logv(1, i << "/" << candidate_transmitters.size() << "       " << aeg.po.lookup(transmitter) << "\n");
             if (client) {
                 mon::Message msg;
                 auto *progress = msg.mutable_func_progress();
@@ -838,21 +838,10 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
     if (it == end) {
         if (mode == CheckMode::SLOW) {
             logv(1, __FUNCTION__ << ": all dependencies found\n");
-            z3::check_result res = solver.check();
-            switch (res) {
-                case z3::unsat: {
-                    logv(1, "backtrack: unsat\n");
-                    dbg::append_core(solver);
-                    return;
-                }
-                case z3::sat: {
-                    break;
-                }
-                case z3::unknown: {
-                    std::cerr << "Z3 ERROR: result unknown: " << solver.reason_unknown() << "\n";
-                    std::abort();
-                }
-                default: std::abort();
+            if (solver_check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+                dbg::append_core(solver, "all dependencies found");
+                return;
             }
         }
         func(vec, mode);
@@ -872,9 +861,9 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
 #endif
         
         if (mode == CheckMode::SLOW) {
-            if (solver.check() == z3::unsat) {
-                logv(1, "backtrack: unsat\n");
-                dbg::append_core(solver);
+            if (solver_check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+                dbg::append_core(solver, "committing load");
                 return;
             }
             logv(1, "trying to commit " << from_ref << " (" << deps.size() << " deps)\n");
@@ -927,5 +916,53 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
     }
 }
 
+
+z3::check_result Detector::solver_check() {
+    z3::check_result res;
+    Stopwatch timer;
+    timer.start();
+    if (const auto timeout = get_timeout()) {
+        const unsigned timeout2 = static_cast<unsigned>(std::ceil(*timeout * 1000));
+        logv(2, __FUNCTION__ << ": checking with time limit " << timeout2 << "ms\n");
+        res = z3::check_timeout(solver, timeout2);
+    } else {
+        logv(2, __FUNCTION__ << ": checking with no time limit\n");
+        res = solver.check();
+    }
+    timer.stop();
+    const auto duration = timer.get();
+    if (res != z3::unknown) {
+        set_timeout(res, duration);
+    }
+    logv(2, __FUNCTION__ << ": got " << util::to_string(res) << " in " << static_cast<unsigned>(duration * 1000) << "ms\n");
+    switch (res) {
+        case z3::sat:
+            ++check_stats.sat;
+            break;
+        case z3::unsat:
+            ++check_stats.unsat;
+            break;
+        case z3::unknown:
+            ++check_stats.unknown;
+            break;
+    }
+    return res;
+}
+
+template <typename OS>
+inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
+    const auto frac = [&] (unsigned n) -> std::string {
+        if (stats.total() == 0) { return "0%"; }
+        std::stringstream ss;
+        ss << n * 100 / stats.total() << "%";
+        return ss.str();
+    };
+    os << "sat: " << frac(stats.sat) << ", unsat: " << frac(stats.unsat) << ", unknown: " << frac(stats.unknown);
+    return os;
+}
+
+Detector::~Detector() {
+   std::cerr << "stats: " << check_stats << "\n";
+}
 
 }

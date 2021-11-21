@@ -1,10 +1,11 @@
 #include "spectre-v4.h"
 #include "cfg/expanded.h"
+#include "util/algorithm.h"
 
 namespace lkg {
 
 Detector::DepVec SpectreV4_Detector::deps() const {
-    return DepVec {aeg::Edge::ADDR_GEP, aeg::Edge::ADDR};
+    return DepVec {aeg::Edge::ADDR, aeg::Edge::ADDR};
 }
 
 
@@ -36,10 +37,20 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
     if (mode == CheckMode::SLOW) {
         // check if sat
-        if (solver.check() == z3::unsat) {
-            logv(1, __FUNCTION__ << ": backtrack: unsat\n");
+        if (solver_check() == z3::unsat) {
+            logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
             return;
         }
+    }
+    
+    /*
+     * TODO: in fast mode, Don't even need to trace back RF… just need to find ONE store that can be sourced,
+     * Basically, we can just OR all stores together.
+     */
+    // TODO: give this its own variable?
+    if (!spectre_v4_mode.concrete_sourced_stores) {
+        run_bypassed_store_fast(load, vec, mode);
+        return;
     }
     
     traceback_rf(load, [&] (NodeRef bypassed_store, CheckMode mode) {
@@ -50,10 +61,14 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
             return;
         }
         
+        const auto& node = aeg.lookup(bypassed_store);
+        
         if (mode == CheckMode::SLOW) {
+            solver.add(node.arch, "bypassed_store.arch");
+            
             // check if sat
-            if (solver.check() == z3::unsat) {
-                logv(1, __FUNCTION__ << ": backtrack: unsat\n");
+            if (solver_check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
                 return;
             }
         }
@@ -65,6 +80,38 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         }
         
     }, mode);
+}
+
+void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
+    NodeRefVec todo = {load};
+    NodeRefSet seen;
+    z3::expr_vector exprs(ctx());
+    
+    while (!todo.empty()) {
+        NodeRef bypassed_store = todo.back();
+        todo.pop_back();
+        if (!seen.insert(bypassed_store).second) { continue; }
+        
+        const auto& node = aeg.lookup(bypassed_store);
+        
+        // if it is a write, then check whether it can be bypassed
+        if (node.may_write() && aeg.may_source_stb(load, bypassed_store)) {
+            if (mode == CheckMode::SLOW) {
+                exprs.push_back(node.arch && node.write && node.same_addr(aeg.lookup(load)));
+            }
+            if (mode == CheckMode::FAST) {
+                throw lookahead_found();
+            }
+        }
+                
+        util::copy(aeg.po.po.rev.at(bypassed_store), std::back_inserter(todo));
+    }
+
+    if (mode == CheckMode::SLOW) {
+        // TODO: make it so that bypassed store is optoinal
+        solver.add(z3::mk_or(exprs), "bypassed_store");
+        check_solution(load, aeg.entry, aeg.entry, vec, mode);
+    }
 }
 
 void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode) {
@@ -105,7 +152,6 @@ void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, No
 }
 
 void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store, const NodeRefVec& vec, CheckMode mode) {
-    const auto load_idx = aeg.po.postorder_idx(load);
     const auto bypassed_store_idx = aeg.po.postorder_idx(bypassed_store);
     assert(load_idx < bypassed_store_idx);
     
@@ -158,6 +204,34 @@ void SpectreV4_Detector::run_postdeps(const NodeRefVec& vec, CheckMode mode) {
     const NodeRef load = vec.back();
     assert(aeg.lookup(load).may_read());
     run_bypassed_store(load, vec, mode);
+}
+
+
+std::optional<float> SpectreV4_Detector::get_timeout() const {
+    // return std::nullopt;
+    if (unsats.empty()) {
+        return 5.f;
+    } else {
+        return util::average(unsats) * 5;
+    }
+}
+
+void SpectreV4_Detector::set_timeout(z3::check_result check_res, float secs) {
+    switch (check_res) {
+        case z3::sat:
+            sats.push_back(secs);
+            break;
+            
+        case z3::unsat:
+            unsats.push_back(secs);
+            break;
+            
+        case z3::unknown:
+            unknowns.push_back(secs);
+            break;
+            
+        default: std::abort();
+    }
 }
 
 
