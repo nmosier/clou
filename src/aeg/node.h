@@ -54,7 +54,7 @@ const char *to_string(ExecMode mode);
 
 template <class OS>
 OS& operator<<(OS& os, ExecMode mode) {
-    os << to_string(mode);
+   return os << to_string(mode);
 }
 
 template <> ExecMode from_string<ExecMode>(const std::string& s);

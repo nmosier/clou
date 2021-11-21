@@ -521,7 +521,7 @@ int parse_args() {
                     const char *edge = ::strsep(&tok, ":");
                     const char *mode = tok;
                     assert(edge != nullptr);
-                    custom_deps.emplace_back(aeg::Edge::kind_fromstr(tok),
+                    custom_deps.emplace_back(aeg::Edge::kind_fromstr(edge),
                                           mode == nullptr ? aeg::ExecMode::EXEC : aeg::from_string<aeg::ExecMode>(mode));
                 }
                 break;
