@@ -35,13 +35,11 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 }
 
 void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
-    if (mode == CheckMode::SLOW) {
-        // check if sat
-        if (solver_check() == z3::unsat) {
-            logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
-            return;
-        }
+    z3::expr_vector vec_trans(ctx());
+    for (NodeRef ref : vec) {
+        vec_trans.push_back(aeg.lookup(ref).trans);
     }
+    solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
     
     /*
      * TODO: in fast mode, Don't even need to trace back RF… just need to find ONE store that can be sourced,
@@ -51,6 +49,14 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
     if (!spectre_v4_mode.concrete_sourced_stores) {
         run_bypassed_store_fast(load, vec, mode);
         return;
+    }
+    
+    if (mode == CheckMode::SLOW) {
+        // check if sat
+        if (solver_check() == z3::unsat) {
+            logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+            return;
+        }
     }
     
     traceback_rf(load, [&] (NodeRef bypassed_store, CheckMode mode) {
