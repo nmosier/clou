@@ -1,2 +1,1 @@
-STORE   store i32 %0, i32* %2, align 4; STORE   store i32 %6, i32* %2, align 4; LOAD   %7 = load i32, i32* %2, align 4; LOAD   %10 = load i8, i8* %9, align 1
-
+STORE store i32 %0, i32* %2, align 4; STORE store i32 %6, i32* %2, align 4; LOAD %7 = load i32, i32* %2, align 4; LOAD %15 = load i8, i8* %14, align 1
