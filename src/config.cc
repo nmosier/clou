@@ -17,6 +17,7 @@
 #include "util/exception.h"
 #include "util/output.h"
 #include "aeg/edge.h"
+#include "aeg/node.h"
 
 /* TODO
  * [ ] Handle function names
@@ -53,7 +54,7 @@ bool profile = false;
 std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
 int semid = -1;
-std::vector<aeg::Edge::Kind> custom_deps;
+std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
 
 namespace {
 std::optional<std::string> logdir;
@@ -514,9 +515,14 @@ int parse_args() {
                 
             case DEPS: {
                 custom_deps.clear();
-                const char *tok;
+                char *tok;
                 while ((tok = ::strsep(&optarg, ",")) != nullptr) {
-                    custom_deps.push_back(aeg::Edge::kind_fromstr(tok));
+                    // check if has :
+                    const char *edge = ::strsep(&tok, ":");
+                    const char *mode = tok;
+                    assert(edge != nullptr);
+                    custom_deps.emplace_back(aeg::Edge::kind_fromstr(tok),
+                                          mode == nullptr ? aeg::ExecMode::EXEC : aeg::from_string<aeg::ExecMode>(mode));
                 }
                 break;
             }

@@ -5,12 +5,12 @@
 namespace lkg {
 
 Detector::DepVec SpectreV4_Detector::deps() const {
-    return DepVec {aeg::Edge::ADDR, aeg::Edge::ADDR};
+    return DepVec {{aeg::Edge::ADDR, aeg::ExecMode::TRANS}, {aeg::Edge::ADDR, aeg::ExecMode::TRANS}};
 }
 
 
 void SpectreV4_Detector::run_() {
-    for_each_transmitter(aeg::Edge::ADDR, [&] (NodeRef transmitter, CheckMode mode) {
+    for_each_transmitter([&] (NodeRef transmitter, CheckMode mode) {
         run_transmitter(transmitter, mode);
     });
 }
@@ -39,7 +39,10 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
     for (NodeRef ref : vec) {
         vec_trans.push_back(aeg.lookup(ref).trans);
     }
-    solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
+
+    if (mode == CheckMode::SLOW) {
+        solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
+    }
     
     /*
      * TODO: in fast mode, Don't even need to trace back RF… just need to find ONE store that can be sourced,
@@ -158,6 +161,7 @@ void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, No
 }
 
 void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store, const NodeRefVec& vec, CheckMode mode) {
+    [[maybe_unused]] const auto load_idx = aeg.po.postorder_idx(load);
     const auto bypassed_store_idx = aeg.po.postorder_idx(bypassed_store);
     assert(load_idx < bypassed_store_idx);
     

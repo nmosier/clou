@@ -8,6 +8,7 @@
 #include <sys/sem.h>
 #include <vector>
 
+#include "aeg/fwd.h"
 #include "aeg/edge.h"
 
 /* FORWARD DECLARATIONS */
@@ -131,4 +132,4 @@ void open_log(const std::string& name);
 void close_log();
 
 
-extern std::vector<aeg::Edge::Kind> custom_deps;
+extern std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;

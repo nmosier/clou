@@ -502,6 +502,8 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             logv(1, "starting\n");
         }
         
+        Timer timer;
+        
         ::close(fds[0]);
         for_one_transmitter(transmitter, func);
         
@@ -521,6 +523,8 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             }
         }
         ::close(fds[1]);
+        
+        std::cerr << "RUNTIME: " << ::getppid() << " " << ::getpid() << " " << timer.get() << " " << timer.get_str() << "\n";
         
         std::_Exit(0); // quick exit
     } else {
@@ -643,7 +647,8 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
 }
 
 
-void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
+void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> func) {
+    const aeg::Edge::Kind kind = deps().back().first;
     NodeRefSet candidate_transmitters;
     {
         z3::solver solver {ctx()};
@@ -850,15 +855,14 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
     
     // try committing load
     {
-        const aeg::Edge::Kind dep_kind = *it;
+        const aeg::Edge::Kind dep_kind = it->first;
+        const aeg::ExecMode dep_src_mode = it->second;
         const std::string dep_str = util::to_string(dep_kind);
         const auto deps = aeg.get_nodes(Direction::IN, from_ref, dep_kind);
     
-#if 1
         if (deps.empty()) {
             goto label;
         }
-#endif
         
         if (mode == CheckMode::SLOW) {
             if (solver_check() == z3::unsat) {
@@ -879,6 +883,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
             
             if (mode == CheckMode::SLOW) {
                 assert_edge(to_ref, from_ref, dep.second, dep_kind);
+                solver.add(aeg.lookup(to_ref).exec(dep_src_mode), (dep_str + aeg::to_string(dep_src_mode)).c_str());
             }
             
             const auto push_edge = util::push(flag_edges, EdgeRef {
@@ -898,9 +903,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
         }
     }
     
-#if 1
     label:
-#endif
     
     /* traceback
      * NOTE: only if it's not the universal transmitter.

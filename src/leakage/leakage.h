@@ -43,7 +43,8 @@ public:
     };
     
 protected:
-    using DepVec = std::vector<aeg::Edge::Kind>;
+    // TODO: move ExecMode to <noderef.h>
+    using DepVec = std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>>;
     std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};
     struct lookahead_found {};
@@ -117,7 +118,7 @@ protected:
         int fd;
     };
     
-    void for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func);
+    void for_each_transmitter(std::function<void (NodeRef, CheckMode)> func);
     void for_each_transmitter_parallel_private(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func);
     void for_each_transmitter_parallel_shared(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func);
 

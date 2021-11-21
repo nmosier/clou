@@ -7,4 +7,6 @@ struct Edge;
 struct Node;
 class Context;
 
+enum ExecMode: unsigned;
+
 }
