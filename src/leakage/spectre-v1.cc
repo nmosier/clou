@@ -21,10 +21,8 @@ Detector::DepVec SpectreV1_Control_Detector::deps() const {
 
 void SpectreV1_Detector::run2(NodeRef transmitter, NodeRef access, CheckMode mode) {
     traceback_deps(transmitter, [&] (NodeRefVec vec, CheckMode mode) {
-        if (mode == CheckMode::FAST) {
-            throw lookahead_found();
-        }
-        
+        run_postdeps(vec, mode);
+#if 0
         z3_eval;
         
         using output::operator<<;
@@ -38,6 +36,7 @@ void SpectreV1_Detector::run2(NodeRef transmitter, NodeRef access, CheckMode mod
             .vec = vec,
             .transmitter = universal_transmitter
         });
+#endif
         
     }, mode);
 }
@@ -52,11 +51,13 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     
     /* check for leakage */
     
+#if 0
     if (mode == CheckMode::SLOW) {
         assert(vec.size() >= 3);
         const NodeRef data_transmitter = vec.at(1);
         solver.add(aeg.lookup(data_transmitter).trans, "data_transmitter.trans");
     }
+#endif
     
     if (mode == CheckMode::SLOW) {
         switch (solver.check()) {
