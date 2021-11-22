@@ -22,3 +22,5 @@ TODO
 presentation/
 latex/
 COMMANDS
+*.prof
+Testing/
