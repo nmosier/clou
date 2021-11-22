@@ -367,6 +367,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
         return;
     }
     
+    // TODO: POSSIBLY UNNECESSARY SCOPE: there is no forking here
     z3_cond_scope;
     if (mode == CheckMode::SLOW) {
         solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
@@ -475,9 +476,9 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             // continue
         }
     } else {
-        std::cerr << "skipping transmitter\n";
-        std::cerr << "access: " << transmitter_node.access() << "\n";
-        std::cerr << "trans: " << transmitter_node.trans << "\n";
+        logv(1, "skipping transmitter\n");
+        logv(1, "access: " << util::to_string(transmitter_node.access()) << "\n");
+        logv(1, "trans: " << util::to_string(transmitter_node.trans) << "\n");
         dbg::append_core(solver, "skipped transmitter");
     }
 }
@@ -524,7 +525,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         }
         ::close(fds[1]);
         
-        std::cerr << "RUNTIME: " << ::getppid() << " " << ::getpid() << " " << timer.get() << " " << timer.get_str() << "\n";
+        logv(0, "RUNTIME: " << ::getppid() << " " << ::getpid() << " " << cpu_time() << "\n");
         
         std::_Exit(0); // quick exit
     } else {
@@ -610,7 +611,6 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 while (ptr < buf.data() + buf.size()) {
                     lkg::LeakageMsg msg;
                     uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                    std::cerr << "message size " << size << "\n";
                     rem -= 4;
                     ptr += 4;
                     if (!msg.ParseFromArray(ptr, size)) {
@@ -701,7 +701,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
 void Detector::precompute_rf(NodeRef load) {
     // TODO: only use partial order, not ref2order
     
-    std::cerr << "precomputing rf " << load << "\n";
+    logv(1, "precomputing rf " << load << "\n");
     Timer timer;
     
     auto& out = rf[load];
@@ -964,7 +964,7 @@ inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
 }
 
 Detector::~Detector() {
-   std::cerr << "stats: " << check_stats << "\n";
+    logv(1, "stats: " << check_stats << "\n");
 }
 
 }

@@ -274,6 +274,7 @@ struct LCMPass: public llvm::ModulePass {
             client.send(msg);
         }
         
+        std::cerr << "ANALYZED: " << cpu_time() << "\n";
         std::cerr << "done analyzing function " << F.getName().str() << "\n";
         
         return;
