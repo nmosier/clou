@@ -1,3 +1,2 @@
 pht*.ll
-stl*.ll
-
+stl*[^r].ll
