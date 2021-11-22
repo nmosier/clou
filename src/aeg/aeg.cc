@@ -165,6 +165,7 @@ void AEG::test(std::vector<const llvm::Instruction *>& transmitters) {
     {
         Timer timer;
         leakage(solver, transmitters);
+        std::cerr << "ANALYZED_test: " << cpu_time() << "\n";
     }
 }
 
