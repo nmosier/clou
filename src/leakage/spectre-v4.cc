@@ -20,9 +20,21 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
         
         const NodeRef load = vec.back();
         assert(aeg.lookup(load).may_read());
+
+        // make sure all traceback_deps are trans
+        if (mode == CheckMode::SLOW) {
+            z3::expr_vector vec_trans(ctx());
+            for (NodeRef ref : vec) {
+                vec_trans.push_back(aeg.lookup(ref).trans);
+            }
+            solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
+        }
         
         /* add <ENTRY> -RFX-> load */
+        // TODO: POSSIBLY UNNECESSARY SCOPE.
+#if 0
         z3_cond_scope;
+#endif
         if (!spectre_v4_mode.concrete_sourced_stores) {
             if (mode == CheckMode::SLOW) {
                 solver.add(aeg.rfx_exists(aeg.entry, load), "entry -RFX-> load");
@@ -35,14 +47,7 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 }
 
 void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
-    z3::expr_vector vec_trans(ctx());
-    for (NodeRef ref : vec) {
-        vec_trans.push_back(aeg.lookup(ref).trans);
-    }
-
-    if (mode == CheckMode::SLOW) {
-        solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
-    }
+    
     
     /*
      * TODO: in fast mode, Don't even need to trace back RF… just need to find ONE store that can be sourced,
@@ -53,6 +58,9 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         run_bypassed_store_fast(load, vec, mode);
         return;
     }
+    
+    /* in "concrete sourced stores" mode, do optional traceback */
+#define ADDITONAL_TRACEBACK 1
     
     if (mode == CheckMode::SLOW) {
         // check if sat
@@ -89,6 +97,20 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         }
         
     }, mode);
+    
+#if ADDITONAL_TRACEBACK
+    {
+        traceback(load, [&] (NodeRef load, CheckMode mode) {
+            NodeRefVec vec_ = vec;
+            vec_.push_back(load);
+            if (mode == CheckMode::SLOW) {
+                solver.add(aeg.lookup(load).trans, util::to_string(load, ".trans").c_str());
+            }
+            run_bypassed_store(load, vec_, mode);
+        }, mode);
+    }
+#endif
+    
 }
 
 void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
