@@ -76,6 +76,11 @@ awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | preprocess | awk '
   printf "\n";
 }
 ' > "$OUTDIR/leakage.txt.tmp"
+
+if ! [[ -f "$REF" ]]; then
+    REF="/dev/null"
+fi
+
 preprocess < "$REF" > "$OUTDIR/ref.txt"
 echo "ACTUAL:"
 cat "$OUTDIR/leakage.txt.tmp"
