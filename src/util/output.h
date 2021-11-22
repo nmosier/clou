@@ -171,14 +171,20 @@ std::string get_time();
 #define logv(level, msg) \
 do { \
 if (verbose >= level) { \
-llvm::errs() << "[" << get_time() << "] " << msg; \
+std::string s; \
+llvm::raw_string_ostream ss(s); \
+ss << "[" << get_time() << "] " << msg; \
+llvm::errs() << s; \
 } \
 } while (false)
 
 #define logv_(level, msg) \
 do { \
 if (verbose >= level) { \
-llvm::errs() << msg; \
+std::string s; \
+llvm::raw_string_ostream ss(s); \
+ss << msg; \
+llvm::errs() << s; \
 } \
 } while (false)
 
