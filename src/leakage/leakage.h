@@ -13,6 +13,7 @@
 #include "util/scope.h"
 #include "aeg/aeg.h"
 #include "timer.h"
+#include "util/algorithm.h"
 
 namespace lkg {
 

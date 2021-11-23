@@ -23,7 +23,7 @@
 
 namespace aeg {
 
-void AEG::leakage(Solver& solver, std::vector<const llvm::Instruction *>& transmitters) {
+void AEG::leakage(Solver& solver, TransmitterOutputIt out) {
     std::unique_ptr<lkg::Detector> detector;
     
     switch (leakage_class) {
@@ -50,8 +50,7 @@ void AEG::leakage(Solver& solver, std::vector<const llvm::Instruction *>& transm
     
     detector->run();
     
-    std::cerr << detector->get_transmitters().size() << " trasnmitters\n";
-    util::copy(detector->get_transmitters(), std::back_inserter(transmitters));
+    util::copy(detector->get_transmitters(), out);
 }
 
 }
@@ -388,7 +387,6 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
 void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func) {
     rf.clear();
     
-    bool window_changed = false;
     {
         logv(1, "windows ");
         Timer timer;
@@ -414,9 +412,6 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                 trans_notwindow.insert(ref);
             });
         }
-        
-        // TODO: conditionally set this properly
-        window_changed = true;
     }
     
     if (use_lookahead && !lookahead([&] () {
@@ -606,19 +601,16 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 }
                 ::close(fd);
                 
-                std::size_t rem = buf.size();
                 const char *ptr = buf.data();
                 while (ptr < buf.data() + buf.size()) {
                     lkg::LeakageMsg msg;
                     uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                    rem -= 4;
                     ptr += 4;
                     if (!msg.ParseFromArray(ptr, size)) {
                         std::cerr << "bad message\n";
                         std::abort();
                     }
                     ptr += size;
-                    rem -= size;
                     
                     NodeRefVec vec;
                     util::copy(msg.vec(), std::back_inserter(vec));
