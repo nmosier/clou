@@ -7,8 +7,7 @@
 
 #include <llvm/IR/Instructions.h>
 
-#include "xmacro.h"
-#include "lcm.h"
+#include "util/xmacro.h"
 #include "cfg/cfg.h"
 
 

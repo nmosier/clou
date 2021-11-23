@@ -23,7 +23,7 @@
 #include <curses.h>
 
 #include "mon/proto.h"
-#include "timer.h"
+#include "util/timer.h"
 #include "util/algorithm.h"
 
 const char *prog;

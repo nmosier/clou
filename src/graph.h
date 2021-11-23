@@ -4,7 +4,6 @@
 #include <unordered_set>
 #include <memory>
 
-#include "tarjan.h"
 #include "lcm.h"
 
 template <typename Node, typename Edge, typename NodeHash = std::hash<Node>,
@@ -119,99 +118,6 @@ public:
     *
     */
 
-   using Path = std::vector<Node>;
-   struct Cycle {
-      Path nodes;
-      std::vector<std::vector<Edge>> edges;
-   };
-
-   template <typename OutputIt, typename Pred>
-   void cycles(OutputIt out, Pred pred) const {
-      /* For now, just use simple algorithm. Use Johnson's Algorithm 
-       * (https://www.cs.tufts.edu/comp/150GA/homeworks/hw1/Johnson%2075.PDF)
-       * if runtime becomes an issue.
-       * This current algorithm proceeds as follows:
-       * - Generate simple subgraph just including allowed edges.
-       * - For each node, do a BFS back to self. 
-       */
-
-      // generate simple subgraph
-      std::unordered_map<Node, std::unordered_map<Node, std::vector<Edge>>> subgraph;
-      std::unordered_set<Node> srcnodes, dstnodes, subnodes;
-      for (const auto& p1 : fwd) {
-         const Node& src = p1.first;
-         for (const auto& p2 : p1.second) {
-            const Node& dst = p2.first;
-            for (const auto& ep : p2.second) {
-               const Edge& e = *ep;
-               if (pred(e)) {
-                  subgraph[src][dst].push_back(e);
-                  srcnodes.insert(src);
-                  dstnodes.insert(dst);
-               }
-            }
-         }
-      }
-      std::copy_if(srcnodes.begin(), srcnodes.end(), std::inserter(subnodes, subnodes.end()),
-                   [&] (const Node& node) -> bool {
-                      return dstnodes.find(node) != dstnodes.end();
-                   });
-
-#if 0
-      // get cycles
-      Path path;
-      std::function<void(const Node&)> cycles_rec;
-      cycles_rec = [&] (const Node& node) {
-         path.push_back(node);
-         
-         // check if cycle
-         if (path.size() > 1 && path.back() == node) {
-            Cycle cycle;
-            for (auto it1 = path.begin(), it2 = std::next(it1); it2 != path.end(); ++it1, ++it2) {
-               cycle.nodes.push_back(*it1);
-               cycle.edges.push_back(subgraph.at(*it1).at(*it2));
-            }
-            *out++ = cycle;
-         } else {
-            for (const auto& dst_pair : subgraph.at(node)) {
-               cycles_rec(dst_pair.first);
-            }
-         }
-         
-         path.pop_back();
-      };
-
-      for (const Node& node : subnodes) {
-         cycles_rec(node);
-      }
-#else
-      // generate adjacency list
-      using Tarjan = tarjan<Node, NodeHash>;
-      typename Tarjan::DAG g;
-      for (const auto& p1 : subgraph) {
-         for (const auto& p2 : p1.second) {
-            g[p1.first].insert(p2.first);
-         }
-      }
-
-      // invoke tarjan
-      std::vector<typename Tarjan::Cycle> cycles;
-      Tarjan(g, std::back_inserter(cycles));
-
-      for (const typename Tarjan::Cycle& cycle_ : cycles) {
-         Cycle c;
-         std::copy(cycle_.begin(), cycle_.end(), std::back_inserter(c.nodes));
-         c.nodes.push_back(c.nodes.front());
-         for (auto it1 = c.nodes.begin(), it2 = std::next(it1);
-              it2 != c.nodes.end();
-              ++it1, ++it2) {
-            c.edges.push_back(subgraph.at(*it1).at(*it2));
-         }
-         c.nodes.pop_back();
-         *out++ = std::move(c);
-      }
-#endif
-   }
-
 private:
 };
+

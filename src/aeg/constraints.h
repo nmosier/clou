@@ -7,8 +7,7 @@
 
 #include <z3++.h>
 
-// #include "config.h"
-#include "progress.h"
+#include "util/progress.h"
 
 namespace aeg {
 

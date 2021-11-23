@@ -7,19 +7,10 @@
 #include "util/z3.h"
 #include "aeg.h"
 #include "config.h"
-// #include "fol.h"
-#include "progress.h"
-#include "timer.h"
-#include "fork_work_queue.h"
-#include "shm.h"
+#include "util/progress.h"
+#include "util/timer.h"
 #include "cfg/expanded.h"
 #include "util/iterator.h"
-
-/* TODO
- * [ ] Don't use seen when generating tfo constraints
- * [ ] Use Graph<>'s node iterator, since it skips over deleted nodes? Or improve node range
- *     to skip deleted nodes.
- */
 
 namespace aeg {
 
@@ -211,22 +202,13 @@ void AEG::test(TransmitterOutputIt out) {
         ++naddrs;
     });
     std::cerr << "Address edges: " << naddrs << "\n";
-    if (naddrs > 0) {
-#if 0
-        std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
-        ofs << lookup(1).inst->get_inst()->getFunction()->getName().str() << "\n";
-#endif
-    } else {
+    if (naddrs == 0) {
         return;
     }
     
     logv(1, "testing...\n");
     
-#if 0
-    z3::solver solver {context.context};
-#else
     Solver solver = make_solver();
-#endif
     
     simplify();
     

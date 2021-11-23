@@ -11,20 +11,11 @@ add_subdirectory(mon)
 add_library(lcm MODULE
   lcm.cc           lcm.h
   config.cc        config.h
-  inst.cc          inst.h   
   fol.h
-  shm.cc           shm.h
   binrel.h
-  dot.h
   graph.h
-  hash.h
   noderef.cc       noderef.h
-  progress.h
-  tarjan.h
-  timer.h
-  xmacro.h
   db.cc db.h
-  profiler.h
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>
@@ -36,33 +27,3 @@ target_link_libraries(lcm PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES}
 if(APPLE)
   target_link_options(lcm PRIVATE -undefined dynamic_lookup)
 endif()
-
-
-if(1)
-add_library(alias MODULE
-  alias-main.cc
-  )
-target_compile_options(alias PRIVATE -fno-rtti)
-if(APPLE)
-  target_link_options(alias PRIVATE -undefined dynamic_lookup)
-endif()
-endif()
-
-
-if(0)
-add_library(loops MODULE
-  loops-main.cc
-  )
-target_compile_options(loops PRIVATE -fno-rtti)
-if(APPLE)
-  target_link_options(loops PRIVATE -undefined dynamic_lookup)
-endif()
-endif()
-
-if(0)
-add_executable(tarjan-test
-  tarjan-test.cc
-  )
-endif()
-
-

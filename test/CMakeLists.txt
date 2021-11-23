@@ -41,7 +41,6 @@ endforeach()
 
 
 file(GLOB STL_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/stl*.c ${CMAKE_CURRENT_SOURCE_DIR}/stl*r.ll)
-message(${STL_SRCS})
 # set(STLS 1 2 3 4 5 6 7 8 9 9_bis 10 11 12 13)
 # foreach(STL ${STLS})
 foreach(STL_SRC ${STL_SRCS})

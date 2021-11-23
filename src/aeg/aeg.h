@@ -13,7 +13,7 @@
 #include "util/fwd/z3.h"
 #include "graph.h"
 #include "noderef.h"
-#include "progress.h"
+#include "util/progress.h"
 #include "util/iterator.h"
 #include "util/output.h"
 #include "aeg/fwd.h"
@@ -21,7 +21,7 @@
 #include "aeg/edge.h"
 #include "aeg/node.h"
 #include "inst.h"
-#include "timer.h"
+#include "util/timer.h"
 
 class CFG_Expanded;
 

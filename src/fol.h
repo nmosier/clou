@@ -8,7 +8,6 @@
 
 #include "noderef.h"
 #include "aeg/aeg.h"
-#include "default_map.h"
 #include "util/tuple.h"
 #include "util/output.h"
 #include "util/algorithm.h"
@@ -125,7 +124,7 @@ struct relation {
     // relation(relation&& other) = default;
 };
 
-/** Class for managing necessary information to construct fol::relation's from an ::AEG.
+/** Class for managing necessary information to construct fol::relation's from an aeg::AEG.
  * \tparam Bool boolean type for tuple containment in relation
  * \tparam Eval functor converting values to `Bool`.
  */

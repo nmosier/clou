@@ -6,7 +6,6 @@
 
 namespace dot {
 
-
 template <typename OS>
 OS& quote(OS& os, const std::string& s) {
     for (char c : s) {

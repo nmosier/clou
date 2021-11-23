@@ -8,7 +8,7 @@
 #include "cfg/calls.h"
 #include "util/output.h"
 #include "util/algorithm.h"
-#include "timer.h"
+#include "util/timer.h"
 
 template <typename Expand>
 void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {

@@ -4,14 +4,13 @@
 #include <gperftools/profiler.h>
 
 #include "aeg/aeg.h"
-#include "timer.h"
-#include "fork_work_queue.h"
-#include "hash.h"
+#include "util/timer.h"
+#include "util/hash.h"
 #include "util/llvm.h"
 #include "cfg/expanded.h"
 #include "util/output.h"
 #include "util/iterator.h"
-#include "leakage.h"
+#include "leakage/leakage.h"
 #include "mon/client.h"
 #include "mon/proto.h"
 #include "util/algorithm.h"

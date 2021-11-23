@@ -5,8 +5,8 @@
 
 #include <llvm/Support/raw_ostream.h>
 
-#include "hash.h"
-#include "dot.h"
+#include "util/hash.h"
+#include "util/dot.h"
 
 /* TODO
  * Parameterize the underlying containers.

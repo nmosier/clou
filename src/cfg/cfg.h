@@ -18,7 +18,7 @@
 
 #include "binrel.h"
 #include "lcm.h"
-#include "hash.h"
+#include "util/hash.h"
 #include "noderef.h"
 #include "util/output.h"
 

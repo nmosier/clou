@@ -1,6 +1,6 @@
 #include "aeg.h"
-#include "progress.h"
-#include "timer.h"
+#include "util/progress.h"
+#include "util/timer.h"
 #include "util/z3.h"
 #include "cfg/expanded.h"
 #include "util/algorithm.h"

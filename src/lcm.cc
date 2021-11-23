@@ -20,7 +20,7 @@
 #include "cfg/expanded.h"
 #include "cfg/unrolled.h"
 #include "cfg/calls.h"
-#include "profiler.h"
+#include "util/profiler.h"
 #include "util/llvm.h"
 #include "util/output.h"
 #include "db.h"
@@ -30,7 +30,7 @@
 #include "util/exception.h"
 #include "util/output.h"
 #include "util/scope.h"
-#include "timer.h"
+#include "util/timer.h"
 #include "util/algorithm.h"
 
 Timer timer {nullptr};
