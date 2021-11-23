@@ -52,8 +52,6 @@ struct LCMPass: public llvm::ModulePass {
     
     LCMPass(): llvm::ModulePass(ID) {}
     
-    using Transmitters = std::vector<const llvm::Instruction *>;
-    
     virtual void getAnalysisUsage(llvm::AnalysisUsage& usage) const override {
         usage.addRequiredTransitive<llvm::AAResultsWrapperPass>();
         usage.addRequiredTransitive<llvm::CallGraphWrapperPass>();
@@ -63,7 +61,7 @@ struct LCMPass: public llvm::ModulePass {
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
         
-        std::unordered_set<const llvm::Instruction *> transmitters;
+        Transmitters transmitters;
         
         for (llvm::Function *F : getFunctionOrder(M)) {
             if (F->isDeclaration()) {
@@ -72,7 +70,7 @@ struct LCMPass: public llvm::ModulePass {
                 llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
                 open_log(F->getName().str());
                 timer = Timer(nullptr); // reset timer
-                runOnFunction(*F, AA, std::inserter(transmitters, transmitters.end()));
+                runOnFunction(*F, AA, TransmitterOutputIt(transmitters, transmitters.end()));
                 close_log();
             }
         }
@@ -240,9 +238,29 @@ struct LCMPass: public llvm::ModulePass {
             client.send_step("leakage", F.getName().str());
             llvm::errs() << "Testing...\n";
             Transmitters transmitters;
-            aeg.test(transmitters);
+            aeg.test(TransmitterOutputIt(transmitters, transmitters.end()));
             llvm::errs() << "done\n";
-            util::copy(transmitters, out);
+            
+            // find the first transmitter in topological order
+            for (NodeRef ref : cfg_expanded.reverse_postorder()) {
+                const auto& node = cfg_expanded.lookup(ref);
+                const auto *I = std::visit(util::overloaded {
+                    [&] (const llvm::Instruction *I) -> const llvm::Instruction * {
+                        return I;
+                    },
+                    [&] (const CFG::Node::Call& call) -> const llvm::Instruction *   {
+                        return call.C;
+                    },
+                    [&] (Entry) -> const llvm::Instruction * { return nullptr; },
+                    [&] (Exit) -> const llvm::Instruction * { return nullptr; },
+                }, node.v);
+                if (I != nullptr) {
+                    if (transmitters.contains(I)) {
+                        *out++ = I;
+                        break;
+                    }
+                }
+            }
             
             // add analyzed functions
             {
@@ -274,12 +292,12 @@ struct LCMPass: public llvm::ModulePass {
             client.send(msg);
         }
         
+        std::cerr << "ANALYZED: " << cpu_time() << "\n";
         std::cerr << "done analyzing function " << F.getName().str() << "\n";
         
         return;
     }
     
-    template <typename Transmitters>
     bool insert_fences(const Transmitters& transmitters) const {
         std::cerr << transmitters.size() << " transmitters\n";
         for (const llvm::Instruction *transmitter_ : transmitters) {

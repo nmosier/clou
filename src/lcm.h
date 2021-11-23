@@ -49,3 +49,7 @@ namespace std {
       std::size_t operator()() const { return 0; }
    };
 }
+
+
+using Transmitters = std::unordered_set<const llvm::Instruction *>;
+using TransmitterOutputIt = std::insert_iterator<Transmitters>;

@@ -6,6 +6,10 @@
 #include <optional>
 #include <memory>
 #include <sys/sem.h>
+#include <vector>
+
+#include "aeg/fwd.h"
+#include "aeg/edge.h"
 
 /* FORWARD DECLARATIONS */
 namespace mon {
@@ -80,6 +84,7 @@ extern SpectreV1Mode spectre_v1_mode;
 
 struct SpectreV4Mode {
     bool psf = false; /// whether to allow psf
+    bool concrete_sourced_stores = true; /// if enabled, we will include all possible sourced stores in the search, not just program entry.
 };
 extern SpectreV4Mode spectre_v4_mode;
 
@@ -111,7 +116,6 @@ extern bool dump_constraints;
 extern bool include_expr_in_constraint_name;
 
 constexpr bool simplify_before_checking_for_false_constraints = false;
-constexpr bool simplify_before_checking_for_impossible_edges = false;
 constexpr bool should_name_constraints = true;
 
 extern std::unordered_set<unsigned> include_edges;
@@ -126,3 +130,6 @@ extern SharedDatabaseListSet analyzed_functions;
 
 void open_log(const std::string& name);
 void close_log();
+
+
+extern std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;

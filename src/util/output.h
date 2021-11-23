@@ -9,6 +9,7 @@
 #include <variant>
 #include <sstream>
 #include <string>
+#include <cstring>
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Format.h>
@@ -170,14 +171,20 @@ std::string get_time();
 #define logv(level, msg) \
 do { \
 if (verbose >= level) { \
-llvm::errs() << "[" << get_time() << "] " << msg; \
+std::string s; \
+llvm::raw_string_ostream ss(s); \
+ss << "[" << get_time() << "] " << msg; \
+llvm::errs() << s; \
 } \
 } while (false)
 
 #define logv_(level, msg) \
 do { \
 if (verbose >= level) { \
-llvm::errs() << msg; \
+std::string s; \
+llvm::raw_string_ostream ss(s); \
+ss << msg; \
+llvm::errs() << s; \
 } \
 } while (false)
 
@@ -250,9 +257,11 @@ inline void print_status(std::ostream& os, int status) {
     if (WIFEXITED(status)) {
         os << "exited " << WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
-        os << "signaled " << WTERMSIG(status);
+        const auto sig = WTERMSIG(status);
+        os << "signaled " << sig << " " << ::strsignal(sig);
     } else if (WIFSTOPPED(status)) {
-        os << "stopped " << WSTOPSIG(status);
+        const auto sig = WSTOPSIG(status);
+        os << "stopped " << sig << " " << ::strsignal(sig);
     } else {
         os << "(unknown status)";
     }

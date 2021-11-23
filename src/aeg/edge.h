@@ -5,8 +5,6 @@
 
 namespace aeg {
 
-
-
 struct Edge {
 #define AEGEDGE_KIND_X(X)                       \
 X(PO)                                        \
@@ -49,9 +47,6 @@ X(DATA)
     
     bool possible() const {
         auto e = exists && constraints.get(exists.ctx());
-        if constexpr (simplify_before_checking_for_impossible_edges) {
-            e = e.simplify();
-        }
         return !e.is_false();
     }
 };

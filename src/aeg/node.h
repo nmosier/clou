@@ -46,7 +46,18 @@ enum Access {
     READ, WRITE
 };
 
-enum ExecMode {ARCH, TRANS, EXEC};
+template <class T>
+T from_string(const std::string& s) {}
+
+enum ExecMode: unsigned {ARCH, TRANS, EXEC};
+const char *to_string(ExecMode mode);
+
+template <class OS>
+OS& operator<<(OS& os, ExecMode mode) {
+   return os << to_string(mode);
+}
+
+template <> ExecMode from_string<ExecMode>(const std::string& s);
 
 struct Node {
     std::unique_ptr<Inst> inst;
@@ -68,6 +79,7 @@ struct Node {
     z3::context& ctx() const { return arch.ctx(); }
 
     z3::expr exec() const { return arch || trans; }
+    z3::expr exec(ExecMode mode) const;
     z3::expr xsaccess() const { return xsread || xswrite; }
     z3::expr access() const { return read || write; }
     

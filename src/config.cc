@@ -17,6 +17,7 @@
 #include "util/exception.h"
 #include "util/output.h"
 #include "aeg/edge.h"
+#include "aeg/node.h"
 
 /* TODO
  * [ ] Handle function names
@@ -53,6 +54,7 @@ bool profile = false;
 std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
 int semid = -1;
+std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
 
 namespace {
 std::optional<std::string> logdir;
@@ -108,6 +110,7 @@ only examine given functions
 --profile            enable profiler
 --distinct <limit>   set distinct limit (default: 2500)
 --fence=[<bool>]     perform automatic fence insertion
+--deps=[<vec>]       set custom dependencies (empty means use default)
 )=";
     fprintf(f, "%s", s);
 }
@@ -206,6 +209,7 @@ int parse_args() {
         PROFILE,
         DISTINCT_LIMIT,
         FENCE,
+        DEPS,
     };
     
     struct option opts[] = {
@@ -239,6 +243,7 @@ int parse_args() {
         {"distinct", required_argument, nullptr, DISTINCT_LIMIT},
         {"parallel", required_argument, nullptr, 'j'},
         {"fence", optional_argument, nullptr, FENCE},
+        {"deps", optional_argument, nullptr, DEPS},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -368,19 +373,19 @@ int parse_args() {
                 
                 enum Key {
                     PSF,
-                    STB_SIZE,
+                    CONCRETE_SRC,
                     COUNT
                 };
 
                 const char *keylist[COUNT + 1] = {
                     [PSF] = "psf",
-                    [STB_SIZE] = "stb-size",
+                    [CONCRETE_SRC] = "concrete-src",
                     [COUNT] = nullptr
                 };
                 
                 bool args[COUNT] = {
                     [PSF] = false,
-                    [STB_SIZE] = true,
+                    [CONCRETE_SRC] = true,
                 };
                 
                 char *value;
@@ -392,6 +397,10 @@ int parse_args() {
                     switch (idx) {
                         case PSF:
                             spectre_v4_mode.psf = true;
+                            break;
+                            
+                        case CONCRETE_SRC:
+                            spectre_v4_mode.concrete_sourced_stores = parse_bool(value);
                             break;
                             
                         default: std::abort();
@@ -427,6 +436,7 @@ int parse_args() {
                     partial_executions = true;
                     output_cfgs.clearall();
                     use_lookahead = true;
+                    spectre_v4_mode.concrete_sourced_stores = false;
                 }
                 break;
             }
@@ -500,6 +510,20 @@ int parse_args() {
                 
             case FENCE: {
                 fence_insertion = parse_bool_opt(optarg);
+                break;
+            }
+                
+            case DEPS: {
+                custom_deps.clear();
+                char *tok;
+                while ((tok = ::strsep(&optarg, ",")) != nullptr) {
+                    // check if has :
+                    const char *edge = ::strsep(&tok, ":");
+                    const char *mode = tok;
+                    assert(edge != nullptr);
+                    custom_deps.emplace_back(aeg::Edge::kind_fromstr(edge),
+                                          mode == nullptr ? aeg::ExecMode::EXEC : aeg::from_string<aeg::ExecMode>(mode));
+                }
                 break;
             }
                 

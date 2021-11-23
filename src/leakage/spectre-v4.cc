@@ -1,146 +1,270 @@
 #include "spectre-v4.h"
 #include "cfg/expanded.h"
+#include "util/algorithm.h"
 
 namespace lkg {
 
+Detector::DepVec SpectreV4_Detector::deps() const {
+    return DepVec {{aeg::Edge::ADDR, aeg::ExecMode::TRANS}, {aeg::Edge::ADDR, aeg::ExecMode::TRANS}};
+}
+
 
 void SpectreV4_Detector::run_() {
-    for_each_transmitter(aeg::Edge::ADDR, [&] (NodeRef transmitter, CheckMode mode) {
-        leak.transmitter = transmitter;
-        if (use_lookahead && !lookahead([&] () {
-            run_load(transmitter, CheckMode::FAST);
-        })) {
-            return;
-        }
-        run_load(transmitter, mode);
+    for_each_transmitter([&] (NodeRef transmitter, CheckMode mode) {
+        run_transmitter(transmitter, mode);
     });
 }
 
-void SpectreV4_Detector::run_load(NodeRef access, CheckMode mode) {
-    // bind loads
-    {
-        const auto addrs = aeg.get_nodes(Direction::IN, access, aeg::Edge::ADDR);
-        if (addrs.empty() && mode == CheckMode::SLOW) {
-            std::cerr << "no addrs\n";
-        }
-        for (const auto& addr : addrs) {
-            z3_cond_scope;
-            const NodeRef load = addr.first;
-            leak.load = load;
-            const auto edge = push_edge({
-                .src = load,
-                .dst = access,
-                .kind = aeg::Edge::ADDR,
-            });
-            const std::string desc = util::to_string(load, " -addr-> ", access);
-            if (mode == CheckMode::SLOW) {
-                solver.add(addr.second, desc.c_str());
-                solver.add(aeg.lookup(load).trans, "load.trans");
-            }
-            const auto action = util::push(actions, desc);
-            if (mode == CheckMode::FAST || solver.check() != z3::unsat) {
-                run_bypassed_store(mode);
-            } else {
-                if (mode == CheckMode::SLOW) {
-                    logv(1, "unsat, backtracking\n");
-                }
-            }
-        }
-    }
-    
-    // traceback
-    traceback(access, [&] (NodeRef load, CheckMode mode) {
+void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
+    traceback_deps(transmitter, [&] (const NodeRefVec& vec, CheckMode mode) {
+        
+        const NodeRef load = vec.back();
+        assert(aeg.lookup(load).may_read());
+
+        // make sure all traceback_deps are trans
         if (mode == CheckMode::SLOW) {
-            logv(1, "traceback " << load << "\n");
+            z3::expr_vector vec_trans(ctx());
+            for (NodeRef ref : vec) {
+                vec_trans.push_back(aeg.lookup(ref).trans);
+            }
+            solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
         }
-        run_load(load, mode);
-    }, mode);
-}
-
-
-void SpectreV4_Detector::run_bypassed_store(CheckMode mode) {
-    if (mode == CheckMode::SLOW) {
-        std::cerr << __FUNCTION__ << "\n";
-    }
-    traceback_rf(leak.load, [&] (const NodeRef bypassed_store, CheckMode mode) {
-        // store can't be bypased if older than stb_size
-        if (bypassed_store != aeg.entry && !aeg.may_source_stb(leak.load, bypassed_store)) { return; }
         
+        /* add <ENTRY> -RFX-> load */
+        // TODO: POSSIBLY UNNECESSARY SCOPE.
+#if 0
         z3_cond_scope;
-        leak.bypassed_store = bypassed_store;
-        const auto edge = push_edge({
-            .src = bypassed_store,
-            .dst = leak.load,
-            .kind = aeg::Edge::ADDR,
-        });
-        run_sourced_store(mode);
+#endif
+        if (!spectre_v4_mode.concrete_sourced_stores) {
+            if (mode == CheckMode::SLOW) {
+                solver.add(aeg.rfx_exists(aeg.entry, load), "entry -RFX-> load");
+            }
+        }
+        
+        run_bypassed_store(load, vec, mode);
+        
     }, mode);
 }
 
-
-void SpectreV4_Detector::run_sourced_store(CheckMode mode) {
-    if (mode == CheckMode::SLOW) {
-        std::cerr << __FUNCTION__ << "\n";
+void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
+    
+    
+    /*
+     * TODO: in fast mode, Don't even need to trace back RF… just need to find ONE store that can be sourced,
+     * Basically, we can just OR all stores together.
+     */
+    // TODO: give this its own variable?
+    if (!spectre_v4_mode.concrete_sourced_stores) {
+        run_bypassed_store_fast(load, vec, mode);
+        return;
     }
     
-    // Only process candidate source stores that can possibly appear before the bypassed store in program order
-    for (const NodeRef sourced_store : aeg.po.reverse_postorder()) {
-        if (sourced_store == leak.bypassed_store) { break; } // stores must be distinct
+    /* in "concrete sourced stores" mode, do optional traceback */
+#define ADDITONAL_TRACEBACK 1
+    
+    if (mode == CheckMode::SLOW) {
+        // check if sat
+        if (solver_check() == z3::unsat) {
+            logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+            return;
+        }
+    }
+    
+    traceback_rf(load, [&] (NodeRef bypassed_store, CheckMode mode) {
+        // store can't be bypassed if older than stb_size
+        if (bypassed_store == aeg.entry) { return; }
         
-        // NOTE: Is this a sound assumption to make?
-        if (sourced_store != aeg.entry && !aeg.may_source_stb(leak.load, sourced_store)) { continue; } // would be outside of store buffer
+        if (!aeg.may_source_stb(load, bypassed_store)) {
+            return;
+        }
         
+        const auto& node = aeg.lookup(bypassed_store);
+        
+        if (mode == CheckMode::SLOW) {
+            solver.add(node.arch, "bypassed_store.arch");
+            
+            // check if sat
+            if (solver_check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+                return;
+            }
+        }
+
+        if (spectre_v4_mode.concrete_sourced_stores) {
+            run_sourced_store(load, bypassed_store, vec, mode);
+        } else {
+            check_solution(load, bypassed_store, aeg.entry, vec, mode);
+        }
+        
+    }, mode);
+    
+#if ADDITONAL_TRACEBACK
+    {
+        traceback(load, [&] (NodeRef load, CheckMode mode) {
+            NodeRefVec vec_ = vec;
+            vec_.push_back(load);
+            if (mode == CheckMode::SLOW) {
+                solver.add(aeg.lookup(load).trans, util::to_string(load, ".trans").c_str());
+            }
+            run_bypassed_store(load, vec_, mode);
+        }, mode);
+    }
+#endif
+    
+}
+
+void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
+    NodeRefVec todo = {load};
+    NodeRefSet seen;
+    z3::expr_vector exprs(ctx());
+    
+    while (!todo.empty()) {
+        NodeRef bypassed_store = todo.back();
+        todo.pop_back();
+        if (!seen.insert(bypassed_store).second) { continue; }
+        
+        const auto& node = aeg.lookup(bypassed_store);
+        
+        // if it is a write, then check whether it can be bypassed
+        if (node.may_write() && aeg.may_source_stb(load, bypassed_store)) {
+            if (mode == CheckMode::SLOW) {
+                exprs.push_back(node.arch && node.write && node.same_addr(aeg.lookup(load)));
+            }
+            if (mode == CheckMode::FAST) {
+                throw lookahead_found();
+            }
+        }
+                
+        util::copy(aeg.po.po.rev.at(bypassed_store), std::back_inserter(todo));
+    }
+
+    if (mode == CheckMode::SLOW) {
+        // TODO: make it so that bypassed store is optoinal
+        solver.add(z3::mk_or(exprs), "bypassed_store");
+        check_solution(load, aeg.entry, aeg.entry, vec, mode);
+    }
+}
+
+void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode) {
+    if (mode == CheckMode::SLOW) {
+        switch (solver.check()) {
+            case z3::sat: {
+                const auto edge = push_edge(EdgeRef {
+                    .src = sourced_store,
+                    .dst = load,
+                    .kind = aeg::Edge::RFX,
+                });
+                const NodeRef universl_transmitter = vec.front();
+                const NodeRefVec vec2 = {sourced_store, bypassed_store, load, universl_transmitter};
+                output_execution(Leakage {
+                    .vec = vec2,
+                    .transmitter = universl_transmitter,
+                });
+                break;
+            }
+                
+            case z3::unsat: {
+                logv(0, __FUNCTION__ << ": backtrack: unsat\n");
+                break;
+            }
+                
+            case z3::unknown: {
+                std::cerr << "Z3 ERROR: unknown: " << solver.reason_unknown() << "\n";
+                std::abort();
+            }
+                
+            default: std::abort();
+        }
+    } else {
+        
+        throw lookahead_found();
+        
+    }
+}
+
+void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store, const NodeRefVec& vec, CheckMode mode) {
+    [[maybe_unused]] const auto load_idx = aeg.po.postorder_idx(load);
+    const auto bypassed_store_idx = aeg.po.postorder_idx(bypassed_store);
+    assert(load_idx < bypassed_store_idx);
+    
+    NodeRefSet sourced_store_candidates = exec_window;
+    
+    for (NodeRef sourced_store : sourced_store_candidates) {
+        const auto sourced_store_idx = aeg.po.postorder_idx(sourced_store);
+        const aeg::Node& sourced_store_node = aeg.lookup(sourced_store);
+        
+        // require sourced store to come before in postorder
+        if (!(sourced_store_idx > bypassed_store_idx)) {
+            continue;
+        }
+        
+        // require that it may be store
+        if (!sourced_store_node.may_write()) {
+            continue;
+        }
+        
+#if 0
+        // check if would be outside of store buffer
+        if (sourced_store != aeg.entry && !aeg.may_source_stb(load, sourced_store)) {
+            continue;
+        }
+#endif
+        
+#if 0
         // Another approximation of is_ancestor()
         if (aeg.lookup(sourced_store).stores_in > aeg.lookup(leak.bypassed_store).stores_in) {
             continue;
         }
+#endif
         
         z3_cond_scope;
-
-        const aeg::Node& sourced_store_node = aeg.lookup(sourced_store);
-        if (!sourced_store_node.may_write()) { continue; }
-        if (mode == CheckMode::SLOW) {
-            solver.add(sourced_store_node.write, "sourced_store.write");
-        }
-        
-        leak.sourced_store = sourced_store;
         
         if (mode == CheckMode::SLOW) {
-            const z3::expr same_addr = aeg::Node::same_addr(sourced_store_node, aeg.lookup(leak.load));
+            const z3::expr same_addr = aeg::Node::same_addr(sourced_store_node, aeg.lookup(load));
             solver.add(same_addr, "load.addr == sourced_store.addr");
-            solver.add(aeg.rfx_exists(sourced_store, leak.load), "load -rfx-> sourced_store");
+            solver.add(aeg.rfx_exists(sourced_store, load), "load -RFX-> sourced_store");
         }
         
         const auto action = util::push(actions, util::to_string("sourced ", sourced_store));
         
-        if (mode == CheckMode::SLOW) {
-            const z3::check_result res = solver.check();
-            switch (res) {
-                case z3::sat: {
-                    const auto edge = push_edge(EdgeRef {
-                        .src = leak.load,
-                        .dst = sourced_store,
-                        .kind = aeg::Edge::RFX,
-                    });
-                    output_execution(leak.leakage());
-                    break;
-                }
-                case z3::unsat: {
-                    logv(0, __FUNCTION__ << ": backtrack: unsat\n");
-                    break;
-                }
-                case z3::unknown: {
-                    std::cerr << "Z3 ERROR: unknown: " << solver.reason_unknown() << "\n";
-                    std::abort();
-                }
-                default: std::abort();
-            }
-        } else {
-            throw lookahead_found();
-        }
+        check_solution(load, bypassed_store, sourced_store, vec, mode);
+        
     }
 }
 
+void SpectreV4_Detector::run_postdeps(const NodeRefVec& vec, CheckMode mode) {
+    const NodeRef load = vec.back();
+    assert(aeg.lookup(load).may_read());
+    run_bypassed_store(load, vec, mode);
+}
+
+
+std::optional<float> SpectreV4_Detector::get_timeout() const {
+    // return std::nullopt;
+    if (unsats.empty()) {
+        return 5.f;
+    } else {
+        return util::average(unsats) * 5;
+    }
+}
+
+void SpectreV4_Detector::set_timeout(z3::check_result check_res, float secs) {
+    switch (check_res) {
+        case z3::sat:
+            sats.push_back(secs);
+            break;
+            
+        case z3::unsat:
+            unsats.push_back(secs);
+            break;
+            
+        case z3::unknown:
+            unknowns.push_back(secs);
+            break;
+            
+        default: std::abort();
+    }
+}
 
 
 }

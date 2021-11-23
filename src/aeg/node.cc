@@ -29,6 +29,38 @@ bool Node::is_special() const {
     return inst->is_special();
 }
 
+z3::expr Node::exec(ExecMode mode) const {
+    switch (mode) {
+        case ExecMode::ARCH:  return arch;
+        case ExecMode::TRANS: return trans;
+        case ExecMode::EXEC:  return exec();
+        default: std::abort();
+    }
+}
+
+const char *to_string(ExecMode mode) {
+    switch (mode) {
+        case ExecMode::ARCH:  return "ARCH";
+        case ExecMode::TRANS: return "TRANS";
+        case ExecMode::EXEC:  return "EXEC";
+        default: return "(invalid)";
+    }
+}
+
+template <>
+ExecMode from_string<ExecMode>(const std::string& s_) {
+    std::string s = s_;
+    std::transform(s.begin(), s.end(), s.begin(), static_cast<int (*)(int)>(&std::toupper));
+    if (s == "ARCH") {
+        return ExecMode::ARCH;
+    } else if (s == "TRANS") {
+        return ExecMode::TRANS;
+    } else if (s == "EXEC") {
+        return ExecMode::EXEC;
+    } else {
+        throw std::invalid_argument(util::to_string("bad ExecMode string '" + s_ + "'"));
+    }
+}
 
 void Node::simplify() {
     arch = arch.simplify();

@@ -580,6 +580,14 @@ z3::expr lfold(InputIt begin, InputIt end, const z3::expr& init, BinaryOp op) {
     return acc;
 }
 
+template <class Solver>
+z3::check_result check_timeout(Solver& solver_, unsigned nsecs) {
+    auto& solver = static_cast<z3::solver&>(solver_);
+    solver.set("timeout", nsecs);
+    const auto res = solver.check();
+    solver.set("timeout", 0U);
+    return res;
+}
 
 
 }

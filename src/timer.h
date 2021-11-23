@@ -3,6 +3,7 @@
 #include <string>
 #include <chrono>
 #include <iostream>
+#include <ctime>
 
 class Timer {
 public:
@@ -80,6 +81,10 @@ public:
         std::chrono::duration<double> elapsed = stop - start_;
         secs += elapsed.count();
     }
+    
+    float get() const {
+        return secs;
+    }
         
 private:
     using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
@@ -93,4 +98,9 @@ private:
 
 inline std::ostream& operator<<(std::ostream& os, const Stopwatch& s) {
     return os << s.secs << "s";
+}
+
+// returns cpu time in seconds
+inline float cpu_time() {
+    return static_cast<float>(std::clock()) / CLOCKS_PER_SEC;
 }

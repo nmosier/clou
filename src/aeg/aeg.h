@@ -21,6 +21,7 @@
 #include "aeg/edge.h"
 #include "aeg/node.h"
 #include "inst.h"
+#include "timer.h"
 
 class CFG_Expanded;
 
@@ -63,7 +64,7 @@ public:
     
     void simplify();
     
-    void test(std::vector<const llvm::Instruction *>& transmitters);
+    void test(TransmitterOutputIt out);
     
     std::string function_name() const;
     
@@ -131,9 +132,7 @@ public:
 
     void for_each_pred_in_window(NodeRef ref, unsigned window, std::function<void (NodeRef)> is, std::function<void (NodeRef)> isnt);
 
-    bool may_source_stb(NodeRef load, NodeRef store) const {
-        return !stb_size || lookup(load).stores_in < lookup(store).stores_in + static_cast<int>(*stb_size);
-    }
+    bool may_source_stb(NodeRef load, NodeRef store) const;
     
 private:
     void compute_min_store_paths();
@@ -162,7 +161,7 @@ private:
 #endif
     
     /** Check for leakage in the AEG. Outputs set of transmitter gadgets. */
-    void leakage(Solver& solver, std::vector<const llvm::Instruction *>& transmitters);
+    void leakage(Solver& solver, TransmitterOutputIt out);
     
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
     
@@ -353,6 +352,10 @@ struct AEG::Execution {
     NodeRefVec trans;
     NodeRef spec_gadget;
 };
+
+
+
+
 
 
 

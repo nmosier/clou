@@ -23,7 +23,7 @@
 
 namespace aeg {
 
-void AEG::leakage(Solver& solver, std::vector<const llvm::Instruction *>& transmitters) {
+void AEG::leakage(Solver& solver, TransmitterOutputIt out) {
     std::unique_ptr<lkg::Detector> detector;
     
     switch (leakage_class) {
@@ -50,8 +50,7 @@ void AEG::leakage(Solver& solver, std::vector<const llvm::Instruction *>& transm
     
     detector->run();
     
-    std::cerr << detector->get_transmitters().size() << " trasnmitters\n";
-    util::copy(detector->get_transmitters(), std::back_inserter(transmitters));
+    util::copy(detector->get_transmitters(), out);
 }
 
 }
@@ -102,6 +101,7 @@ void Detector::run() {
         llvm::errs() << "transmitters:\n";
         for (const auto transmitter : transmitters) {
             llvm::errs() << *transmitter << "\n";
+            using ::operator<<;
             ofs << *transmitter << "\n";
         }
     }
@@ -366,10 +366,11 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
         return;
     }
     
+    // TODO: POSSIBLY UNNECESSARY SCOPE: there is no forking here
     z3_cond_scope;
     if (mode == CheckMode::SLOW) {
         solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
-        if (solver.check() == z3::unsat) { return; }
+        if (solver_check() == z3::unsat) { return; }
     }
     
     const auto inc_depth = util::inc_scope(traceback_depth);
@@ -386,7 +387,6 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
 void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func) {
     rf.clear();
     
-    bool window_changed = false;
     {
         logv(1, "windows ");
         Timer timer;
@@ -412,9 +412,6 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                 trans_notwindow.insert(ref);
             });
         }
-        
-        // TODO: conditionally set this properly
-        window_changed = true;
     }
     
     if (use_lookahead && !lookahead([&] () {
@@ -465,7 +462,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     logv(0, __FUNCTION__ << ": added window constraints in " << timer_opt->get_str() << "\n");
     timer_opt = std::nullopt;
     
-    if (solver.check() != z3::unsat) {
+    if (solver_check() != z3::unsat) {
         aeg.assert_xsaccess_order(exec_window, solver);
         
         try {
@@ -474,10 +471,10 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             // continue
         }
     } else {
-        std::cerr << "skipping transmitter\n";
-        std::cerr << "access: " << transmitter_node.access() << "\n";
-        std::cerr << "trans: " << transmitter_node.trans << "\n";
-        dbg::append_core(solver);
+        logv(1, "skipping transmitter\n");
+        logv(1, "access: " << util::to_string(transmitter_node.access()) << "\n");
+        logv(1, "trans: " << util::to_string(transmitter_node.trans) << "\n");
+        dbg::append_core(solver, "skipped transmitter");
     }
 }
 
@@ -496,8 +493,12 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
     } else if (pid == 0) {
         
         if (semid >= 0) {
+            logv(1, "waiting on semaphore...\n");
             semutil::acquire(semid);
+            logv(1, "starting\n");
         }
+        
+        Timer timer;
         
         ::close(fds[0]);
         for_one_transmitter(transmitter, func);
@@ -518,6 +519,8 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             }
         }
         ::close(fds[1]);
+        
+        logv(0, "RUNTIME: " << ::getppid() << " " << ::getpid() << " " << cpu_time() << "\n");
         
         std::_Exit(0); // quick exit
     } else {
@@ -598,20 +601,16 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 }
                 ::close(fd);
                 
-                std::size_t rem = buf.size();
                 const char *ptr = buf.data();
                 while (ptr < buf.data() + buf.size()) {
                     lkg::LeakageMsg msg;
                     uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                    std::cerr << "message size " << size << "\n";
-                    rem -= 4;
                     ptr += 4;
                     if (!msg.ParseFromArray(ptr, size)) {
                         std::cerr << "bad message\n";
                         std::abort();
                     }
                     ptr += size;
-                    rem -= size;
                     
                     NodeRefVec vec;
                     util::copy(msg.vec(), std::back_inserter(vec));
@@ -640,7 +639,8 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
 }
 
 
-void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (NodeRef, CheckMode)> func) {
+void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> func) {
+    const aeg::Edge::Kind kind = deps().back().first;
     NodeRefSet candidate_transmitters;
     {
         z3::solver solver {ctx()};
@@ -675,8 +675,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
         std::size_t i = 0;
         for (NodeRef transmitter : candidate_transmitters) {
             ++i;
-            logv(1, i << "/" << candidate_transmitters.size() << "\n");
-            
+            logv(1, i << "/" << candidate_transmitters.size() << "       " << aeg.po.lookup(transmitter) << "\n");
             if (client) {
                 mon::Message msg;
                 auto *progress = msg.mutable_func_progress();
@@ -694,7 +693,7 @@ void Detector::for_each_transmitter(aeg::Edge::Kind kind, std::function<void (No
 void Detector::precompute_rf(NodeRef load) {
     // TODO: only use partial order, not ref2order
     
-    std::cerr << "precomputing rf " << load << "\n";
+    logv(1, "precomputing rf " << load << "\n");
     Timer timer;
     
     auto& out = rf[load];
@@ -802,5 +801,162 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
     solver.add(z3::implies(dst_node.arch, src_node.arch), desc("arch<-arch").c_str());
 }
 
+
+
+
+void Detector::traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+    NodeRefVec vec;
+    DepVec deps;
+    if (custom_deps.empty()) {
+        deps = this->deps();
+    } else {
+        deps = custom_deps;
+    }
+    traceback_deps_rec(deps.rbegin(), deps.rend(), vec, from_ref, func, mode);
+}
+
+void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
+                                  std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+    const auto push_ref = util::push(vec, from_ref);
+
+    if (mode == CheckMode::SLOW) {
+        using output::operator<<;
+        logv(1, __FUNCTION__ << ": " << vec << "\n");
+        
+        // lookahead
+        if (use_lookahead && !lookahead([&] () {
+            traceback_deps_rec(it, end, vec, from_ref, func, CheckMode::FAST);
+        })) {
+            return;
+        }
+    }
+    
+    // check if done (all dependencies found)
+    if (it == end) {
+        if (mode == CheckMode::SLOW) {
+            logv(1, __FUNCTION__ << ": all dependencies found\n");
+            if (solver_check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+                dbg::append_core(solver, "all dependencies found");
+                return;
+            }
+        }
+        func(vec, mode);
+        return;
+    }
+    
+    // try committing load
+    {
+        const aeg::Edge::Kind dep_kind = it->first;
+        const aeg::ExecMode dep_src_mode = it->second;
+        const auto deps = aeg.get_nodes(Direction::IN, from_ref, dep_kind);
+    
+        if (deps.empty()) {
+            goto label;
+        }
+        
+        if (mode == CheckMode::SLOW) {
+            if (solver_check() == z3::unsat) {
+                logv(1, __FUNCTION__ << ":" << __LINE__ << ": backtrack: unsat\n");
+                dbg::append_core(solver, "committing load");
+                return;
+            }
+            logv(1, "trying to commit " << from_ref << " (" << deps.size() << " deps)\n");
+        }
+        
+        for (const auto& dep : deps) {
+            const NodeRef to_ref = dep.first;
+            if (!check_edge(to_ref, from_ref)) {
+                continue;
+            }
+            
+            z3_cond_scope;
+            
+            if (mode == CheckMode::SLOW) {
+                assert_edge(to_ref, from_ref, dep.second, dep_kind);
+                solver.add(aeg.lookup(to_ref).exec(dep_src_mode), util::to_string(to_ref, " ", dep_kind, " ", from_ref, " ", dep_src_mode).c_str());
+            }
+            
+            const auto push_edge = util::push(flag_edges, EdgeRef {
+                .src = to_ref,
+                .dst = from_ref,
+                .kind = dep_kind
+            });
+            
+            const std::string desc = util::to_string(to_ref, "-", dep_kind, "->", from_ref);
+            const auto push_action = util::push(actions, desc);
+            
+            if (mode == CheckMode::SLOW) {
+                logv(1, __FUNCTION__ << ": committed " << desc << "\n");
+            }
+
+            traceback_deps_rec(std::next(it), end, vec, to_ref, func, mode);
+        }
+    }
+    
+    label:
+    
+    /* traceback
+     * NOTE: only if it's not the universal transmitter.
+     */
+    assert(!vec.empty());
+    if (from_ref != vec.front()) {
+        traceback(from_ref, [&] (NodeRef to_ref, CheckMode mode) {
+            if (mode == CheckMode::SLOW) {
+                logv(1, "traceback " << to_ref << "-TB->" << from_ref << "\n");
+            }
+            traceback_deps_rec(it, end, vec, to_ref, func, mode);
+        }, mode);
+    }
+}
+
+
+z3::check_result Detector::solver_check() {
+    z3::check_result res;
+    Stopwatch timer;
+    timer.start();
+    if (const auto timeout = get_timeout()) {
+        const unsigned timeout2 = static_cast<unsigned>(std::ceil(*timeout * 1000));
+        logv(2, __FUNCTION__ << ": checking with time limit " << timeout2 << "ms\n");
+        res = z3::check_timeout(solver, timeout2);
+    } else {
+        logv(2, __FUNCTION__ << ": checking with no time limit\n");
+        res = solver.check();
+    }
+    timer.stop();
+    const auto duration = timer.get();
+    if (res != z3::unknown) {
+        set_timeout(res, duration);
+    }
+    logv(2, __FUNCTION__ << ": got " << util::to_string(res) << " in " << static_cast<unsigned>(duration * 1000) << "ms\n");
+    switch (res) {
+        case z3::sat:
+            ++check_stats.sat;
+            break;
+        case z3::unsat:
+            ++check_stats.unsat;
+            break;
+        case z3::unknown:
+            ++check_stats.unknown;
+            break;
+    }
+    return res;
+}
+
+template <typename OS>
+inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
+    const auto frac = [&] (unsigned n) -> std::string {
+        if (stats.total() == 0) { return "0%"; }
+        std::stringstream ss;
+        ss << n * 100 / stats.total() << "%";
+        return ss.str();
+    };
+    os << "sat: " << frac(stats.sat) << ", unsat: " << frac(stats.unsat) << ", unknown: " << frac(stats.unknown);
+    return os;
+}
+
+Detector::~Detector() {
+    logv(1, "stats: " << check_stats << "\n");
+}
 
 }

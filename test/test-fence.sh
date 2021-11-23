@@ -53,10 +53,56 @@ rm -rf "${PASS_DIRS[@]}"
 mkdir -p "${PASS_DIRS[@]}"
 
 OBJ_PREFIX="${OUTDIR}/$(basename "${TEST}" .c)"
-LL="${OBJ_PREFIX}.ll"
+LL_IN="${OBJ_PREFIX}-in.ll"
+LL_OUT="${OBJ_PREFIX}-out.ll"
+
+
+# $1 -- pass number
+get_dir() {
+    DIR="${OUTDIR}/pass$1"
+    mkdir -p $DIR
+    echo $DIR
+}
+
+# $1 -- pass number
+get_ll_in() {
+    echo $(get_dir $1)/in.bc
+}
+
+# $1 -- pass number
+get_ll_out() {
+    echo $(get_dir $1)/out.bc
+}
+
+get_leakage() {
+    echo $(get_dir $1)/leakage.txt
+}
+
+CFLAGS="-fdeclspec -Wno-#warnings"
+LCMFLAGS="-Xclang -load -Xclang $LCM"
+
+# Compile to LLVM IR with Clang
+$CLANG $CFLAGS -c -emit-llvm -o $(get_ll_in 0) $TEST
+
+# Iteratively run until there is no leakage
+
+analyze() {
+    env LCM_ARGS="${ARGS} -o$(get_dir $1)" $OPT -load $LCM -lcm < $(get_ll_in $1) > $(get_ll_out $1)
+    [[ -f $(get_leakage $1) ]] && [[ -s $(get_leakage $1) ]]
+}
+
+
+I=0
+while analyze $I; do
+    cp $(get_ll_out $I) $(get_ll_in $((I+1)))
+    ((I++))
+done
+echo "$I passes"
+
+exit
 
 # Run first pass with fence insertion
-LCM_ARGS="${ARGS} -o${OUTDIR}/pass1" "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${LL}" "$TEST"
+LCM_ARGS="${ARGS} -o${OUTDIR}/pass1" "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -o "${LL}" "$TEST"
 
 # Run second pass to verify there's no leakage
 LCM_ARGS="${ARGS} -o${OUTDIR}/pass2" "$OPT" -load "$LCM" -lcm < "${LL}" > "${OBJ_PREFIX}.bc"
