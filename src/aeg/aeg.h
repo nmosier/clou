@@ -21,6 +21,7 @@
 #include "aeg/edge.h"
 #include "aeg/node.h"
 #include "inst.h"
+#include "timer.h"
 
 class CFG_Expanded;
 
@@ -63,7 +64,7 @@ public:
     
     void simplify();
     
-    void test(std::vector<const llvm::Instruction *>& transmitters);
+    void test(TransmitterOutputIt out);
     
     std::string function_name() const;
     
@@ -160,7 +161,7 @@ private:
 #endif
     
     /** Check for leakage in the AEG. Outputs set of transmitter gadgets. */
-    void leakage(Solver& solver, std::vector<const llvm::Instruction *>& transmitters);
+    void leakage(Solver& solver, TransmitterOutputIt out);
     
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
     
@@ -351,6 +352,10 @@ struct AEG::Execution {
     NodeRefVec trans;
     NodeRef spec_gadget;
 };
+
+
+
+
 
 
 

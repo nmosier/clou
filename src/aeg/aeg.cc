@@ -83,92 +83,6 @@ void AEG::simplify() {
     progress.done();
 }
 
-
-void AEG::test(std::vector<const llvm::Instruction *>& transmitters) {
-    unsigned naddrs = 0;
-    for_each_edge(Edge::ADDR, [&] (NodeRef, NodeRef, const Edge&) {
-        ++naddrs;
-    });
-    std::cerr << "Address edges: " << naddrs << "\n";
-    if (naddrs > 0) {
-#if 0
-        std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
-        ofs << lookup(1).inst->get_inst()->getFunction()->getName().str() << "\n";
-#endif
-    } else {
-        return;
-    }
-    
-    logv(1, "testing...\n");
-    
-#if 0
-    z3::solver solver {context.context};
-#else
-    Solver solver = make_solver();
-#endif
-    
-    simplify();
-    
-    /* display stats */
-    if (verbose >= 0) {
-        auto& os = llvm::errs();
-        os << constraints.exprs.size() << " top level constraints\n";
-        const unsigned node_clauses =
-        std::transform_reduce(nodes.begin(), nodes.end(), 0, std::plus<unsigned>(),
-                              [] (const Node& node) {
-            return node.constraints.exprs.size();
-        });
-        os << node_clauses << " node constraints\n";
-        std::unordered_map<Edge::Kind, unsigned> edge_constraints;
-        graph.for_each_edge([&] (NodeRef, NodeRef, const Edge& e) {
-            edge_constraints[e.kind] += e.constraints.exprs.size();
-        });
-        os << std::transform_reduce(edge_constraints.begin(), edge_constraints.end(), 0, std::plus<unsigned>(), [] (const auto& pair) -> unsigned { return pair.second; }) << " edge constraints (total\n";
-        for (const auto& pair : edge_constraints) {
-            os << pair.first << " " << pair.second << "\n";
-        }
-    }
-    
-    {
-        Timer timer;
-        
-        // add edge constraints
-        {
-            logv(0, __FUNCTION__ << ": adding edge constraints...\n");
-            Progress progress {nedges};
-            std::unordered_map<std::string, unsigned> names;
-            graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
-                edge.constraints.add_to(solver);
-                ++progress;
-            });
-            progress.done();
-        }
-        
-        // add node constraints
-        {
-            logv(0, __FUNCTION__ << ": adding node constraints...\n");
-            Progress progress {size()};
-            for (NodeRef ref : node_range()) {
-                lookup(ref).constraints.add_to(solver);
-                ++progress;
-            }
-            progress.done();
-        }
-        
-        // add main constraints
-        logv(0, __FUNCTION__ << ": adding main constraints...");
-        constraints.add_to_progress(solver);
-
-        logv(0, __FUNCTION__ << ": added constraints ");
-    }
-    
-    {
-        Timer timer;
-        leakage(solver, transmitters);
-        std::cerr << "ANALYZED_test: " << cpu_time() << "\n";
-    }
-}
-
 void AEG::add_unidir_edge(NodeRef src, NodeRef dst, const Edge& e) {
     if (e.possible()) {
         graph.insert(src, dst, e);
@@ -290,4 +204,91 @@ std::string AEG::function_name() const {
     return po.function_name();
 }
 
+
+void AEG::test(TransmitterOutputIt out) {
+    unsigned naddrs = 0;
+    for_each_edge(Edge::ADDR, [&] (NodeRef, NodeRef, const Edge&) {
+        ++naddrs;
+    });
+    std::cerr << "Address edges: " << naddrs << "\n";
+    if (naddrs > 0) {
+#if 0
+        std::ofstream ofs {"addrs.txt", std::ios_base::out | std::ofstream::app};
+        ofs << lookup(1).inst->get_inst()->getFunction()->getName().str() << "\n";
+#endif
+    } else {
+        return;
+    }
+    
+    logv(1, "testing...\n");
+    
+#if 0
+    z3::solver solver {context.context};
+#else
+    Solver solver = make_solver();
+#endif
+    
+    simplify();
+    
+    /* display stats */
+    if (verbose >= 0) {
+        auto& os = llvm::errs();
+        os << constraints.exprs.size() << " top level constraints\n";
+        const unsigned node_clauses =
+        std::transform_reduce(nodes.begin(), nodes.end(), 0, std::plus<unsigned>(),
+                              [] (const Node& node) {
+            return node.constraints.exprs.size();
+        });
+        os << node_clauses << " node constraints\n";
+        std::unordered_map<Edge::Kind, unsigned> edge_constraints;
+        graph.for_each_edge([&] (NodeRef, NodeRef, const Edge& e) {
+            edge_constraints[e.kind] += e.constraints.exprs.size();
+        });
+        os << std::transform_reduce(edge_constraints.begin(), edge_constraints.end(), 0, std::plus<unsigned>(), [] (const auto& pair) -> unsigned { return pair.second; }) << " edge constraints (total\n";
+        for (const auto& pair : edge_constraints) {
+            os << pair.first << " " << pair.second << "\n";
+        }
+    }
+    
+    {
+        Timer timer;
+        
+        // add edge constraints
+        {
+            logv(0, __FUNCTION__ << ": adding edge constraints...\n");
+            Progress progress {nedges};
+            std::unordered_map<std::string, unsigned> names;
+            graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
+                edge.constraints.add_to(solver);
+                ++progress;
+            });
+            progress.done();
+        }
+        
+        // add node constraints
+        {
+            logv(0, __FUNCTION__ << ": adding node constraints...\n");
+            Progress progress {size()};
+            for (NodeRef ref : node_range()) {
+                lookup(ref).constraints.add_to(solver);
+                ++progress;
+            }
+            progress.done();
+        }
+        
+        // add main constraints
+        logv(0, __FUNCTION__ << ": adding main constraints...");
+        constraints.add_to_progress(solver);
+
+        logv(0, __FUNCTION__ << ": added constraints ");
+    }
+    
+    {
+        Timer timer;
+        leakage(solver, out);
+        std::cerr << "ANALYZED_test: " << cpu_time() << "\n";
+    }
 }
+
+}
+
