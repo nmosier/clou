@@ -8,7 +8,7 @@
 #include <llvm/IR/Instructions.h>
 
 #include "util/xmacro.h"
-#include "cfg/cfg.h"
+#include "cfg/node.h"
 
 
 struct Inst {
@@ -44,7 +44,7 @@ X(OTHER)
     static Inst *Create(Entry);
     static Inst *Create(Exit);
     static Inst *Create(const llvm::Instruction *I);
-    static Inst *Create(const CFG::Node::Call& call);
+    static Inst *Create(const cfg::Node::Call& call);
     
     virtual void print(std::ostream& os) const;
     virtual ~Inst() {}

@@ -8,7 +8,7 @@ add_subdirectory(leakage)
 add_subdirectory(util)
 add_subdirectory(mon)
 
-add_library(lcm MODULE
+add_library(clou MODULE
   lcm.cc           lcm.h
   config.cc        config.h
   fol.h
@@ -22,8 +22,8 @@ add_library(lcm MODULE
   $<TARGET_OBJECTS:leakage_objs>
   $<TARGET_OBJECTS:proto>
   )
-target_compile_options(lcm PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)
-target_link_libraries(lcm PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
+target_compile_options(clou PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g)
+target_link_libraries(clou PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
 if(APPLE)
-  target_link_options(lcm PRIVATE -undefined dynamic_lookup)
+  target_link_options(clou PRIVATE -undefined dynamic_lookup)
 endif()

@@ -5,89 +5,105 @@
 #include "util/output.h"
 #include "config.h"
 #include "util/functional.h"
+#include "cfg/node.h"
 
 
-/* Construction Algorithm
- * We will construct functions recursively. Constructing a function should return the
- * entry and exit nodes.
- * While constructing each function, we will then proceed with the regular flow. 
- *
- */
+CFG::CFG(unsigned num_specs): num_specs(num_specs) {}
+
+CFG::Node& CFG::lookup(NodeRef ref) {
+    return nodes.at(ref);
+}
+
+const CFG::Node& CFG::lookup(NodeRef ref) const {
+    return nodes.at(ref);
+}
+
+void CFG::dump_graph(const std::string& path) const {
+    po.group().dump_graph(path, [&] (auto& os, const auto& group) {
+        for (NodeRef ref : group) {
+            os << ref << " " << lookup(ref) << "\n";
+        }
+    });
+}
+
+std::size_t CFG::size() const {
+    return nodes.size();
+}
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Node& node) {
-   std::visit(util::overloaded {
-         [&] (Entry) { os << "<ENTRY>"; },
-         [&] (Exit)  { os << "<EXIT>";  },
-         [&] (const llvm::Instruction *I) { os << *I; },
-       [&] (const CFG::Node::Call& call) {
-           os << *call.C << " " << call.arg;
-       },
-      }, node());
-   if (node.id) {
-       using output::operator<<;
-      os << " F" << node.id->func;
-       os << " L" << node.id->loop;
-   }
-   return os;
+    std::visit(util::overloaded {
+        [&] (Entry) { os << "<ENTRY>"; },
+        [&] (Exit)  { os << "<EXIT>";  },
+        [&] (const llvm::Instruction *I) { os << *I; },
+        [&] (const CFG::Node::Call& call) {
+            os << *call.C << " " << call.arg;
+        },
+    }, node());
+    if (node.id) {
+        using output::operator<<;
+        os << " F" << node.id->func;
+        os << " L" << node.id->loop;
+    }
+    return os;
 }
 
 void CFG::prune() {
-   std::unordered_set<NodeRef> todo;
-   for (NodeRef i = 0; i < nodes.size(); ++i) {
-       if (exits.find(i) == exits.end()) {
-         todo.insert(i);
-      }
-   }
-
-   std::unordered_set<NodeRef> deleted;
-   while (!todo.empty()) {
-      // pop off next job
-      const auto it = todo.begin();
-      const NodeRef ref = *it;
-      todo.erase(it);
-
-      if (po.fwd.at(ref).empty()) {
-         // is leaf
-         const auto& preds = po.rev.at(ref);
-         std::copy(preds.begin(), preds.end(), std::inserter(todo, todo.end()));
-         po.erase(ref);
-         deleted.insert(ref);
-      }
-   }
-
-   /* NOTE: There is a more efficient way to do this renumbering of node references; 
-    * however, this method preserved the order. If it becomes too slow, we can replace it.
-    */
-
-   /* create mapping from old ref to new refs */
-   std::unordered_map<NodeRef, NodeRef> refmap;
-   NodeRef next_ref = 0;
-   for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
-      if (deleted.find(old_ref) == deleted.end()) {
-         refmap.emplace(old_ref, next_ref);
-         ++next_ref;
-      }
-   }
-
-   /* compactify nodes */
-   Rel new_po;
-   for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
-      const auto it = refmap.find(old_ref);
-      if (it != refmap.end()) {
-          nodes[it->second] = nodes[it->first];
-         new_po.add_node(it->second);
-      }
-   }
-   nodes.resize(next_ref);
-   
-   /* rename mappings */
-   for (const auto& pair : po.fwd) {
-      const NodeRef src = pair.first;
-      for (const NodeRef dst : pair.second) {
-         new_po.insert(refmap.at(src), refmap.at(dst));
-      }
-   }
-   po = std::move(new_po);
+    std::unordered_set<NodeRef> todo;
+    for (NodeRef i = 0; i < nodes.size(); ++i) {
+        if (exits.find(i) == exits.end()) {
+            todo.insert(i);
+        }
+    }
+    
+    NodeRefSet deleted;
+    while (!todo.empty()) {
+        // pop off next job
+        const auto it = todo.begin();
+        const NodeRef ref = *it;
+        todo.erase(it);
+        
+        if (po.fwd.at(ref).empty()) {
+            // is leaf
+            const auto& preds = po.rev.at(ref);
+            std::copy(preds.begin(), preds.end(), std::inserter(todo, todo.end()));
+            po.erase(ref);
+            deleted.insert(ref);
+        }
+    }
+    
+    /* NOTE: There is a more efficient way to do this renumbering of node references;
+     * however, this method preserved the order. If it becomes too slow, we can replace it.
+     */
+    
+    /* create mapping from old ref to new refs */
+    std::unordered_map<NodeRef, NodeRef> refmap;
+    NodeRef next_ref = 0;
+    for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
+        if (deleted.find(old_ref) == deleted.end()) {
+            refmap.emplace(old_ref, next_ref);
+            ++next_ref;
+        }
+    }
+    
+    /* compactify nodes */
+    Rel new_po;
+    for (NodeRef old_ref = 0; old_ref < nodes.size(); ++old_ref) {
+        const auto it = refmap.find(old_ref);
+        if (it != refmap.end()) {
+            nodes[it->second] = nodes[it->first];
+            new_po.add_node(it->second);
+        }
+    }
+    nodes.resize(next_ref);
+    
+    /* rename mappings */
+    for (const auto& pair : po.fwd) {
+        const NodeRef src = pair.first;
+        for (const NodeRef dst : pair.second) {
+            new_po.insert(refmap.at(src), refmap.at(dst));
+        }
+    }
+    po = std::move(new_po);
 }
 
 bool CFG::llvm_alias_valid(const ID& a, const ID& b) {
@@ -103,10 +119,10 @@ bool CFG::llvm_alias_valid(const ID& a, const ID& b) {
 }
 
 bool CFG::llvm_alias_valid(const Node& a, const Node& b) {
-   if (!(a.id && b.id)) {
-      return false;
-   }
-   return llvm_alias_valid(*a.id, *b.id);
+    if (!(a.id && b.id)) {
+        return false;
+    }
+    return llvm_alias_valid(*a.id, *b.id);
 }
 
 const NodeRefVec& CFG::postorder() const {
@@ -124,7 +140,7 @@ const NodeRefVec& CFG::postorder() const {
         }
 #endif
     }
-
+    
     
 #if 0
     // DEBUG
@@ -143,21 +159,21 @@ const NodeRefVec& CFG::postorder() const {
 }
 
 bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
-   if (done.find(ref) != done.end()) {
-      return true;
-   }
-
-   bool acc = true;
-   for (NodeRef succ : po.fwd.at(ref)) {
-      acc = acc && postorder_rec(done, order, succ);
-   }
-
-   if (acc) {
-      done.insert(ref);
-      order.push_back(ref);
-   }
-
-   return acc;
+    if (done.find(ref) != done.end()) {
+        return true;
+    }
+    
+    bool acc = true;
+    for (NodeRef succ : po.fwd.at(ref)) {
+        acc = acc && postorder_rec(done, order, succ);
+    }
+    
+    if (acc) {
+        done.insert(ref);
+        order.push_back(ref);
+    }
+    
+    return acc;
 }
 
 void CFG::compute_postorder(NodeRefVec& order) const {
@@ -195,11 +211,11 @@ void CFG::compute_postorder(NodeRefVec& order) const {
 }
 
 NodeRef CFG::add_node(const Node& node) {
-      const NodeRef ref = size();
-      nodes.push_back(node);
-      po.add_node(ref);
-      return ref;
-   }   
+    const NodeRef ref = size();
+    nodes.push_back(node);
+    po.add_node(ref);
+    return ref;
+}
 
 std::ostream& operator<<(std::ostream& os, const CFG::ID& id) {
     os << "F" << id.func << " L{";
@@ -241,28 +257,6 @@ std::optional<NodeRef> CFG::get_block_successor(NodeRef ref) const {
     } else {
         return *po.fwd.at(ref).begin();
     }
-}
-
-std::ostream& operator<<(std::ostream& os, const CFG::Node::Call& call) {
-    std::string s;
-    llvm::raw_string_ostream ss {s};
-    ss << *call.C << " " << *call.arg;
-    return os << ss.str();
-}
-
-std::ostream& operator<<(std::ostream& os, const CFG::Node::Variant& v) {
-    std::visit(util::overloaded {
-        [&] (const auto *x) {
-            std::string s;
-            llvm::raw_string_ostream ss {s};
-            ss << *x;
-            os << ss.str();
-        },
-        [&] (const auto& x) {
-            os << x;
-        },
-    }, v);
-    return os;
 }
 
 bool CFG::Node::may_read() const {
@@ -334,7 +328,7 @@ bool CFG::may_introduce_speculation(NodeRef ref) const {
             } else {
                 return false;
             }
-
+            
         case LeakageClass::SPECTRE_V4:
             for (const NodeRef ref : po.fwd.at(ref)) {
                 const Node& node = lookup(ref);
@@ -368,4 +362,54 @@ bool CFG::may_introduce_speculation(NodeRef ref) const {
             
         default: std::abort();
     }
+}
+
+
+void CFG::sort() {
+    NodeRefVec order;
+    compute_postorder(order);
+    std::reverse(order.begin(), order.end());
+    std::unordered_map<NodeRef, NodeRef> map;
+    for (NodeRef newref = 0; NodeRef oldref : order) {
+        map.emplace(oldref, newref);
+        ++newref;
+    }
+    
+    const Rel& oldpo = this->po;
+    Rel newpo;
+    
+    /* add nodes */
+    for (const auto& [oldref, newref] : map) {
+        newpo.add_node(newref);
+    }
+    
+    /* add edges */
+    for (const auto& [oldref_src, oldref_dsts] : oldpo.fwd) {
+        for (const auto& oldref_dst : oldref_dsts) {
+            newpo.insert(map.at(oldref_src), map.at(oldref_dst));
+        }
+    }
+    
+    this->po = newpo;
+    
+    auto& oldnodes = this->nodes;
+    std::vector<Node> newnodes;
+    for (const auto oldref : order) {
+        newnodes.push_back(std::move(oldnodes.at(oldref)));
+    }
+    this->nodes = newnodes;
+    
+    /* set entry */
+    entry = map.at(entry);
+    
+    /* set exits */
+    NodeRefSet newexits;
+    util::transform(exits, std::inserter(newexits, newexits.end()), [&map] (NodeRef in) -> NodeRef {
+        return map.at(in);
+    });
+    exits = newexits;
+    
+    
+    // DEBUGL: temporary until we remove this member
+    cached_postorder = cached_postorder_r = std::nullopt;
 }

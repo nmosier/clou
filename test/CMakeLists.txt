@@ -24,7 +24,7 @@ foreach(PHT_SRC ${PHT_SRCS})
     -O ${CMAKE_CURRENT_BINARY_DIR}/${PHT_NAME}
     -T ${PHT_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${PHT_NAME}.ref
-    -L $<TARGET_FILE:lcm>
+    -L $<TARGET_FILE:clou>
     -A "${PHT_ARGS}"
     )
 
@@ -32,7 +32,7 @@ foreach(PHT_SRC ${PHT_SRCS})
     COMMAND ${TEST_FENCE_SH}
     -O ${CMAKE_CURRENT_BINARY_DIR}/${PHT_NAME}f
     -T ${PHT_SRC}
-    -L $<TARGET_FILE:lcm>
+    -L $<TARGET_FILE:clou>
     -A "${PHT_ARGS} --fence"
     )
   set_tests_properties(${PHT_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
@@ -62,7 +62,7 @@ foreach(STL_SRC ${STL_SRCS})
     -O ${CMAKE_CURRENT_BINARY_DIR}/${STL_NAME}
     -T ${STL_SRC}
     -R ${CMAKE_CURRENT_SOURCE_DIR}/${STL_NAME}.ref
-    -L $<TARGET_FILE:lcm>
+    -L $<TARGET_FILE:clou>
     -A "${STL_ARGS}"
     )
 
@@ -70,7 +70,7 @@ foreach(STL_SRC ${STL_SRCS})
     COMMAND ${TEST_FENCE_SH}
     -O ${CMAKE_CURRENT_BINARY_DIR}/${STL_NAME}f
     -T ${STL_SRC}
-    -L $<TARGET_FILE:lcm>
+    -L $<TARGET_FILE:clou>
     -A "${STL_ARGS} --fence"
     )
   set_tests_properties(${STL_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
@@ -81,7 +81,7 @@ set(LIBSODIUM ${CMAKE_CURRENT_SOURCE_DIR}/../../libsodium/src/libsodium)
 add_test(NAME spectre-v1-medium
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
   -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-medium
-  -L $<TARGET_FILE:lcm>
+  -L $<TARGET_FILE:clou>
   -x "-Epo,tfo,rf,rfx,addr,data -d20 --spectre-v1=mode=classic --fast --aa=transient -fpoly1305_blocks"
   ${LIBSODIUM}/crypto_onetimeauth/poly1305/donna/poly1305_donna.c -I ${LIBSODIUM}/include/sodium
   )
@@ -96,7 +96,7 @@ set(SPECTRE_V1_LARGE_FUNC _sodium_fe25519_invert)
 add_test(NAME spectre-v1-large
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
   -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-large
-  -L $<TARGET_FILE:lcm>
+  -L $<TARGET_FILE:clou>
   -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient -f${SPECTRE_V1_LARGE_FUNC} --stb=56"
   ${LIBSODIUM}/${SPECTRE_V1_LARGE_FILE} -I ${LIBSODIUM}/include/sodium
   )
@@ -104,7 +104,7 @@ add_test(NAME spectre-v1-large
 add_test(NAME spectre-v4-large
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
   -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v4-large
-  -L $<TARGET_FILE:lcm>
+  -L $<TARGET_FILE:clou>
   -x "--spectre-v4 --fast --max-transient=25 --aa=transient  -f_sodium_blake2b_init_key --stb=56"
   ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
   )
@@ -112,7 +112,7 @@ add_test(NAME spectre-v4-large
 add_test(NAME spectre-v1-xl
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
   -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-xl
-  -L $<TARGET_FILE:lcm>
+  -L $<TARGET_FILE:clou>
   -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient --stb=56"
   ${LIBSODIUM}/crypto_core/ed25519/core_h2c.c -I ${LIBSODIUM}/include/sodium
   )

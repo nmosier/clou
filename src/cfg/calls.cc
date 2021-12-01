@@ -1,5 +1,6 @@
 #include "cfg/calls.h"
 #include "cfg/unrolled.h"
+#include "cfg/node.h"
 
 void CFG_Calls::construct(const CFG& in) {
     std::unordered_map<NodeRef, NodeRefSet> map;

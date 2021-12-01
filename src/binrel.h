@@ -265,4 +265,3 @@ typename binrel<T, Hash>::GroupRel binrel<T, Hash>::group() const {
     
     return rel;
 }
-

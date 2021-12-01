@@ -9,75 +9,9 @@
 #include "util/output.h"
 #include "util/algorithm.h"
 #include "util/timer.h"
+#include "cfg/node.h"
 
-template <typename Expand>
-void CFG_Expanded::construct_full(const CFG& in, Expand& expand) {
-    using Fork = typename Expand::Fork;
-    
-    /* create entry */
-    entry = add_node(in.lookup(in.entry));
-    expansions[in.entry].insert(entry);
-    execs.emplace(entry, Exec {
-        .arch = Option::MUST,
-        .trans = Option::NO,
-    });
-    
-    using task_type = Task<Fork>;
-    std::deque<task_type> queue;
-    for (NodeRef in_dst : in.po.fwd.at(in.entry)) {
-        queue.push_back(task_type {
-            .in_dst = in_dst,
-            .src    = entry,
-            .fork  = expand.init(),
-        });
-    }
-    
-    while (!queue.empty()) {
-        const task_type task = std::move(queue.back());
-        queue.pop_back();
-        
-        bool newnode;
-        
-        const NodeRef end_ref = size();
-        const NodeRef dst = expand.merge(task.fork, task.in_dst, end_ref);
-        if (dst == end_ref) {
-            // create new node
-            [[maybe_unused]] const NodeRef dst_tmp = add_node(in.lookup(task.in_dst));
-            assert(dst == dst_tmp);
-            newnode = true;
-        } else {
-            newnode = false;
-        }
-        
-        const Exec exec = {
-            .arch = task.fork.can_arch(),
-            .trans = task.fork.can_trans(num_specs),
-        };
-        [[maybe_unused]] const auto res = execs.emplace(dst, exec);
-        assert(res.first->second == exec);
-        
-        po.insert(task.src, dst);
-        
-        if (newnode) {
-            for (NodeRef succ : in.po.fwd.at(task.in_dst)) {
-                std::vector<Fork> new_forks;
-                expand.transition(task.fork, task.in_dst, succ, std::back_inserter(new_forks));
-                for (const Fork& new_fork : new_forks) {
-                    queue.push_front(task_type {
-                        .in_dst = succ,
-                        .src = dst,
-                        .fork = new_fork,
-                    });
-                }
-            }
-            
-            expansions[task.in_dst].insert(dst);
-        }
-    }
-}
-
-template <typename Expand>
-void CFG_Expanded::construct_partial(const CFG& in, Expand& expand) {
+void CFG_Expanded::construct_partial(const CFG& in) {
     nodes = in.nodes;
     po    = in.po;
     entry = in.entry;
@@ -92,13 +26,10 @@ void CFG_Expanded::construct_partial(const CFG& in, Expand& expand) {
     }
 }
 
-template <typename Expand>
-void CFG_Expanded::construct(const CFG& in, Expand& expand) {
-    if (partial_executions) {
-        construct_partial(in, expand);
-    } else {
-        construct_full(in, expand);
-    }
+void CFG_Expanded::construct(const CFG& in) {
+    assert(partial_executions);
+    construct_partial(in);
+
 
     
     std::cerr << __FUNCTION__ << ": nodes: " << size() << "\n";
@@ -198,8 +129,6 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
     }
 }
 
-template void CFG_Expanded::construct(const CFG& in, Expand_SpectreV1& expand);
-template void CFG_Expanded::construct(const CFG& in, Expand_SpectreV4& expand);
 
 void CFG_Expanded::resolve_refs(const CFG& in) {
     /* Approach
@@ -218,6 +147,11 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
 /* Idea: use a string-table-like approach. Rather than the map's values being a NodeRefSet, it is an index into a table of NodeRefSets.
  */
     std::vector<std::optional<Map>> maps {size()};
+    
+    for (NodeRef i = 0; const auto ref : reverse_postorder()) {
+        assert(i == ref);
+        ++i;
+    }
 
     NodeRefSet done;
     for (const NodeRef ref : reverse_postorder()) {
@@ -280,25 +214,3 @@ void CFG_Expanded::resolve_refs(const CFG& in) {
     }
 }
 
-NodeRef Expand_SpectreV1::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
-    if (fork.spec_depth <= num_specs) {
-        // private
-        return out_ref;
-    } else {
-        // public
-        // NOTE: This will insert node if missing and tell caller to instantiate a fresh one.
-        const auto res = public_map.emplace(in_ref, out_ref);
-        return res.first->second;
-    }
-}
-
-NodeRef Expand_SpectreV4::merge(const Fork& fork, NodeRef in_ref, NodeRef out_ref) {
-    Map *map;
-    if (fork.always_speculative) {
-        map = &speculative_map;
-    } else {
-        map = &nonspeculative_map;
-    }
-    const auto res = map->emplace(in_ref, out_ref);
-    return res.first->second;
-}

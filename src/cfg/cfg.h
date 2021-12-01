@@ -22,7 +22,11 @@
 #include "noderef.h"
 #include "util/output.h"
 
+namespace cfg {
 
+struct Node;
+
+}
 
 /* How to determine if you can use AA results to check whether A aliases B:
  * - Must be the case that A.func_id == B.func_id
@@ -39,6 +43,7 @@ class CFG {
 public:
     using FuncID = unsigned; /*!< Globally (in the entire CFG) uniquely identifies current function instantiation (used for distinguishing multiply inlined functions) */
     using LoopID = unsigned; /*!< Locally (only in the current function/loop context) uniquely identifies a loop iteration (used for distinguishing different iterations of an unrolled loop) */
+    using Node = cfg::Node;
     
     /** A unique identifier for a node in the CFG.
      * This captures the current loop-nest context and function context.
@@ -59,43 +64,6 @@ public:
         }
     };
     
-    /** A node in the control flow graph. A node can represent one of the following:
-     * - Entry: program entry node (top). Each CFG contains exactly one of these. It does not have a corresponding llvm::Instruction.
-     * - Exit: program exit node (bottom). Each CFG contains at least one of these. It does not have a corresponding llvm::Instruction.
-     * - llvm::Instruction: an instruction. There is possibly a 1-to-many correspondence from these nodes to LLVM-IR instructions due to function inlining and loop unrolling.
-     * - Node::Call: the evaluation of a single pointer argument of an external call.
-     */
-    struct Node {
-        struct Call {
-            const llvm::CallBase *C;
-            const llvm::Value *arg;
-            bool operator==(const Call& other) const {
-                return C == other.C && arg == other.arg;
-            }
-        };
-        using Variant = std::variant<Entry, Exit, const llvm::Instruction *, Call>;
-        
-        Variant v;
-        std::optional<ID> id;
-        std::unordered_map<const llvm::Value *, NodeRefSet> refs;
-        
-        const Variant& operator()() const { return v; }
-        Variant& operator()() { return v; }
-        
-        Node() {} // TODO: remove this?
-        
-        template <typename Arg>
-        explicit Node(const Arg& arg, std::optional<ID> id): v(arg), id(id) {}
-        
-        static Node make_entry() { return Node {Entry {}, std::nullopt}; }
-        static Node make_exit() { return Node {Exit {}, std::nullopt}; }
-        
-        bool operator==(const Node& other) const {
-            return v == other.v && id == other.id && refs == other.refs;
-        }
-        
-        bool may_read() const;
-    };
     using Rel = binrel<NodeRef>;
     Rel po;
     NodeRef entry;
@@ -104,26 +72,22 @@ public:
     
     std::vector<Node> nodes;
     
-    Node& lookup(NodeRef ref) { return nodes.at(ref); }
-    const Node& lookup(NodeRef ref) const { return nodes.at(ref); }
+    Node& lookup(NodeRef ref);
+    const Node& lookup(NodeRef ref) const;
     
     llvm::raw_ostream& dump(llvm::raw_ostream& os) const;
     
-    void dump_graph(const std::string& path) const {
-        po.group().dump_graph(path, [&] (auto& os, const auto& group) {
-            for (NodeRef ref : group) {
-                os << ref << " " << lookup(ref) << "\n";
-            }
-        });
-    }
+    void dump_graph(const std::string& path) const;
     
     std::string function_name() const;
     
-    std::size_t size() const { return nodes.size(); }
+    std::size_t size() const;
     
     static bool llvm_alias_valid(const ID& a, const ID& b);
     static bool llvm_alias_valid(const Node& a, const Node& b);
     bool llvm_alias_valid(NodeRef a, NodeRef b) const { return llvm_alias_valid(lookup(a), lookup(b)); }
+    
+    void sort();
     
 private:
     mutable std::optional<NodeRefVec> cached_postorder;
@@ -143,7 +107,7 @@ public:
         return llvm::iterator_range<NodeRefVec::const_reverse_iterator> {postorder().rbegin(), postorder().rend()};
     }
     
-    CFG(unsigned num_specs): num_specs(num_specs) {}
+    CFG(unsigned num_specs);
     
     bool is_block_entry(NodeRef ref) const;
     bool is_block_exit(NodeRef ref) const;
@@ -202,11 +166,7 @@ public:
             }
         };
         
-#if 1
         using Map = std::unordered_map<Key, Value, Key::Hash>;
-#elif 0
-        using Map = std::map<Key, Value>;
-#endif
         
         Map map;
         
@@ -240,13 +200,6 @@ public:
     };
     
     Translations translations;
-    
-    bool operator==(const CFG& other) const {
-        return nodes == other.nodes && po == other.po && translations == other.translations;
-    }
-    
-    struct partial_order;
-    partial_order make_partial_order() const;
     
     bool may_introduce_speculation(NodeRef ref) const;
 };
@@ -283,29 +236,6 @@ struct hash<CFG::ID> {
 }
 
 std::ostream& operator<<(std::ostream& os, const CFG::ID& id);
-std::ostream& operator<<(std::ostream& os, const CFG::Node::Call& call);
-std::ostream& operator<<(std::ostream& os, const CFG::Node::Variant& v);
-
-// TODO: optimize. Perhaps use cache of nodes already visited
-struct CFG::partial_order {
-    const CFG& cfg;
-    
-    /** Return whether \p a is a parent of \p b. */
-    bool operator()(NodeRef a, NodeRef b) const {
-        for (const auto b_pred : cfg.po.rev.at(b)) {
-            if (a == b_pred) { return true; }
-            if ((*this)(a, b_pred)) { return true; }
-        }
-        return false;
-    }
-};
-
-inline CFG::partial_order CFG::make_partial_order() const {
-    return partial_order {.cfg = *this};
-}
-
-
-
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Key& key);
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CFG::Translations::Value& value);

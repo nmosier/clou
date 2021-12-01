@@ -8,6 +8,7 @@
 #include "cfg/unrolled.h"
 #include "util/scope.h"
 #include "config.h"
+#include "cfg/node.h"
 
 void CFG_Unrolled::construct() {
     entry = add_node(Node::make_entry());

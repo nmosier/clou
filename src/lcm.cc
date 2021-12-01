@@ -168,8 +168,15 @@ struct LCMPass: public llvm::ModulePass {
             aegpo_unrolled.construct();
             
             if (output_cfgs.unrolled) {
-                output_(aegpo_unrolled, "cfg-unrolled", F);
+                output_(aegpo_unrolled, "cfg-unrolled-1", F);
             }
+            
+            aegpo_unrolled.sort(); // EXPERIMENTAL
+
+            if (output_cfgs.unrolled) {
+                output_(aegpo_unrolled, "cfg-unrolled-2", F);
+            }
+            
             std::cerr << "cfg-unrolled: " << aegpo_unrolled.size() << " nodes\n";
             
             client.send_step("cfg-calls", F.getName().str());
@@ -184,23 +191,7 @@ struct LCMPass: public llvm::ModulePass {
             logv(1, "Constructing expanded AEGPO for " << F.getName() << "\n");
             client.send_step("cfg-expanded", F.getName().str());
             CFG_Expanded cfg_expanded {spec_depth};
-            {
-                switch (leakage_class) {
-                    case LeakageClass::SPECTRE_V1: {
-                        Expand_SpectreV1 expand_spectre_v1 {cfg_calls, spec_depth};
-                        cfg_expanded.construct(cfg_calls, expand_spectre_v1);
-                        break;
-                    }
-                        
-                    case LeakageClass::SPECTRE_V4: {
-                        Expand_SpectreV4 expand_spectre_v4 {cfg_calls, spec_depth};
-                        cfg_expanded.construct(cfg_calls, expand_spectre_v4);
-                        break;
-                    }
-                        
-                    default: std::abort();
-                }
-            }
+            cfg_expanded.construct(cfg_calls);
             
             if (output_cfgs.expanded) {
                 output_(cfg_expanded, "cfg-expanded", F);
