@@ -168,13 +168,7 @@ struct LCMPass: public llvm::ModulePass {
             aegpo_unrolled.construct();
             
             if (output_cfgs.unrolled) {
-                output_(aegpo_unrolled, "cfg-unrolled-1", F);
-            }
-            
-            aegpo_unrolled.sort(); // EXPERIMENTAL
-
-            if (output_cfgs.unrolled) {
-                output_(aegpo_unrolled, "cfg-unrolled-2", F);
+                output_(aegpo_unrolled, "cfg-unrolled", F);
             }
             
             std::cerr << "cfg-unrolled: " << aegpo_unrolled.size() << " nodes\n";
@@ -182,6 +176,7 @@ struct LCMPass: public llvm::ModulePass {
             client.send_step("cfg-calls", F.getName().str());
             CFG_Calls cfg_calls {spec_depth};
             cfg_calls.construct(aegpo_unrolled);
+            cfg_calls.sort(); // EXPERIMENTAL
             
             if (output_cfgs.calls) {
                 output_(cfg_calls, "cfg-calls", F);
@@ -197,7 +192,6 @@ struct LCMPass: public llvm::ModulePass {
                 output_(cfg_expanded, "cfg-expanded", F);
             }
             std::cerr << "cfg-expanded: " << cfg_expanded.size() << " nodes\n";
-
             
             // DEBUG: show block CFG information
             {
