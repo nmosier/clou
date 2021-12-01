@@ -85,8 +85,6 @@ private:
     std::vector<Node> nodes;
     unsigned nedges = 0;
     
-    unsigned num_specs() const;
-    
     void construct_nodes();
     void construct_exec();
     void construct_arch_po();

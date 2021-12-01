@@ -28,17 +28,14 @@ static std::vector<char *> args = {prog};
 
 std::string output_dir;
 unsigned verbose = 0;
-bool dump_constraints = false;
-bool include_expr_in_constraint_name = false;
 std::unordered_set<std::string> function_names;
 std::unordered_set<unsigned> include_edges;
-unsigned spec_depth = 2;
+unsigned spec_depth = 0;
 unsigned max_parallel = 1;
 unsigned rob_size = 10;
 unsigned max_traceback = 1;
 std::ofstream log_;
 LeakageClass leakage_class = LeakageClass::INVALID;
-std::optional<unsigned> max_transient_nodes;
 AliasMode alias_mode;
 SpectreV1Mode spectre_v1_mode;
 SpectreV4Mode spectre_v4_mode;
@@ -51,7 +48,6 @@ SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
 unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
-std::size_t distinct_limit = 2500;
 bool fence_insertion = false;
 int semid = -1;
 std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
@@ -71,22 +67,15 @@ namespace {
 
 void usage(FILE *f = stderr) {
     const char *s = R"=(usage: [option...]
+Required options:
+--depth, -d <n>      speculation depth
+--output, -o <path>  output directory
+
 Options:
 --help, -h           show help
---output, -o <path>  output directory
---func, -f <name>[,<name>]...
-only examine given functions
+--func, -f <name>[,<name>]...   only examine given functions
 --verbose, -v        verbosity++
---constraints, -c    include constraints in AEG graph output
---expr, -e           include expression string in constraint name (for debugging)
 --edges, -E          include edges in execution graph output
---depth, -d <n>      speculation depth
---speculation-primitives <primitive>[,<primitive>...]
-                     use comma-separated speculation primitives (possibilities: "branch", "addr")
---leakage-sources <source>[,<source>...]
-                     use comman-separated leakage sources (possibilities: "addr-dst", "taint-trans")
---max-transient <num>
-                     set maximum number of transient nodes (default: no limit)
 --aa <flag>[,<flag>...]
                      set alias analysis flags. Accepted flags: "transient", "llvm-only"
 --spectre-v1 <subopts>
@@ -108,7 +97,6 @@ only examine given functions
 --window <uint>      sliding window size
 --log <dir>          redirect stderr to log directory
 --profile            enable profiler
---distinct <limit>   set distinct limit (default: 2500)
 --fence=[<bool>]     perform automatic fence insertion
 --deps=[<vec>]       set custom dependencies (empty means use default)
 )=";
@@ -151,12 +139,6 @@ bool parse_bool_opt(const char *s) {
 void initialize_post() {
     analyzed_functions = SharedDatabaseListSet(util::to_string(output_dir, "/functions.txt"));
     
-#if 0
-    if (partial_executions) {
-        spec_depth = std::numeric_limits<decltype(spec_depth)>::max();
-    }
-#endif
-    
     std::signal(SIGPIPE, SIG_IGN);
     
     if (logdir) {
@@ -189,7 +171,7 @@ int parse_args() {
     initialize();
     
     enum Option {
-        SPECULATION_PRIMITIVES = 256,
+        BEGIN = 256,
         MAX_TRANSIENT,
         AA_FLAGS,
         SPECTRE_V1,
@@ -207,7 +189,6 @@ int parse_args() {
         WINDOW,
         LOG,
         PROFILE,
-        DISTINCT_LIMIT,
         FENCE,
         DEPS,
     };
@@ -216,13 +197,10 @@ int parse_args() {
         {"help", no_argument, nullptr, 'h'},
         {"verbose", no_argument, nullptr, 'v'},
         {"output", required_argument, nullptr, 'o'},
-        {"constraints", no_argument, nullptr, 'c'},
-        {"expr", no_argument, nullptr, 'e'},
         {"function", required_argument, nullptr, 'f'},
         {"edges", required_argument, nullptr, 'E'},
         {"depth", required_argument, nullptr, 'd'},
         {"jobs", required_argument, nullptr, 'j'},
-        {"speculation-primitives", required_argument, nullptr, SPECULATION_PRIMITIVES},
         {"max-transient", required_argument, nullptr, MAX_TRANSIENT},
         {"aa", optional_argument, nullptr, AA_FLAGS},
         {"spectre-v1", optional_argument, nullptr, SPECTRE_V1},
@@ -240,7 +218,6 @@ int parse_args() {
         {"window", required_argument, nullptr, WINDOW},
         {"log", required_argument, nullptr, LOG},
         {"profile", optional_argument, nullptr, PROFILE},
-        {"distinct", required_argument, nullptr, DISTINCT_LIMIT},
         {"parallel", required_argument, nullptr, 'j'},
         {"fence", optional_argument, nullptr, FENCE},
         {"deps", optional_argument, nullptr, DEPS},
@@ -261,14 +238,6 @@ int parse_args() {
                 ++verbose;
                 break;
                 
-            case 'c':
-                dump_constraints = true;
-                break;
-                
-            case 'e':
-                include_expr_in_constraint_name = true;
-                break;
-                
             case 'f':
                 function_names.insert(optarg);
                 break;
@@ -282,6 +251,7 @@ int parse_args() {
             }
                 
             case 'd':
+            case MAX_TRANSIENT:
                 spec_depth = std::stoul(optarg);
                 break;
                 
@@ -303,10 +273,6 @@ int parse_args() {
                 }
                 break;
             }
-                
-            case MAX_TRANSIENT:
-                max_transient_nodes = std::stoul(optarg);
-                break;
                 
             case AA_FLAGS: {
                 alias_mode.clear_all();
@@ -503,11 +469,6 @@ int parse_args() {
                 break;
             }
                 
-            case DISTINCT_LIMIT: {
-                distinct_limit = std::stoul(optarg);
-                break;
-            }
-                
             case FENCE: {
                 fence_insertion = parse_bool_opt(optarg);
                 break;
@@ -552,6 +513,10 @@ const int parse_args_force = parse_args();
 void check_config() {
     if (leakage_class == LeakageClass::INVALID) {
         throw util::resume("warning: missing leakage class option (--spectre-v1, --spectre-v4, ...)");
+    }
+    
+    if (spec_depth == 0) {
+        throw util::resume("error: no speculation depth specified (-d)");
     }
 }
 

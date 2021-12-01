@@ -16,16 +16,12 @@ namespace mon {
 class Client;
 }
 
-struct SpeculationPrimitive;
-
 extern std::string output_dir;
 extern std::unordered_set<std::string> function_names;
 extern unsigned verbose;
 extern unsigned spec_depth;
 extern unsigned max_parallel;
 extern unsigned rob_size;
-extern std::vector<std::unique_ptr<SpeculationPrimitive>> speculation_primitives;
-extern std::optional<unsigned> max_transient_nodes;
 extern unsigned max_traceback;
 extern bool witness_executions;
 extern bool partial_executions;
@@ -36,7 +32,6 @@ extern std::optional<unsigned> stb_size;
 extern bool use_lookahead;
 extern unsigned window_size;
 extern bool profile;
-extern std::size_t distinct_limit;
 extern bool fence_insertion;
 extern int semid;
 
@@ -111,9 +106,6 @@ inline bool g_psf() {
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;
 constexpr unsigned recursive_call_limit = 2;
-
-extern bool dump_constraints;
-extern bool include_expr_in_constraint_name;
 
 constexpr bool simplify_before_checking_for_false_constraints = false;
 constexpr bool should_name_constraints = true;

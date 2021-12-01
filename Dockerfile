@@ -6,7 +6,7 @@ ARG build_type="Debug"
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-suggests --no-install-recommends \
     autoconf automake autotools-dev libtool \
-    clang-12 cmake git libgoogle-perftools-dev libprotobuf-dev llvm-12-dev make pkg-config protobuf-compiler wget \
+    clang-12 cmake git libgoogle-perftools-dev libprotobuf-dev llvm-12-dev make pkg-config protobuf-compiler wget boost \
     apt-utils apt-transport-https ca-certificates gnupg dialog \
     libz3-dev \
     lldb-12 \

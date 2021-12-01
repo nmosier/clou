@@ -7,8 +7,7 @@
 #include "util/functional.h"
 #include "cfg/node.h"
 
-
-CFG::CFG(unsigned num_specs): num_specs(num_specs) {}
+CFG::CFG() {}
 
 CFG::Node& CFG::lookup(NodeRef ref) {
     return nodes.at(ref);
@@ -357,12 +356,8 @@ void CFG::sort() {
         return map.at(in);
     });
     exits = newexits;
-    
-    
-    // DEBUGL: temporary until we remove this member
-    cached_postorder = cached_postorder_r = std::nullopt;
 }
 
-boost::integer_range<NodeRef> CFG::noderefs() const {
+boost::integer_range<NodeRef> CFG::reverse_postorder() const {
     return boost::irange<NodeRef>(0, static_cast<NodeRef>(nodes.size()));
 }

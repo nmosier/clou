@@ -25,7 +25,7 @@ public:
     };
     std::unordered_map<NodeRef, Exec> execs;
     
-    explicit CFG_Expanded(unsigned num_specs): CFG(num_specs) {}
+    explicit CFG_Expanded() {}
     
     void construct(const CFG& in);
     

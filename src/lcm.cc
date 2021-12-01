@@ -174,7 +174,7 @@ struct LCMPass: public llvm::ModulePass {
             std::cerr << "cfg-unrolled: " << aegpo_unrolled.size() << " nodes\n";
             
             client.send_step("cfg-calls", F.getName().str());
-            CFG_Calls cfg_calls {spec_depth};
+            CFG_Calls cfg_calls;
             cfg_calls.construct(aegpo_unrolled);
             cfg_calls.sort(); // EXPERIMENTAL
             
@@ -185,7 +185,7 @@ struct LCMPass: public llvm::ModulePass {
             
             logv(1, "Constructing expanded AEGPO for " << F.getName() << "\n");
             client.send_step("cfg-expanded", F.getName().str());
-            CFG_Expanded cfg_expanded {spec_depth};
+            CFG_Expanded cfg_expanded;
             cfg_expanded.construct(cfg_calls);
             
             if (output_cfgs.expanded) {

@@ -71,7 +71,6 @@ public:
     Rel po;
     NodeRef entry;
     NodeRefSet exits;
-    const unsigned num_specs;
     
     std::vector<Node> nodes;
     
@@ -93,26 +92,15 @@ public:
     void sort();
     
 private:
-    mutable std::optional<NodeRefVec> cached_postorder;
-    mutable std::optional<std::vector<std::size_t>> cached_postorder_r;
-    bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
     void compute_postorder(NodeRefVec& order) const;
 public:
-    CFG(unsigned num_specs);
+    CFG();
     
-    boost::integer_range<NodeRef> noderefs() const;
-    
-    auto reverse_postorder() const {
-        return noderefs();
-    }
-    
-    auto reverse_noderefs() const {
-        const auto x = noderefs();
-        return boost::make_iterator_range(std::make_reverse_iterator(x.end()), std::make_reverse_iterator(x.begin()));
-    }
+    boost::integer_range<NodeRef> reverse_postorder() const;
     
     auto postorder() const {
-        return reverse_noderefs();
+        const auto x = reverse_postorder();
+        return boost::make_iterator_range(std::make_reverse_iterator(x.end()), std::make_reverse_iterator(x.begin()));
     }
     
     std::size_t reverse_postorder_idx(NodeRef ref) const {

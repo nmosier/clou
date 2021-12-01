@@ -169,11 +169,6 @@ NodeRef AEG::add_node(Node&& node) {
     return ref;
 }
 
-unsigned AEG::num_specs() const {
-    return po.num_specs;
-}
-
-
 NodeRef AEG::exit_con(const z3::eval& eval) const {
     for (const NodeRef exit : exits) {
         if (eval(lookup(exit).arch)) {

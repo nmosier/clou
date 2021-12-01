@@ -5,7 +5,6 @@
 class CFG_Unrolled: public CFG {
 public:
     explicit CFG_Unrolled(llvm::Function& F, unsigned num_specs, unsigned num_unrolls):
-    CFG(num_specs),
     F(F),
     num_unrolls(num_unrolls) {
         if (num_unrolls == 0) {

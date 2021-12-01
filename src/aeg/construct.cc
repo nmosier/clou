@@ -537,19 +537,15 @@ void AEG::construct_trans() {
         for (NodeRef ref : node_range()) {
             trans.push_back(lookup(ref).trans);
         }
-        unsigned max = num_specs();
-        if (max_transient_nodes) {
-            max = std::min(max, *max_transient_nodes);
-        }
-        constraints(z3::atmost(trans, max), "trans-limit-max");
+        constraints(z3::atmost(trans, spec_depth), "trans-limit-max");
     }
     
     // calculate min distance to speculation gadget
-    if (max_transient_nodes) {
+    {
         std::unordered_map<NodeRef, unsigned> min_specs_in, min_specs_out;
         for (NodeRef ref : po.reverse_postorder()) {
             const auto& preds = po.po.rev.at(ref);
-            unsigned min = std::transform_reduce(preds.begin(), preds.end(), *max_transient_nodes, [] (unsigned a, unsigned b) -> unsigned {
+            unsigned min = std::transform_reduce(preds.begin(), preds.end(), spec_depth, [] (unsigned a, unsigned b) -> unsigned {
                 return std::min(a, b);
             }, [&] (const NodeRef ref) -> unsigned {
                 return min_specs_out.at(ref);
@@ -557,14 +553,14 @@ void AEG::construct_trans() {
 
             min_specs_in.emplace(ref, min);
             
-            if (min >= *max_transient_nodes) {
+            if (min >= spec_depth) {
                 lookup(ref).trans = context.FALSE;
             }
             
             if (po.may_introduce_speculation(ref)) {
                 min = 0;
             } else {
-                min = std::min(*max_transient_nodes, min + 1);
+                min = std::min(spec_depth, min + 1);
             }
             
             min_specs_out.emplace(ref, min);

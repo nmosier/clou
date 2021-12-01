@@ -405,7 +405,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         {
             trans_window.clear();
             trans_notwindow.clear();
-            aeg.for_each_pred_in_window(transmitter, *max_transient_nodes, [&] (NodeRef ref) {
+            aeg.for_each_pred_in_window(transmitter, spec_depth, [&] (NodeRef ref) {
                 trans_window.insert(ref);
             }, [&] (NodeRef ref) {
                 trans_notwindow.insert(ref);

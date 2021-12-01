@@ -78,10 +78,6 @@ void AEG::dump_graph(std::ostream& os) const {
             ss << "\n";
         }
         
-        if (dump_constraints) {
-            ss << "constraints: " << node.constraints << "\n";
-        }
-        
         dot::emit_kvs(os, "label", ss.str());
         os << ";\n";
     }
