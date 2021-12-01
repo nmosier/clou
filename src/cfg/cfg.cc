@@ -125,57 +125,6 @@ bool CFG::llvm_alias_valid(const Node& a, const Node& b) {
     return llvm_alias_valid(*a.id, *b.id);
 }
 
-const NodeRefVec& CFG::postorder() const {
-    if (!cached_postorder) {
-#if 0
-        NodeRefSet done;
-        cached_postorder = NodeRefVec();
-        postorder_rec(done, *cached_postorder, entry);
-#else
-        cached_postorder = NodeRefVec();
-        compute_postorder(*cached_postorder);
-        cached_postorder_r = NodeRefVec(size());
-        for (unsigned i = 0; i < cached_postorder->size(); ++i) {
-            cached_postorder_r->at(cached_postorder->at(i)) = i;
-        }
-#endif
-    }
-    
-    
-#if 0
-    // DEBUG
-    {
-        NodeRefVec order2;
-        postorder2(order2);
-        if (*cached_postorder != order2) {
-            std::cerr << "reference: " << *cached_postorder << "\n";
-            std::cerr << "actual:    " << order2 << "\n";
-        }
-        assert(*cached_postorder == order2);
-    }
-#endif
-    
-    return *cached_postorder;
-}
-
-bool CFG::postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const {
-    if (done.find(ref) != done.end()) {
-        return true;
-    }
-    
-    bool acc = true;
-    for (NodeRef succ : po.fwd.at(ref)) {
-        acc = acc && postorder_rec(done, order, succ);
-    }
-    
-    if (acc) {
-        done.insert(ref);
-        order.push_back(ref);
-    }
-    
-    return acc;
-}
-
 void CFG::compute_postorder(NodeRefVec& order) const {
     /* ALGORITHM:
      * Maintain a min-heap  */
@@ -412,4 +361,8 @@ void CFG::sort() {
     
     // DEBUGL: temporary until we remove this member
     cached_postorder = cached_postorder_r = std::nullopt;
+}
+
+boost::integer_range<NodeRef> CFG::noderefs() const {
+    return boost::irange<NodeRef>(0, static_cast<NodeRef>(nodes.size()));
 }

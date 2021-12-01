@@ -73,17 +73,36 @@ TransformOutputIterator<T, U, OutputIt> make_transform_output_iterator(OutputIt 
     return TransformOutputIterator<T, U, OutputIt>(out, op);
 }
 
-
-template <typename T>
+template <typename T, T step = 1>
 class RangeIterator {
 public:
+    RangeIterator(const T& val): val(val) {}
+    
     const T& operator*() const { return val; }
     const T *operator->() const { return &val; }
-    RangeIterator& operator++() { ++val; return *this; }
-    RangeIterator& operator++(int) { ++val; return *this; }
-    bool operator==(const RangeIterator& other) const { return val == other.val; }
-    bool operator!=(const RangeIterator& other) const { return !(*this == other); }
-    RangeIterator(const T& val): val(val) {}
+    RangeIterator& operator++() {
+        val = val + step;
+        return *this;
+    }
+    RangeIterator& operator++(int) {
+        val = val + step;
+        return *this;
+    }
+    RangeIterator& operator--() {
+        val = val - step;
+        return *this;
+    }
+    RangeIterator& operator--(int) {
+        val = val - step;
+        return *this;
+    }
+    bool operator==(const RangeIterator& other) const {
+        return val == other.val;
+    }
+    bool operator!=(const RangeIterator& other) const {
+        return !(*this == other);
+    }
+
 private:
     T val;
 };

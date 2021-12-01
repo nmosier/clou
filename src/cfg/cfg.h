@@ -16,11 +16,14 @@
 #include <llvm/Analysis/LoopInfo.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 
+#include <boost/range/irange.hpp>
+
 #include "binrel.h"
 #include "lcm.h"
 #include "util/hash.h"
 #include "noderef.h"
 #include "util/output.h"
+#include "util/iterator.h"
 
 namespace cfg {
 
@@ -95,19 +98,30 @@ private:
     bool postorder_rec(NodeRefSet& done, NodeRefVec& order, NodeRef ref) const;
     void compute_postorder(NodeRefVec& order) const;
 public:
-    std::size_t postorder_idx(NodeRef ref) const {
-        if (!cached_postorder_r) {
-            postorder();
-        }
-        return cached_postorder_r->at(ref);
-    }
-    const NodeRefVec& postorder() const;
-    using ReversePostorderIteratorRange = llvm::iterator_range<NodeRefVec::const_reverse_iterator>;
+    CFG(unsigned num_specs);
+    
+    boost::integer_range<NodeRef> noderefs() const;
+    
     auto reverse_postorder() const {
-        return llvm::iterator_range<NodeRefVec::const_reverse_iterator> {postorder().rbegin(), postorder().rend()};
+        return noderefs();
     }
     
-    CFG(unsigned num_specs);
+    auto reverse_noderefs() const {
+        const auto x = noderefs();
+        return boost::make_iterator_range(std::make_reverse_iterator(x.end()), std::make_reverse_iterator(x.begin()));
+    }
+    
+    auto postorder() const {
+        return reverse_noderefs();
+    }
+    
+    std::size_t reverse_postorder_idx(NodeRef ref) const {
+        return ref;
+    }
+    
+    std::size_t postorder_idx(NodeRef ref) const {
+        return size() - ref - 1;
+    }
     
     bool is_block_entry(NodeRef ref) const;
     bool is_block_exit(NodeRef ref) const;
