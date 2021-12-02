@@ -15,4 +15,11 @@ fi
 
 NAME="$1"
 
-docker run -it --privileged --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined "$NAME"
+HOST_ROOT="$(dirname "$(realpath "$0")")"
+GUEST_ROOT="/lcm"
+
+
+docker run -it --privileged --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined \
+       -v"${HOST_ROOT}/src","${GUEST_ROOT}/src",ro \
+       -v"${HOST_ROOT}/test","${GUEST_ROOT}/test",ro \
+       "$NAME"
