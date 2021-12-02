@@ -49,7 +49,11 @@ private:
     void add_to(Solver& solver, const std::pair<z3::expr, std::string>& p) const {
         std::stringstream ss;
         ss << p.second << ":" << constraint_counter++;
+#if 0
         solver.add(p.first, ss.str().c_str());
+#else
+        solver.add(p.first);
+#endif
     }
 };
 

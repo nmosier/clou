@@ -24,7 +24,7 @@ protected:
 #endif
     
     SpectreV1_Detector(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}
-
+        
 private:
     NodeRefVec loads;
     virtual void run_() override final;
@@ -34,6 +34,14 @@ private:
 
     void run2(NodeRef transmitter, NodeRef access, CheckMode mode);
     
+    
+    std::vector<float> sats;
+    std::vector<float> unknowns;
+    std::vector<float> unsats;
+    
+    virtual std::optional<float> get_timeout() const override;
+    virtual void set_timeout(z3::check_result check_res, float secs) override;
+
 };
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {

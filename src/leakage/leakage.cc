@@ -384,7 +384,7 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     traceback_edge(aeg::Edge::ADDR, load, func, mode);
 }
 
-void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func) {
+void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, bool priv) {
     rf.clear();
     
     {
@@ -445,19 +445,51 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     
     // window size
     {
+        z3::expr_vector src {ctx()}, dst {ctx()};
+        const auto nullify = [&] (const z3::expr& e) {
+            if (e.is_const()) {
+                src.push_back(e);
+                dst.push_back(ctx().bool_val(false));
+            }
+        };
+        
         for (NodeRef ref : exec_notwindow) {
-            vec.push_back(!aeg.lookup(ref).exec());
+            assert(!aeg.exits.contains(ref));
+            const auto& node = aeg.lookup(ref);
+            vec.push_back(!node.exec());
+            nullify(node.arch);
+            nullify(node.trans);
         }
         for (NodeRef ref : trans_notwindow) {
             if (!exec_notwindow.contains(ref)) {
-                vec.push_back(!aeg.lookup(ref).trans);
+                const auto& node = aeg.lookup(ref);
+                vec.push_back(!node.trans);
+                nullify(node.trans);
             }
         }
+        
+#if 1
+        if (priv) {
+            Timer timer;
+            logv(1, "translating to window...");
+            Solver new_solver {ctx()};
+            for (z3::expr old_assertion : solver.assertions()) {
+                new_solver.add(old_assertion.substitute(src, dst).simplify());
+            }
+            solver = new_solver;
+        }
+#endif
+        
     }
     
     logv(0, __FUNCTION__ << ": adding window constraints\n");
     std::optional<Timer> timer_opt = Timer();
-    z3_scope;
+    
+    std::optional<z3::scope<Solver>> scope;
+    if (!priv) {
+        scope.emplace(solver);
+    }
+    
     for (const z3::expr& e : vec) { solver.add(e); }
     logv(0, __FUNCTION__ << ": added window constraints in " << timer_opt->get_str() << "\n");
     timer_opt = std::nullopt;
@@ -501,7 +533,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         Timer timer;
         
         ::close(fds[0]);
-        for_one_transmitter(transmitter, func);
+        for_one_transmitter(transmitter, func, true);
         
         // write leakage to parent
         for (const auto& leakage_pair : leaks) {
@@ -657,6 +689,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
     
     /* make sure that the AEG constraints are satisfiable.
      * NOTE: I should probably move this to AEG::leakage(). */
+#ifndef NDEBUG
     {
         const auto check_res = solver.check();
         if (check_res != z3::sat) {
@@ -665,6 +698,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
             std::abort();
         }
     }
+#endif
     
     if (max_parallel > 1) {
         
@@ -685,7 +719,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
                 client.send(msg);
             }
             
-            for_one_transmitter(transmitter, func);
+            for_one_transmitter(transmitter, func, false);
         }
     }
 }

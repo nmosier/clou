@@ -83,7 +83,7 @@ protected:
     using Mems = std::unordered_map<NodeRef, z3::expr>;
     
     aeg::AEG& aeg;
-    Solver& solver;
+    Solver solver;
     z3::solver alias_solver;
 
     using Actions = std::vector<std::string>;
@@ -125,7 +125,7 @@ protected:
 
     template <class OutputIt>
     OutputIt for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out);
-    void for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func);
+    void for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, bool priv);
     
     auto push_edge(const EdgeRef& edge) {
         return util::push(flag_edges, edge);

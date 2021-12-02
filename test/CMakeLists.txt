@@ -113,6 +113,6 @@ add_test(NAME spectre-v1-xl
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
   -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-xl
   -L $<TARGET_FILE:clou>
-  -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient --stb=56"
-  ${LIBSODIUM}/crypto_core/ed25519/core_h2c.c -I ${LIBSODIUM}/include/sodium
+  -x "--spectre-v1=mode=classic --max-transient=100 --window=200 --fast --aa=transient --stb=56"
+  ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
   )

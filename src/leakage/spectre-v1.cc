@@ -3,6 +3,33 @@
 
 namespace lkg {
 
+std::optional<float> SpectreV1_Detector::get_timeout() const {
+    // return std::nullopt;
+    if (unsats.empty()) {
+        return std::nullopt;
+    } else {
+        return util::average(unsats) * 5;
+    }
+}
+
+void SpectreV1_Detector::set_timeout(z3::check_result check_res, float secs) {
+    switch (check_res) {
+        case z3::sat:
+            sats.push_back(secs);
+            break;
+            
+        case z3::unsat:
+            unsats.push_back(secs);
+            break;
+            
+        case z3::unknown:
+            unknowns.push_back(secs);
+            break;
+            
+        default: std::abort();
+    }
+}
+
 void SpectreV1_Detector::run_() {
     for_each_transmitter([&] (NodeRef transmitter, CheckMode mode) {
         run2(transmitter, transmitter, mode);

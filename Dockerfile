@@ -53,7 +53,8 @@ RUN mkdir -p /tmp/cores
 
 # Build lcm tool
 WORKDIR "$LCM_BUILD"
-COPY . "$LCM_DIR"
+# COPY . "$LCM_DIR"
+COPY CMakeLists.txt $LCM_DIR/
 
 ENV CXXFLAGS -fPIC
 # RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
