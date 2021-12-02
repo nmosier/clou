@@ -1,5 +1,6 @@
 #include <fstream>
 #include <sys/mman.h>
+#include <sys/wait.h>
 
 #include <gperftools/profiler.h>
 
