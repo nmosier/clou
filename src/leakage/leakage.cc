@@ -471,11 +471,12 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
 #if 1
         if (priv) {
             Timer timer;
-            logv(1, "translating to window...");
+            logv(1, "translating to window...\n");
             Solver new_solver {ctx()};
             for (z3::expr old_assertion : solver.assertions()) {
                 new_solver.add(old_assertion.substitute(src, dst).simplify());
             }
+            logv(1, "translated to window in " << timer.get_str() << "\n");
             solver = new_solver;
         }
 #endif
