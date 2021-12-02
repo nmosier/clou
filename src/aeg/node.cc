@@ -48,8 +48,8 @@ const char *to_string(ExecMode mode) {
 }
 
 template <>
-ExecMode from_string<ExecMode>(const std::string& s_) {
-    std::string s = s_;
+ExecMode from_string<ExecMode>(const std::string_view& s_) {
+    std::string s {s_};
     std::transform(s.begin(), s.end(), s.begin(), static_cast<int (*)(int)>(&std::toupper));
     if (s == "ARCH") {
         return ExecMode::ARCH;
@@ -58,7 +58,7 @@ ExecMode from_string<ExecMode>(const std::string& s_) {
     } else if (s == "EXEC") {
         return ExecMode::EXEC;
     } else {
-        throw std::invalid_argument(util::to_string("bad ExecMode string '" + s_ + "'"));
+        throw std::invalid_argument(util::to_string("bad ExecMode string '", s_, "'"));
     }
 }
 

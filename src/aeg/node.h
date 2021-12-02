@@ -17,27 +17,6 @@ struct Inst;
 
 namespace aeg {
 
-
-#if 0
-struct XSAccess {
-    enum Type {
-        XSREAD, XSWRITE
-    };
-    
-    struct All {};
-    
-    using State = std::variant<z3::expr, All>;
-    using Order = std::variant<z3::expr, Entry, Exit>;
-    
-    z3::expr read;
-    z3::expr write;
-    State state;
-    Order order;
-    
-    // XSAccess(const z3::expr& read, const z3::expr& write, const State& state, const Order& order): read(read), write(write), state(state), order(order) {}
-};
-#endif
-
 enum XSAccessType {
     XSREAD, XSWRITE
 };
@@ -47,7 +26,9 @@ enum Access {
 };
 
 template <class T>
-T from_string(const std::string& s) {}
+T from_string(const std::string_view& s) {
+    std::abort();
+}
 
 enum ExecMode: unsigned {ARCH, TRANS, EXEC};
 const char *to_string(ExecMode mode);
@@ -57,7 +38,7 @@ OS& operator<<(OS& os, ExecMode mode) {
    return os << to_string(mode);
 }
 
-template <> ExecMode from_string<ExecMode>(const std::string& s);
+template <> ExecMode from_string<ExecMode>(const std::string_view& s);
 
 struct Node {
     std::unique_ptr<Inst> inst;

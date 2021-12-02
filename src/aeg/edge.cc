@@ -29,10 +29,16 @@ Edge::Kind Edge::kind_fromstr(const std::string& s_) {
     static const std::unordered_map<std::string, Kind> map {
         AEGEDGE_KIND_X(AEGEDGE_KIND_PAIR)
     };
+#undef AEGEDGE_KIND_PAIR
     std::string s;
     std::transform(s_.begin(), s_.end(), std::back_inserter(s), toupper);
-    return map.at(s);
-#undef AEGEDGE_KIND_PAIR
+    
+    const auto it = map.find(s);
+    if (it == map.end()) {
+        throw std::invalid_argument("string is not edge kind");
+    } else {
+        return it->second;
+    }
 }
 
 

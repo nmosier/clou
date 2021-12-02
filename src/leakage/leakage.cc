@@ -690,8 +690,6 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
 }
 
 void Detector::precompute_rf(NodeRef load) {
-    // TODO: only use partial order, not ref2order
-    
     logv(1, "precomputing rf " << load << "\n");
     Timer timer;
     
@@ -711,6 +709,21 @@ void Detector::precompute_rf(NodeRef load) {
         todo.pop_back();
         if (!seen.insert(ref).second) { continue; }
         if (!exec_window.contains(ref)) { continue; }
+        
+        /* check if this store occurs before AllocaInst is allocated */
+        {
+            const auto& load_node = aeg.po.lookup(load);
+            if (const auto *AI = llvm::dyn_cast<llvm::AllocaInst>(aeg.lookup(load).get_memory_address_pair().first)) {
+                const auto ai_refs = load_node.refs.at(AI);
+                if (ai_refs.size() == 1) {
+                    const auto ai_ref = *ai_refs.begin();
+                    if (ref < ai_ref) {
+                        ctr++;
+                        continue; // can't possibly alias
+                    }
+                }
+            }
+        }
         
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.compute_alias(load, ref)) {
@@ -956,6 +969,7 @@ inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
 
 Detector::~Detector() {
     logv(1, "stats: " << check_stats << "\n");
+    logv(1, "SAVED RF COUNTER: " << ctr << "\n");
 }
 
 }

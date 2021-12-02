@@ -160,7 +160,11 @@ private:
     
     
     friend class Detector_;
+    
+    unsigned ctr = 0;
 };
+
+
 
 
 namespace dbg {
