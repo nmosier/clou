@@ -6,7 +6,7 @@ ARG build_type="Debug"
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-suggests --no-install-recommends \
     autoconf automake autotools-dev libtool \
-    clang-12 cmake git libgoogle-perftools-dev libprotobuf-dev llvm-12-dev make pkg-config protobuf-compiler wget boost \
+    clang-12 cmake git libgoogle-perftools-dev libprotobuf-dev llvm-12-dev make pkg-config protobuf-compiler wget libboost-dev \
     apt-utils apt-transport-https ca-certificates gnupg dialog \
     libz3-dev \
     lldb-12 \
@@ -54,6 +54,5 @@ RUN mkdir -p /tmp/cores
 # Build lcm tool
 WORKDIR "$LCM_BUILD"
 COPY . "$LCM_DIR"
-RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
-RUN make -j$(nproc)
-
+# RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
+# RUN make -j$(nproc)
