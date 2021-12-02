@@ -19,11 +19,11 @@ ENV CXX="/usr/bin/clang++-12"
 ENV LCM_DIR="$HOME/lcm"
 ENV LCM_BUILD="$LCM_DIR/build"
 
-# Set up dummy liblcm.so
+# Set up dummy libclou.so
 WORKDIR "$LCM_BUILD"
 RUN mkdir -p src
 RUN echo 'static int i;' > dummy.c
-RUN clang-12 -shared -o src/liblcm.so dummy.c
+RUN clang-12 -shared -o src/libclou.so dummy.c
 RUN rm -f dummy.c
 
 # Configure libsodium
@@ -35,12 +35,12 @@ ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS 
 
 WORKDIR "$LCM_BUILD/libsodium"
 RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
+RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/libclou.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
 RUN mkdir lcm
 
 # WORKDIR "$LCM_BUILD/libsodium-v4"
 # RUN autoreconf -i
-# RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/liblcm.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
+# RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/libclou.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
 # RUN mkdir lcm
 
 # WORKDIR "$LCM_BUILD/libsodium-ll"
