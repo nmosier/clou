@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eu
+
 usage() {
 cat <<EOF
 usage: $0 <directory or file>
@@ -60,13 +62,24 @@ extract_main_runtime() {
     grep -o '^ANALYZED.*$' $1 | cut -d' ' -f2 | head -1
 }
 
-extract_runtime() {
+extract_serial_runtime() {
     T1=$(extract_leakage_runtime $1)
     T2=$(extract_main_runtime $1)
     if [[ "$T1" ]] && [[ "$T2" ]]; then
 	calculate "$T1 + $T2"
     else
 	echo "ERROR: $1 leakage_runtime=$T1, main_runtime=$T2" >&2
+	exit 1
+    fi
+}
+
+extract_parallel_runtime() {
+    T1=$(extract_leakage_runtime $1)
+    T2=$(extract_main_runtime $1)
+    if [ "$T1" -a "$T2" ]; then
+	calculate "$T1 / 64 + $T2"
+    else
+	echo "ERROR $1 leakage_runtime=$T1, main_runtime=$T2" >&2
 	exit 1
     fi
 }
@@ -79,13 +92,14 @@ handle_file() {
     FILE="$1"
     FUNC=$(basename $FILE .log | grep -o '^[^\.]*')
     if ! check_should_analyze $FILE; then return; fi
-    RUNTIME=$(extract_runtime $FILE)
+    SERIAL_RUNTIME=$(extract_serial_runtime $FILE)
+    PARALLEL_RUNTIME=$(extract_parallel_runtime $FILE)
     NODES=$(extract_cfg_nodes $FILE)
 
-    if [[ "$RUNTIME" ]] && [[ "$NODES" ]]; then
-	echo $FUNC $NODES $RUNTIME
+    if [ "$SERIAL_RUNTIME" -a "$NODES" -a "$PARALLEL_RUNTIME" ]; then
+	echo $FUNC $NODES $SERIAL_RUNTIME $PARALLEL_RUNTIME
     else
-	echo "ERROR: $FUNC"
+	echo "ERROR: $FUNC nodes=$NODES serial=$SERIAL_RUNTIME parallel=$PARALLEL_RUNTIME"
     fi
 }
 
