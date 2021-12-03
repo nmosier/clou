@@ -131,6 +131,7 @@ protected:
         return util::push(flag_edges, edge);
     }
     
+    NodeRefSet reachable_r(const NodeRefSet& window, NodeRef ref) const;
     void precompute_rf(NodeRef load);
     
     using Sources = std::unordered_map<NodeRef, z3::expr>;

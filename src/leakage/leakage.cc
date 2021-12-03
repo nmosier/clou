@@ -734,6 +734,19 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
     }
 }
 
+NodeRefSet Detector::reachable_r(const NodeRefSet& window, NodeRef init) const {
+    NodeRefVec todo = {init};
+    NodeRefSet seen;
+    while (!todo.empty()) {
+        const NodeRef ref = todo.back();
+        todo.pop_back();
+        if (!window.contains(ref)) { continue; }
+        if (!seen.insert(ref).second) { continue; }
+        util::copy(aeg.po.po.rev.at(ref), std::back_inserter(todo));
+    }
+    return seen;
+}
+
 void Detector::precompute_rf(NodeRef load) {
     logv(1, "precomputing rf " << load << "\n");
     Timer timer;
@@ -745,6 +758,9 @@ void Detector::precompute_rf(NodeRef load) {
     if (!node.may_read()) { return; }
     
     assert(alias_mode.transient);
+    
+    const NodeRefSet window = reachable_r(exec_window, load);
+    const auto mems = get_mems1(window);
     
     NodeRefVec todo;
     util::copy(aeg.po.po.rev.at(load), std::back_inserter(todo));
@@ -799,7 +815,8 @@ void Detector::precompute_rf(NodeRef load) {
                 case llvm::MayAlias:
                 case llvm::MustAlias:
                     /* necessary condition: the two pointers must alias */
-                    out.emplace(ref, mem(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
+                    out.emplace(ref, mems.at(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
+                    // out.emplace(ref, mem(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
                     break;
                     
                 default: std::abort();

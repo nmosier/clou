@@ -33,6 +33,8 @@ z3::expr min(const z3::expr_vector& v) {
 z3::expr atmost2(const z3::expr_vector& exprs, unsigned count) {
     if (exprs.size() <= count) {
         return exprs.ctx().bool_val(true);
+    } else if (exprs.size() - 1 == count) {
+        return !z3::mk_and(exprs);
     } else {
         return z3::atmost(exprs, count);
     }
