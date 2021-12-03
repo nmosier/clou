@@ -747,6 +747,7 @@ NodeRefSet Detector::reachable_r(const NodeRefSet& window, NodeRef init) const {
     return seen;
 }
 
+#if 0
 std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
     const auto& load_node = aeg.lookup(load);
     std::unordered_map<NodeRef, z3::expr> nos, yesses;
@@ -777,6 +778,25 @@ std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, 
     
     return yesses;
 }
+#else
+std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
+    const auto& load_node = aeg.lookup(load);
+    z3::expr no = ctx().bool_val(true);
+    std::unordered_map<NodeRef, z3::expr> yesses;
+    for (NodeRef store : aeg.po.postorder()) {
+        if (!window.contains(store)) { continue; }
+        const auto& store_node = aeg.lookup(store);
+        if (!store_node.may_write()) { continue; }
+        
+        const z3::expr write = store_node.exec() && store_node.write && store_node.same_addr(load_node);
+        yesses.emplace(store, no && write);
+        
+        no = no && !write;
+    }
+    
+    return yesses;
+}
+#endif
 
 void Detector::precompute_rf(NodeRef load) {
     logv(1, "precomputing rf " << load << "\n");
