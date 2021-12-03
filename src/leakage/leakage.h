@@ -106,8 +106,8 @@ protected:
     
     /** Trace back load */
     
-    void traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
-    void traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    void traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    void traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
     using Deps = std::vector<aeg::Edge::Kind>;

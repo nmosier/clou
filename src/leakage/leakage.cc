@@ -301,7 +301,7 @@ bool Detector::lookahead(std::function<void ()> thunk) {
     }
 }
 
-void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
+void Detector::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     // Sources new_sources;
     const auto& stores = rf_sources(load);
     if (mode == CheckMode::SLOW) {
@@ -309,10 +309,20 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
     }
     for (const auto& store_pair : stores) {
         const NodeRef store = store_pair.first;
-#if 1
+
         assert(exec_window.contains(load));
-        if (!exec_window.contains(store)) { continue; }
-#endif
+        
+        switch (exec_mode) {
+            case aeg::ExecMode::ARCH:
+            case aeg::ExecMode::EXEC:
+                if (!exec_window.contains(store)) { continue; }
+                break;
+            case aeg::ExecMode::TRANS:
+                if (!trans_window.contains(store)) { continue; }
+                break;
+            default: std::abort();
+        }
+        
         if (mode == CheckMode::SLOW && use_lookahead && !lookahead([&] () {
             func(store, CheckMode::FAST);
         })) {
@@ -326,6 +336,7 @@ void Detector::traceback_rf(NodeRef load, std::function<void (NodeRef, CheckMode
         if (mode == CheckMode::SLOW) {
             const z3::expr& cond = store_pair.second;
             solver.add(cond, desc.c_str());
+            solver.add(aeg.lookup(store).exec(exec_mode));
         }
         
         const auto action = util::push(actions, desc);
@@ -356,7 +367,7 @@ void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<v
     }
 }
 
-void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
+void Detector::traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     const aeg::Node& load_node = aeg.lookup(load);
     
     if (traceback_depth == max_traceback) {
@@ -376,7 +387,8 @@ void Detector::traceback(NodeRef load, std::function<void (NodeRef, CheckMode)> 
     const auto inc_depth = util::inc_scope(traceback_depth);
     
     // traceback via rf.data
-    traceback_rf(load, [&] (const NodeRef store, CheckMode mode) {
+    // TODO: This shouldn't necessarily always be TRANS.
+    traceback_rf(load, exec_mode, [&] (const NodeRef store, CheckMode mode) {
         traceback_edge(aeg::Edge::DATA, store, func, mode);
     }, mode);
     
@@ -1036,7 +1048,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
             if (mode == CheckMode::SLOW) {
                 logv(1, __FUNCTION__ << ": committed " << desc << "\n");
             }
-
+            
             traceback_deps_rec(std::next(it), end, vec, to_ref, func, mode);
         }
     }
@@ -1048,7 +1060,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
      */
     assert(!vec.empty());
     if (from_ref != vec.front()) {
-        traceback(from_ref, [&] (NodeRef to_ref, CheckMode mode) {
+        traceback(from_ref, aeg::ExecMode::TRANS, [&] (NodeRef to_ref, CheckMode mode) {
             if (mode == CheckMode::SLOW) {
                 logv(1, "traceback " << to_ref << "-TB->" << from_ref << "\n");
             }

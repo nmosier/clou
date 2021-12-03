@@ -70,7 +70,7 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         }
     }
     
-    traceback_rf(load, [&] (NodeRef bypassed_store, CheckMode mode) {
+    traceback_rf(load, aeg::ExecMode::ARCH, [&] (NodeRef bypassed_store, CheckMode mode) {
         // store can't be bypassed if older than stb_size
         if (bypassed_store == aeg.entry) { return; }
         
@@ -100,7 +100,8 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
     
 #if ADDITONAL_TRACEBACK
     {
-        traceback(load, [&] (NodeRef load, CheckMode mode) {
+        // TODO: not sure if this is right
+        traceback(load, aeg::ExecMode::ARCH, [&] (NodeRef load, CheckMode mode) {
             NodeRefVec vec_ = vec;
             vec_.push_back(load);
             if (mode == CheckMode::SLOW) {
