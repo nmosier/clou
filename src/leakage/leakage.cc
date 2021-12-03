@@ -747,6 +747,37 @@ NodeRefSet Detector::reachable_r(const NodeRefSet& window, NodeRef init) const {
     return seen;
 }
 
+std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
+    const auto& load_node = aeg.lookup(load);
+    std::unordered_map<NodeRef, z3::expr> nos, yesses;
+    for (NodeRef store : aeg.po.postorder()) {
+        if (!window.contains(store)) { continue; }
+        const auto& store_node = aeg.lookup(store);
+        
+        /* union incomign no's */
+        z3::expr_vector succ_nos {ctx()};
+        for (const NodeRef succ : aeg.po.po.fwd.at(store)) {
+            if (window.contains(succ)) {
+                succ_nos.push_back(nos.at(succ));
+            }
+        }
+        
+        z3::expr no = z3::mk_and(succ_nos);
+        z3::expr yes = no;
+        if (store_node.may_write()) {
+            const z3::expr same_addr = store_node.same_addr(load_node);
+            const z3::expr write = store_node.exec() && store_node.write && same_addr;
+            no = no && !write;
+            yes = yes && write;
+            yesses.emplace(store, yes);
+        }
+        
+        nos.emplace(store, no);
+    }
+    
+    return yesses;
+}
+
 void Detector::precompute_rf(NodeRef load) {
     logv(1, "precomputing rf " << load << "\n");
     Timer timer;
@@ -760,23 +791,32 @@ void Detector::precompute_rf(NodeRef load) {
     assert(alias_mode.transient);
     
     const NodeRefSet window = reachable_r(exec_window, load);
-    const auto mems = get_mems1(window);
+    const auto mem = precompute_rf_one(load, window);
     
     for (const NodeRef ref : window) {
+        const auto& store_node = aeg.lookup(ref);
+        if (!store_node.may_write()) { continue; }
+        
         /* make sure that types agree */
         {
             /* either both pointers or neither pointers */
             const auto& load_node = aeg.lookup(load);
-            const auto& store_node = aeg.lookup(ref);
             const auto *load_op = load_node.get_memory_address_pair().first;
             if (const auto *store_inst = dynamic_cast<const MemoryInst *>(store_node.inst.get())) {
                 const auto *store_op = store_inst->get_memory_operand();
                 
-                const auto *load_type = load_op->getType()->getPointerElementType();
+                auto *load_type = load_op->getType()->getPointerElementType();
                 assert(load_type == load_node.inst->get_inst()->getType());
-                const auto *store_type = store_op->getType()->getPointerElementType();
+                auto *store_type = store_op->getType()->getPointerElementType();
                 
                 if (load_type->isPointerTy() != store_type->isPointerTy()) {
+                    ++ctr;
+                    continue;
+                }
+                
+                /* check if type sizes differ */
+                llvm::DataLayout DL(store_inst->get_inst()->getModule());
+                if (DL.getTypeSizeInBits(load_type) != DL.getTypeSizeInBits(store_type)) {
                     ++ctr;
                     continue;
                 }
@@ -807,8 +847,9 @@ void Detector::precompute_rf(NodeRef load) {
                 case llvm::MayAlias:
                 case llvm::MustAlias:
                     /* necessary condition: the two pointers must alias */
-                    out.emplace(ref, mems.at(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
+                    //out.emplace(ref, mems.at(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
                     // out.emplace(ref, mem(load)[node.get_memory_address()] == ctx().int_val((unsigned) ref));
+                    out.emplace(ref, mem.at(ref));
                     break;
                     
                 default: std::abort();

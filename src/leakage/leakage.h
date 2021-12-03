@@ -132,6 +132,7 @@ protected:
     }
     
     NodeRefSet reachable_r(const NodeRefSet& window, NodeRef ref) const;
+    std::unordered_map<NodeRef, z3::expr> precompute_rf_one(NodeRef load, const NodeRefSet& window);
     void precompute_rf(NodeRef load);
     
     using Sources = std::unordered_map<NodeRef, z3::expr>;
