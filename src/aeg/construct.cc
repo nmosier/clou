@@ -379,68 +379,6 @@ void AEG::construct_trans() {
 
 } 
 
-#if 0
-void AEG::construct_po() {
-    logv(3, __FUNCTION__ << ": adding edges\n");
-    
-    for (const NodeRef src : node_range()) {
-        Node& src_node = lookup(src);
-        
-        // add successor po edges
-        z3::expr_vector enables {context.context};
-        for (const NodeRef dst : po.po.fwd.at(src)) {
-            Edge edge {
-                Edge::PO,
-                src_node.arch && lookup(dst).arch
-            };
-            const z3::expr enable = context.make_bool(util::to_string("po-enable-", src, "-", dst));
-            edge.exists = enable && edge.exists;
-            add_unidir_edge(src, dst, edge);
-            enables.push_back(enable);
-        }
-        
-        src_node.constraints(z3::atmost2(enables, 1), util::to_string("po-enable-one-", src).c_str());
-    }
-    
-    const auto edge_exists = [&] (const auto& edge) -> z3::expr {
-        return edge->exists;
-    };
-    
-    const auto count_func = partial_executions ? &z3::atmost : &z3::exactly;
-    
-    // add 'exactly one successor' constraint
-    for (const NodeRef src : node_range()) {
-        if (exits.find(src) != exits.end()) { continue; }
-        const auto edges = get_edges(Direction::OUT, src, Edge::PO);
-        const z3::expr_vector vec = z3::transform(edges, edge_exists);
-        Node& src_node = lookup(src);
-        src_node.constraints(z3::implies(src_node.arch, count_func(vec, 1)), "po-succ");
-    }
-    
-    // add 'exactly one predecessor' constraint
-    for (const NodeRef dst : node_range()) {
-        if (dst == entry) { continue; }
-        if (partial_executions && exits.find(dst) != exits.end()) { continue; }
-        const auto edges = get_edges(Direction::IN, dst, Edge::PO);
-        const z3::expr_vector vec = z3::transform(edges, edge_exists);
-        Node& dst_node = lookup(dst);
-        dst_node.constraints(z3::implies(dst_node.arch, count_func(vec, 1)), "po-pred");
-    }
-    
-    if (partial_executions) {
-        // only one cold start (predecessor with no po)
-        const z3::expr_vector arch_intros = z3::transform(node_range(), [&] (const NodeRef ref) -> z3::expr {
-            if (ref == entry) { return context.FALSE; }
-            if (exits.find(ref) != exits.end()) { return context.FALSE; }
-            const auto pos = get_edges(Direction::IN, ref, Edge::PO);
-            const auto vec = z3::transform(context.context, pos, edge_exists);
-            return !z3::implies(lookup(ref).arch, z3::mk_or(vec));
-        });
-        constraints(z3::exactly(arch_intros, 1), "exactly-1-cold-po-start");
-    }
-}
-#endif
-
 /// depends on construct_po()
 void AEG::construct_tfo() {
     std::size_t nedges = 0;

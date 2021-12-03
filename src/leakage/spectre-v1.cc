@@ -6,7 +6,7 @@ namespace lkg {
 std::optional<float> SpectreV1_Detector::get_timeout() const {
     // return std::nullopt;
     if (unsats.empty()) {
-        return 5 * 60.f;
+        return 1 * 60.f;
     } else {
         return util::average(unsats) * 5;
     }
@@ -60,7 +60,7 @@ void SpectreV1_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     NodeRefVec vec = vec_;
     
-    /* check for leakage */    
+    /* check for leakage */
     if (mode == CheckMode::SLOW) {
         switch (solver_check(false)) {
             case z3::sat:

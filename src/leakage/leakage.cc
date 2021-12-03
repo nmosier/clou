@@ -469,7 +469,17 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             }
         }
         
-#if 1
+        /* invalidate edges too */
+        {
+            aeg.for_each_edge([&] (NodeRef src, NodeRef dst, const aeg::Edge& e) {
+                if (!(exec_window.contains(src) && exec_window.contains(dst))) {
+                    // invalidate edge
+                    vec.push_back(!e.exists);
+                    nullify(e.exists);
+                }
+            });
+        }
+        
         if (priv) {
             Timer timer;
             logv(1, "translating to window...\n");
@@ -480,7 +490,6 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             logv(1, "translated to window in " << timer.get_str() << "\n");
             solver = new_solver;
         }
-#endif
         
     }
     
@@ -755,9 +764,13 @@ void Detector::precompute_rf(NodeRef load) {
             const auto *load_op = load_node.get_memory_address_pair().first;
             if (const auto *store_inst = dynamic_cast<const MemoryInst *>(store_node.inst.get())) {
                 const auto *store_op = store_inst->get_memory_operand();
-                if (load_op->getType()->getPointerElementType()->isPointerTy() != store_op->getType()->getPointerElementType()->isPointerTy()) {
+                
+                const auto *load_type = load_op->getType()->getPointerElementType();
+                assert(load_type == load_node.inst->get_inst()->getType());
+                const auto *store_type = store_op->getType()->getPointerElementType();
+                
+                if (load_type->isPointerTy() != store_type->isPointerTy()) {
                     ++ctr;
-                    std::cerr << "HERE2\n";
                     continue;
                 }
             }
