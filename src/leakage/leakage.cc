@@ -762,15 +762,7 @@ void Detector::precompute_rf(NodeRef load) {
     const NodeRefSet window = reachable_r(exec_window, load);
     const auto mems = get_mems1(window);
     
-    NodeRefVec todo;
-    util::copy(aeg.po.po.rev.at(load), std::back_inserter(todo));
-    NodeRefSet seen;
-    while (!todo.empty()) {
-        const NodeRef ref = todo.back();
-        todo.pop_back();
-        if (!seen.insert(ref).second) { continue; }
-        if (!exec_window.contains(ref)) { continue; }
-        
+    for (const NodeRef ref : window) {
         /* make sure that types agree */
         {
             /* either both pointers or neither pointers */
@@ -822,8 +814,6 @@ void Detector::precompute_rf(NodeRef load) {
                 default: std::abort();
             }
         }
-        
-        util::copy(aeg.po.po.rev.at(ref), std::back_inserter(todo));
     }
     
 #if 0
