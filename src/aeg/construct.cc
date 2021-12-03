@@ -93,6 +93,11 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     if (partial_executions || stb_size) {
         compute_min_store_paths();
     }
+    
+    
+    // DEBUG: print histogram
+    using ::operator<<;
+    std::cerr << "EXACTLY HIST: " << z3::hist << "\n";
 }
 
 void AEG::construct_nodes() {

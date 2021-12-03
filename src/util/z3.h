@@ -36,6 +36,9 @@ z3::expr atmost2(const z3::expr_vector& exprs, unsigned count);
 z3::expr atleast2(const z3::expr_vector& exprs, unsigned count);
 z3::expr exactly(const z3::expr_vector& exprs, unsigned count);
 
+// DEBUG
+extern std::unordered_map<std::pair<unsigned, unsigned>, unsigned> hist;
+
 /// NOTE: bounds are inclusive
 // TODO: delete?
 inline z3::expr atleastmost(const z3::expr_vector& exprs, unsigned lower, unsigned upper) {

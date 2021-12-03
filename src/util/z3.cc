@@ -1,6 +1,7 @@
 #include <functional>
 
 #include "z3.h"
+#include "util/hash.h"
 #include "util/functional.h"
 
 namespace z3 {
@@ -49,10 +50,27 @@ z3::expr atleast2(const z3::expr_vector& exprs, unsigned count) {
     }
 }
 
+std::unordered_map<std::pair<unsigned, unsigned>, unsigned> hist;
 z3::expr exactly(const z3::expr_vector& exprs, unsigned count) {
-    const z3::expr lower = z3::atleast2(exprs, count);
-    const z3::expr upper = z3::atmost2(exprs, count);
-    return lower && upper;
+#if 0
+    hist[std::make_pair(exprs.size(), count)]++;
+#endif
+    
+    z3::context& ctx = exprs.ctx();
+    
+    if (exprs.size() < count) {
+        return ctx.bool_val(false);
+    } else if (exprs.size() == 1 && count == 1) {
+        return exprs.back();
+    } else if (exprs.size() == 2 && count == 1) {
+        return exprs[0] != exprs[1];
+    } else if (exprs.size() == count) {
+        return z3::mk_and(exprs);
+    } else {
+        const z3::expr lower = z3::atleast2(exprs, count);
+        const z3::expr upper = z3::atmost2(exprs, count);
+        return lower && upper;
+    }
 }
 
 z3::solver duplicate(const z3::solver& orig) {
