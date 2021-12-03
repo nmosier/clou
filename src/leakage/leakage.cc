@@ -747,6 +747,24 @@ void Detector::precompute_rf(NodeRef load) {
         if (!seen.insert(ref).second) { continue; }
         if (!exec_window.contains(ref)) { continue; }
         
+        /* make sure that types agree */
+        {
+            /* either both pointers or neither pointers */
+            const auto& load_node = aeg.lookup(load);
+            const auto& store_node = aeg.lookup(ref);
+            const auto *load_op = load_node.get_memory_address_pair().first;
+            if (const auto *store_inst = dynamic_cast<const MemoryInst *>(store_node.inst.get())) {
+                const auto *store_op = store_inst->get_memory_operand();
+                if (load_op->getType()->getPointerElementType()->isPointerTy() != store_op->getType()->getPointerElementType()->isPointerTy()) {
+                    ++ctr;
+                    std::cerr << "HERE2\n";
+                    continue;
+                }
+            }
+        }
+        
+        
+        
         /* check if this store occurs before AllocaInst is allocated */
         {
             const auto& load_node = aeg.po.lookup(load);
