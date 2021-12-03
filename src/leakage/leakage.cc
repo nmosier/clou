@@ -474,7 +474,6 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             aeg.for_each_edge([&] (NodeRef src, NodeRef dst, const aeg::Edge& e) {
                 if (!(exec_window.contains(src) && exec_window.contains(dst))) {
                     // invalidate edge
-                    vec.push_back(!e.exists);
                     nullify(e.exists);
                 }
             });
