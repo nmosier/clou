@@ -445,11 +445,12 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     
     // window size
     {
-        z3::expr_vector src {ctx()}, dst {ctx()};
+        z3::model window_model {ctx()};
+        z3::expr F = ctx().bool_val(false);
         const auto nullify = [&] (const z3::expr& e) {
             if (e.is_const()) {
-                src.push_back(e);
-                dst.push_back(ctx().bool_val(false));
+                z3::func_decl decl = e.decl();
+                window_model.add_const_interp(decl, F);
             }
         };
         
@@ -474,7 +475,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             logv(1, "translating to window...\n");
             Solver new_solver {ctx()};
             for (z3::expr old_assertion : solver.assertions()) {
-                new_solver.add(old_assertion.substitute(src, dst).simplify());
+                new_solver.add(window_model.eval(old_assertion));
             }
             logv(1, "translated to window in " << timer.get_str() << "\n");
             solver = new_solver;
