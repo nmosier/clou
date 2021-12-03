@@ -50,6 +50,7 @@ unsigned window_size = std::numeric_limits<unsigned>::max();
 bool profile = false;
 bool fence_insertion = false;
 int semid = -1;
+int shmid = -1;
 std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
 
 namespace {

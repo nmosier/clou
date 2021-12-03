@@ -147,7 +147,7 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
 
 void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode) {
     if (mode == CheckMode::SLOW) {
-        switch (solver.check()) {
+        switch (solver_check(false)) {
             case z3::sat: {
                 const auto edge = push_edge(EdgeRef {
                     .src = sourced_store,

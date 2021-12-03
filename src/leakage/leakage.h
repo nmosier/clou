@@ -62,7 +62,7 @@ protected:
     virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
     virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
     
-    z3::check_result solver_check();
+    z3::check_result solver_check(bool allow_unknown = true);
     
     // TODO: Deal with this in a better way?
     virtual bool disallow_stale_alloca_rfs() const noexcept { return true; }

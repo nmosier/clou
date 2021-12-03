@@ -42,6 +42,8 @@ z3::expr atleast2(const z3::expr_vector& exprs, unsigned count) {
         return exprs.ctx().bool_val(false);
     } else if (exprs.size() == count) {
         return z3::mk_and(exprs);
+    } else if (count == 1) {
+        return z3::mk_or(exprs);
     } else {
         return z3::atleast(exprs, count);
     }

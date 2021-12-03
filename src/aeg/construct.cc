@@ -352,52 +352,6 @@ void AEG::construct_arch() {
     std::cerr << "ARCH EXIT: " << lookup(*exits.begin()).arch << "\n";
 }
 
-#if 0
-void AEG::construct_arch_po() {
-    /* entry */
-    lookup(entry).arch = context.context.bool_val(true);
-    
-    /* exits */
-    {
-        z3::expr_vector exit_archs {context.context};
-        for (NodeRef ref : exits) {
-            z3::expr arch = context.make_bool("arch");
-            lookup(ref).arch = arch;
-            exit_archs.push_back(arch);
-        }
-        constraints(z3::exactly(exit_archs, 1), "one-exit-arch");
-    }
-    
-    /* other */
-    z3::expr_vector arch_enables {context.context};
-    for (NodeRef ref : po.reverse_postorder()) {
-        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
-        
-        Node& node = lookup(ref);
-        node.arch = context.make_bool("arch");
-        
-        /* collect incoming po edges */
-        const auto po_ins = z3::transform(context.context, get_edges(Direction::IN, ref, Edge::PO), [] (const auto& e) -> z3::expr {
-            return e->exists;
-        });
-        node.constraints(z3::atmost2(po_ins, 1), "po-in-limit");
-        arch_enables.push_back(node.arch && !z3::mk_or(po_ins)); // cold start
-        
-        /* create outgoing po edges */
-        // NOTE: Only if no arch successors.
-        z3::expr_vector po_outs {context.context};
-        for (NodeRef dst : po.po.fwd.at(ref)) {
-            const z3::expr exists = add_optional_edge(ref, dst, Edge {
-                Edge::PO,
-                node.arch
-            }, "po");
-            po_outs.push_back(exists);
-        }
-        node.constraints(z3::atmost2(po_outs, 1), "po-out-limit");
-    }
-}
-#endif
-
 void AEG::construct_trans() {
     // NOTE: depends on results of construct_tfo()
     
@@ -425,23 +379,10 @@ void AEG::construct_trans() {
 
 } 
 
+#if 0
 void AEG::construct_po() {
     logv(3, __FUNCTION__ << ": adding edges\n");
     
-#if 0
-    std::size_t nedges = 0;
-    for (const NodeRef src : node_range()) {
-        Node& src_node = lookup(src);
-        
-        // add successor po edges
-        for (const NodeRef dst : po.po.fwd.at(src)) {
-            std::stringstream ss;
-            ss << "po-" << src << "-" << dst;
-            const z3::expr exists = add_optional_edge(src, dst, Edge {Edge::PO, src_node.arch && lookup(dst).arch}, ss.str());
-            ++nedges;
-        }
-    }
-#else
     for (const NodeRef src : node_range()) {
         Node& src_node = lookup(src);
         
@@ -460,7 +401,6 @@ void AEG::construct_po() {
         
         src_node.constraints(z3::atmost2(enables, 1), util::to_string("po-enable-one-", src).c_str());
     }
-#endif
     
     const auto edge_exists = [&] (const auto& edge) -> z3::expr {
         return edge->exists;
@@ -499,6 +439,7 @@ void AEG::construct_po() {
         constraints(z3::exactly(arch_intros, 1), "exactly-1-cold-po-start");
     }
 }
+#endif
 
 /// depends on construct_po()
 void AEG::construct_tfo() {
@@ -551,10 +492,6 @@ void AEG::construct_tfo() {
             const auto no_arch_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
                 return p.second && lookup(p.first).arch;
             }));
-#if 0
-            Node& node = lookup(ref);
-            node.constraints(z3::implies(node.arch && some_trans_succ, no_arch_succ), "speculation-arch-no-po");
-#endif
         }
     }
     

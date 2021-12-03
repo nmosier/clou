@@ -6,7 +6,7 @@ namespace lkg {
 std::optional<float> SpectreV1_Detector::get_timeout() const {
     // return std::nullopt;
     if (unsats.empty()) {
-        return std::nullopt;
+        return 5 * 60.f;
     } else {
         return util::average(unsats) * 5;
     }
@@ -49,22 +49,6 @@ Detector::DepVec SpectreV1_Control_Detector::deps() const {
 void SpectreV1_Detector::run2(NodeRef transmitter, NodeRef access, CheckMode mode) {
     traceback_deps(transmitter, [&] (NodeRefVec vec, CheckMode mode) {
         run_postdeps(vec, mode);
-#if 0
-        z3_eval;
-        
-        using output::operator<<;
-        logv(1, "spectre-v1 leak found: " << vec << "\n");
-        
-        const NodeRef universal_transmitter = vec.front();
-        
-        std::reverse(vec.begin(), vec.end());
-        
-        output_execution(Leakage {
-            .vec = vec,
-            .transmitter = universal_transmitter
-        });
-#endif
-        
     }, mode);
 }
 
@@ -76,18 +60,9 @@ void SpectreV1_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     NodeRefVec vec = vec_;
     
-    /* check for leakage */
-    
-#if 0
+    /* check for leakage */    
     if (mode == CheckMode::SLOW) {
-        assert(vec.size() >= 3);
-        const NodeRef data_transmitter = vec.at(1);
-        solver.add(aeg.lookup(data_transmitter).trans, "data_transmitter.trans");
-    }
-#endif
-    
-    if (mode == CheckMode::SLOW) {
-        switch (solver.check()) {
+        switch (solver_check(false)) {
             case z3::sat:
                 break;
                 

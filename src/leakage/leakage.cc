@@ -978,18 +978,23 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
 }
 
 
-z3::check_result Detector::solver_check() {
+z3::check_result Detector::solver_check(bool allow_unknown) {
     z3::check_result res;
     Stopwatch timer;
     timer.start();
-    if (const auto timeout = get_timeout()) {
+    
+    const auto timeout = get_timeout();
+    if (allow_unknown && timeout) {
         const unsigned timeout2 = static_cast<unsigned>(std::ceil(*timeout * 1000));
         logv(2, __FUNCTION__ << ": checking with time limit " << timeout2 << "ms\n");
         res = z3::check_timeout(solver, timeout2);
     } else {
-        logv(2, __FUNCTION__ << ": checking with no time limit\n");
-        res = solver.check();
+        do {
+            logv(2, __FUNCTION__ << ": checking with no time limit\n");
+            res = solver.check();
+        } while (res == z3::unknown && solver.reason_unknown() == "canceled");
     }
+    
     timer.stop();
     const auto duration = timer.get();
     if (res != z3::unknown) {
