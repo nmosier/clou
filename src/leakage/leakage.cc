@@ -546,6 +546,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             if (fcntl(fds[1], F_SETPIPE_SZ, size) < 0) {
                 throw std::system_error(errno, std::generic_category(), "fcntl(F_SETPIPE_SZ)");
             }
+            logv(1, "successfully set pipe size to " << size << " bytes\n");
         }
         fclose(f);
     }
