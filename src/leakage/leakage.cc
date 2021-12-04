@@ -1,6 +1,8 @@
 #include <fstream>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+#include <system_error>
 
 #include <gperftools/profiler.h>
 
@@ -536,6 +538,18 @@ template <class OutputIt>
 OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out) {
     int fds[2];
     io::pipe(fds);
+    
+#ifdef __linux__
+    if (FILE *f = fopen("/proc/sys/fs/pipe-max-size", "r")) {
+        unsigned size;
+        if (fscanf(f, "%u", &size) == 1) {
+            if (fcntl(fds[1], F_SETPIPE_SZ, size) < 0) {
+                throw std::system_error(errno, std::generic_category(), "fcntl(F_SETPIPE_SZ)");
+            }
+        }
+        fclose(f);
+    }
+#endif
     
     ::signal(SIGSEGV, SIG_DFL);
     ::signal(SIGABRT, SIG_DFL);
