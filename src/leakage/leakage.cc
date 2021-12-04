@@ -574,6 +574,9 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         std::abort();
     } else if (pid == 0) {
         
+        leaks.clear();
+        transmitters.clear();
+        
         if (semid >= 0) {
             logv(1, "waiting on semaphore...\n");
             semutil::acquire(semid);
@@ -586,6 +589,11 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         ::close(fds[0]);
 #endif
         for_one_transmitter(transmitter, func, true);
+        
+        if (fast_mode && leaks.size() > 1) {
+            std::cerr << "ERROR: num leaks: " << leaks.size() << "\n";
+            std::abort();
+        }
         
         // write leakage to parent
         for (const auto& leakage_pair : leaks) {
