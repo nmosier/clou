@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
+#include <sys/stat.h>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -138,6 +139,13 @@ bool parse_bool_opt(const char *s) {
 }
 
 void initialize_post() {
+    /* initialize output directory */
+    if ((::mkdir(output_dir.c_str(), 0777) < 0 && errno != EEXIST) ||
+        (::mkdir((output_dir + "/logs").c_str(), 0777) < 0 && errno != EEXIST)||
+        (::mkdir((output_dir + "/tmp").c_str(), 0777) < 0 && errno != EEXIST)) {
+        throw std::system_error(errno, std::generic_category(), "mkdir");
+    }
+    
     analyzed_functions = SharedDatabaseListSet(util::to_string(output_dir, "/functions.txt"));
     
     std::signal(SIGPIPE, SIG_IGN);

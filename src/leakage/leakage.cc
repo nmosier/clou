@@ -536,6 +536,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
 
 template <class OutputIt>
 OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out) {
+#if 0
     int fds[2];
     io::pipe(fds);
     
@@ -549,6 +550,18 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             logv(1, "successfully set pipe size to " << size << " bytes\n");
         }
         fclose(f);
+    }
+#endif
+#else
+    
+    char *path;
+    if (::asprintf(&path, "%s/tmp/lkg.XXXXXX", output_dir.c_str()) < 0) {
+        throw std::system_error(errno, std::generic_category(), "asprintf");
+    }
+    int fd = ::mkstemp(path);
+    std::free(path);
+    if (fd < 0) {
+        throw std::system_error(errno, std::generic_category(), "mkstemp");
     }
 #endif
     
@@ -568,8 +581,10 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         }
         
         Timer timer;
-        
+
+#if 0
         ::close(fds[0]);
+#endif
         for_one_transmitter(transmitter, func, true);
         
         // write leakage to parent
@@ -582,19 +597,25 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
             msg.set_transmitter(leakage_pair.first.transmitter);
             msg.set_desc(leakage_pair.second);
             
-            if (!proto::write(fds[1], msg)) {
+            if (!proto::write(fd, msg)) {
                 std::cerr << "failed to write leakage\n";
                 std::abort();
             }
         }
+#if 0
         ::close(fds[1]);
+#endif
         
         logv(0, "RUNTIME: " << ::getppid() << " " << ::getpid() << " " << cpu_time() << "\n");
         
         std::_Exit(0); // quick exit
     } else {
+#if 0
         *out++ = std::make_pair(pid, Child {.ref = transmitter, .fd = fds[0]});
         ::close(fds[1]);
+#else
+        *out++ = std::make_pair(pid, Child {.ref = transmitter, .fd = fd});
+#endif
         return out;
     }
 }
@@ -662,6 +683,9 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                 logv(0, "finished " << child.ref << "\n");
                 
                 const int fd = children.at(pid).fd;
+                if (::lseek(fd, 0, SEEK_SET) < 0) {
+                    throw std::system_error(errno, std::generic_category(), "lseek");
+                }
                 
                 std::vector<char> buf;
                 if (io::readall(fd, buf) < 0) {
