@@ -469,8 +469,12 @@ void AEG::construct_comx() {
         
         if (!node.is_special()) {
             if (xsread != Option::NO || xswrite != Option::NO) {
+#if 0
                 node.xstate = context.make_int("xstate");
                 node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
+#else
+                node.xstate = node.get_memory_address();
+#endif
                 xsaccesses.insert(i);
             }
         }
