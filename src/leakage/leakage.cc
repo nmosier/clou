@@ -461,29 +461,39 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     {
         z3::model window_model {ctx()};
         z3::expr F = ctx().bool_val(false);
-        const auto nullify = [&] (const z3::expr& e) {
+        z3::expr zero = ctx().int_val(0);
+        const auto nullify = [&] (const z3::expr& e, z3::expr& repl) {
             if (e.is_const()) {
                 z3::func_decl decl = e.decl();
-                window_model.add_const_interp(decl, F);
+                window_model.add_const_interp(decl, repl);
             }
+        };
+        const auto nullify_bool = [&] (const z3::expr& e) {
+            nullify(e, F);
+        };
+        const auto nullify_int = [&] (const z3::expr& e) {
+            nullify(e, zero);
         };
         
         for (NodeRef ref : exec_notwindow) {
             assert(!aeg.exits.contains(ref));
             const auto& node = aeg.lookup(ref);
             vec.push_back(!node.exec());
-            nullify(node.arch);
-            nullify(node.trans);
-            nullify(node.read);
-            nullify(node.write);
-            nullify(node.xsread);
-            nullify(node.xswrite);
+            nullify_bool(node.arch);
+            nullify_bool(node.trans);
+            nullify_bool(node.read);
+            nullify_bool(node.write);
+            nullify_bool(node.xsread);
+            nullify_bool(node.xswrite);
+            if (node.xsaccess_order) {
+                nullify_int(*node.xsaccess_order);
+            }
         }
         for (NodeRef ref : trans_notwindow) {
             if (!exec_notwindow.contains(ref)) {
                 const auto& node = aeg.lookup(ref);
                 vec.push_back(!node.trans);
-                nullify(node.trans);
+                nullify_bool(node.trans);
             }
         }
         
@@ -492,7 +502,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             aeg.for_each_edge([&] (NodeRef src, NodeRef dst, const aeg::Edge& e) {
                 if (!(exec_window.contains(src) && exec_window.contains(dst))) {
                     // invalidate edge
-                    nullify(e.exists);
+                    nullify_bool(e.exists);
                 }
             });
         }
