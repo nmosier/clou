@@ -474,6 +474,10 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             vec.push_back(!node.exec());
             nullify(node.arch);
             nullify(node.trans);
+            nullify(node.read);
+            nullify(node.write);
+            nullify(node.xsread);
+            nullify(node.xswrite);
         }
         for (NodeRef ref : trans_notwindow) {
             if (!exec_notwindow.contains(ref)) {
