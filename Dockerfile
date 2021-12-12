@@ -54,12 +54,11 @@ WORKDIR "$LCM_BUILD"
 ARG z3_version=4.8.13
 ADD https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/z3-${z3_version}-x64-glibc-2.31.zip z3-${z3_version}.zip
 RUN unzip z3-${z3_version}
-ENV Z3_DIR "${LCM_BUILD}/z3-${z3_version}-x64-glibc-2.31"
-# RUN ln -s ${Z3_DIR}/bin ${Z3_DIR}/lib
+# Uncomment to use newer Z3 version
+# ENV Z3_DIR "${LCM_BUILD}/z3-${z3_version}-x64-glibc-2.31"
 COPY CMakeLists.txt $LCM_DIR/
 
 ENV CXXFLAGS -fPIC
-RUN [ -d ${Z3_DIR} ]
 # RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
 # RUN make -j$(nproc)
 
