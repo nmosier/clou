@@ -4,6 +4,7 @@
 #include <utility>
 #include <string>
 #include <sstream>
+#include <unordered_map>
 
 #include <z3++.h>
 
@@ -43,6 +44,8 @@ struct Constraints {
     void simplify();
     
     z3::expr get(z3::context& ctx) const;
+    
+    void dump(std::unordered_map<std::string, unsigned>& hist) const;
     
 private:
     template <class Solver>

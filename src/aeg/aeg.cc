@@ -227,6 +227,8 @@ void AEG::test(TransmitterOutputIt out) {
         }
     }
     
+    std::unordered_map<std::string, unsigned> hist;
+    
     {
         Timer timer;
         
@@ -237,6 +239,7 @@ void AEG::test(TransmitterOutputIt out) {
             std::unordered_map<std::string, unsigned> names;
             graph.for_each_edge([&] (NodeRef src, NodeRef dst, const Edge& edge) {
                 edge.constraints.add_to(solver);
+                edge.constraints.dump(hist);
                 ++progress;
             });
             progress.done();
@@ -248,6 +251,7 @@ void AEG::test(TransmitterOutputIt out) {
             Progress progress {size()};
             for (NodeRef ref : node_range()) {
                 lookup(ref).constraints.add_to(solver);
+                lookup(ref).constraints.dump(hist);
                 ++progress;
             }
             progress.done();
@@ -256,8 +260,14 @@ void AEG::test(TransmitterOutputIt out) {
         // add main constraints
         logv(0, __FUNCTION__ << ": adding main constraints...");
         constraints.add_to_progress(solver);
+        constraints.dump(hist);
 
         logv(0, __FUNCTION__ << ": added constraints ");
+    }
+    
+    std::cerr << "NAMED ASSERTIONS HISTOGRAM:\n";
+    for (const auto& p : hist) {
+        std::cerr << p.first << " " << p.second << "\n";
     }
     
     {

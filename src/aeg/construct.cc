@@ -294,7 +294,7 @@ void AEG::construct_addr_refs() {
                         if (defs.size() != 0) {
                             using output::operator<<;
                             std::stringstream desc;
-                            desc << "addr-ref-" << ref << "-" << defs;
+                            desc << "addr-ref:" << ref << "-" << defs;
                             node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
                                                                     [&] (NodeRef def) {
                                 return lookup_def(def) == *e;
@@ -317,7 +317,7 @@ void AEG::construct_exec() {
     for (const NodeRef ref : node_range()) {
         Node& node = lookup(ref);
         std::stringstream ss;
-        ss << "excl-exec-" << ref;
+        ss << "excl-exec:" << ref;
         node.constraints(!(node.arch && node.trans), ss.str());
     }
     
@@ -441,7 +441,7 @@ void AEG::construct_tfo() {
     // only one cold arch start
     z3::expr_vector cold_start {context.context};
     for (NodeRef ref : po.reverse_postorder()) {
-        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
+        if (ref == entry || exits.contains(ref)) { continue; }
         const Node& node = lookup(ref);
         const auto tfo_ins = get_edges(Direction::IN, ref, Edge::TFO);
         const auto tfo_ins_v = z3::transform(context.context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });

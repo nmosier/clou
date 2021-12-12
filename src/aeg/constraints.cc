@@ -1,6 +1,7 @@
 #include "aeg/constraints.h"
 #include "util/z3.h"
 #include "config.h"
+#include "util/output.h"
 
 namespace aeg {
 
@@ -29,6 +30,12 @@ void Constraints::simplify() {
 }
 
 
+void Constraints::dump(std::unordered_map<std::string, unsigned>& hist) const {
+    for (const auto& p : exprs) {
+        const std::string key = p.second.substr(0, p.second.find(':'));
+        hist[key] += util::to_string(p.first).size();
+    }
+}
 
 
 
