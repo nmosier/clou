@@ -438,6 +438,18 @@ void AEG::construct_tfo() {
         }
     }
     
+    
+#if 1
+    const z3::expr cold_start_ref = context.make_int("cold-start-node");
+    
+    for (NodeRef ref : po.reverse_postorder()) {
+        if (ref == entry || exits.contains(ref)) { continue; }
+        Node& node = lookup(ref);
+        const auto tfo_ins = get_edges(Direction::IN, ref, Edge::TFO);
+        const auto tfo_ins_v = z3::transform(context.context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });
+        node.constraints(z3::implies(node.arch, cold_start_ref == context.context.int_val(static_cast<uint64_t>(ref)) || z3::mk_or(tfo_ins_v)), "one-cold-start");
+    }
+#else
     // only one cold arch start
     z3::expr_vector cold_start {context.context};
     for (NodeRef ref : po.reverse_postorder()) {
@@ -448,6 +460,7 @@ void AEG::construct_tfo() {
         cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
     }
     constraints(z3::exactly(cold_start, 1), "one-cold-start");
+#endif
 }
 
 
