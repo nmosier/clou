@@ -292,6 +292,7 @@ void AEG::construct_addr_refs() {
                     } else {
                         e = Address {context};
                         if (defs.size() != 0) {
+#if 0
                             using output::operator<<;
                             std::stringstream desc;
                             desc << "addr-ref:" << ref << "-" << defs;
@@ -299,6 +300,14 @@ void AEG::construct_addr_refs() {
                                                                     [&] (NodeRef def) {
                                 return lookup_def(def) == *e;
                             }, context.FALSE), desc.str().c_str());
+#else
+                            auto it = defs.begin();
+                            z3::expr acc = lookup_def(*it);
+                            for (; it != defs.end(); ++it) {
+                                acc = z3::ite(lookup(*it).arch, lookup_def(*it), acc);
+                            }
+                            e = acc;
+#endif
                         }
                     }
                 }
@@ -459,7 +468,11 @@ void AEG::construct_tfo() {
         const auto tfo_ins_v = z3::transform(context.context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });
         cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
     }
+# if 0
     constraints(z3::exactly(cold_start, 1), "one-cold-start");
+# else
+    constraints(z3::atmost(cold_start, 1), "one-cold-start");
+# endif
 #endif
 }
 
