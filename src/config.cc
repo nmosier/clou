@@ -30,6 +30,7 @@ static std::vector<char *> args = {prog};
 std::string output_dir;
 unsigned verbose = 0;
 std::unordered_set<std::string> function_names;
+std::unordered_set<std::string> skip_function_names;
 std::unordered_set<unsigned> include_edges;
 unsigned spec_depth = 0;
 unsigned max_parallel = 1;
@@ -76,6 +77,7 @@ Required options:
 Options:
 --help, -h           show help
 --func, -f <name>[,<name>]...   only examine given functions
+--skip-func, -F <name>  skip given function
 --verbose, -v        verbosity++
 --edges, -E          include edges in execution graph output
 --aa <flag>[,<flag>...]
@@ -200,6 +202,7 @@ int parse_args() {
         PROFILE,
         FENCE,
         DEPS,
+        SKIP_FUNC,
     };
     
     struct option opts[] = {
@@ -230,10 +233,11 @@ int parse_args() {
         {"parallel", required_argument, nullptr, 'j'},
         {"fence", optional_argument, nullptr, FENCE},
         {"deps", optional_argument, nullptr, DEPS},
+        {"skip-func", required_argument, nullptr, 'F'},
         {nullptr, 0, nullptr, 0}
     };
     
-    while ((optc = getopt_long(argc, argv, "hvo:cef:E:d:j:", opts, nullptr)) >= 0) {
+    while ((optc = getopt_long(argc, argv, "hvo:cef:F:E:d:j:", opts, nullptr)) >= 0) {
         switch (optc) {
             case 'h':
                 usage(stdout);
@@ -249,6 +253,10 @@ int parse_args() {
                 
             case 'f':
                 function_names.insert(optarg);
+                break;
+                
+            case 'F':
+                skip_function_names.insert(optarg);
                 break;
                 
             case 'E': {

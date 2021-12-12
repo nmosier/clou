@@ -159,6 +159,13 @@ struct LCMPass: public llvm::ModulePass {
                 if (!match) { return; }
             }
             
+            /* check if should skip */
+            for (const std::string& skip_function_name : skip_function_names) {
+                if (std::regex_match(static_cast<std::string>(F.getName()), std::regex {skip_function_name})) {
+                    return;
+                }
+            }
+            
             const unsigned num_unrolls = 2;
             
             /* Construct AEG */

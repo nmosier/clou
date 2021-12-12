@@ -18,6 +18,7 @@ class Client;
 
 extern std::string output_dir;
 extern std::unordered_set<std::string> function_names;
+extern std::unordered_set<std::string> skip_function_names;
 extern unsigned verbose;
 extern unsigned spec_depth;
 extern unsigned max_parallel;
