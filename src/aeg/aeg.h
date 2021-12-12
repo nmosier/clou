@@ -95,6 +95,7 @@ private:
     void construct_tfo();
     void construct_addr_defs();
     void construct_addr_refs();
+    void construct_addrs();
     void construct_aliases(llvm::AliasAnalysis& AA);
     void construct_com();
     void construct_xsaccess_order(const NodeRefSet& xsaccesses);
@@ -110,6 +111,14 @@ private:
     
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
+    
+    const llvm::Module *get_module() const {
+        const auto it = std::find_if(nodes.begin(), nodes.end(), [] (const Node& node) -> bool {
+            return node.inst->get_inst() != nullptr;
+        });
+        assert(it != nodes.end());
+        return it->inst->get_inst()->getParent()->getParent()->getParent();
+    }
     
 
 public:

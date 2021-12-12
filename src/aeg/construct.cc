@@ -54,10 +54,15 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_tfo();
     logv(2, "Constructing exec\n");
     construct_exec();
+#if 0
     logv(2, "Constructing addr defs\n");
     construct_addr_defs();
     logv(2, "Constructing addr refs\n");
     construct_addr_refs();
+#else
+    logv(2, "Constructing addrs\n");
+    construct_addrs();
+#endif
     logv(2, "Constructing aliases\n");
     construct_aliases(AA);
 
@@ -316,6 +321,159 @@ void AEG::construct_addr_refs() {
         }
     }
 }
+
+
+
+
+void AEG::construct_addrs() {
+    constexpr unsigned stack_counter_init = 1;
+    constexpr unsigned global_counter_init = 10000;
+    
+    unsigned stack_counter = stack_counter_init;
+    unsigned global_counter = global_counter_init;
+    
+    std::unordered_map<const llvm::Argument *, Address> main_args;
+    std::unordered_map<const llvm::Constant *, Address> globals;
+    
+    llvm::DataLayout DL {get_module()};
+    
+    for (NodeRef ref : po.reverse_postorder()) {
+        const auto& po_node = po.lookup(ref);
+        Node& node = lookup(ref);
+
+        /* bind refs */
+        if (const RegularInst *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
+            
+            for (const llvm::Value *V : inst->addr_refs) {
+                const auto defs_it = po_node.refs.find(V);
+                std::optional<Address> e;
+                if (defs_it == po_node.refs.end()) {
+                    if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
+                        if (CD->isNullValue()) {
+                            e = Address {context.context.int_val(0)};
+                        } else {
+                            llvm::errs() << "unhandled constant data: " << *CD << "\n";
+                            std::abort();
+                        }
+                    } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
+                        auto main_args_it = main_args.find(A);
+                        if (main_args_it == main_args.end()) {
+                            main_args_it = main_args.emplace(A, Address {context}).first;
+                        }
+                        e = main_args_it->second;
+                    } else if (const llvm::GlobalValue *G = llvm::dyn_cast<llvm::GlobalValue>(V)) {
+                        auto globals_it = globals.find(G);
+                        if (globals_it == globals.end()) {
+                            /* get size of global */
+                            const auto bits = DL.getTypeSizeInBits(G->getValueType());
+                            if (bits == 0) {
+                                globals_it = globals.emplace(G, Address(context)).first;
+                            } else {
+                                globals_it = globals.emplace(G, Address(context.context.int_val(global_counter))).first;
+                                global_counter += bits / 8;
+                            }
+                        }
+                        e = globals_it->second;
+#if 1
+                        llvm::errs() << "GLOBAL: " << *G << " " << util::to_string(e->addr) << "\n";
+#endif
+                    } else if (const llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(V)) {
+                        auto globals_it = globals.find(G);
+                        if (globals_it == globals.end()) {
+                            globals_it = globals.emplace(C, Address(context)).first;
+                        }
+                        e = globals_it->second;
+                    } else {
+                        auto& os = llvm::errs();
+                        os << "Expected argument but got " << *V << "\n";
+                        os << "when looking at instruction " << *inst->I << "\n";
+                        std::abort();
+                    }
+                } else {
+                    const NodeRefSet& defs = defs_it->second;
+                    
+                    /* If defs only has one element (likely case), then we can just lookup that element's
+                     * address definition integer. Otherwise, we define a new symbolic int that must be equal
+                     * to one of the possiblities.
+                     */
+                    const auto lookup_def = [&] (NodeRef def) {
+                        return *lookup(def).addr_def;
+                    };
+                    if (defs.size() == 1) {
+                        e = lookup_def(*defs.begin());
+                    } else {
+                        e = Address {context};
+                        if (defs.size() != 0) {
+#if 0
+                            using output::operator<<;
+                            std::stringstream desc;
+                            desc << "addr-ref:" << ref << "-" << defs;
+                            node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
+                                                                    [&] (NodeRef def) {
+                                return lookup_def(def) == *e;
+                            }, context.FALSE), desc.str().c_str());
+#else
+                            auto it = defs.begin();
+                            z3::expr acc = lookup_def(*it);
+                            for (; it != defs.end(); ++it) {
+                                acc = z3::ite(lookup(*it).arch, lookup_def(*it), acc);
+                            }
+                            e = acc;
+#endif
+                        }
+                    }
+                }
+                node.addr_refs.emplace(V, *e);
+            }
+        }
+        
+        
+        /* bind defs */
+        if (auto *RI = dynamic_cast<RegularInst *>(node.inst.get())) {
+            // TODO: this is fragmented. Try to unify addr_defs
+            if (RI->addr_def) {
+                
+                if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(RI->get_inst())) {
+                    // TODO: lift out datalayout
+                    node.addr_def = Address(context.context.int_val(stack_counter));
+                    const auto bits = AI->getAllocationSizeInBits(DL);
+                    if (!bits) {
+                        std::cerr << __FUNCTION__ << ": could not determine size of allocation\n";
+                        std::abort();
+                    }
+                    stack_counter += *bits;
+                    continue;
+                }
+                
+                if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(RI->get_inst())) {
+                    if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
+                        if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(GEP->getPointerOperand())) {
+                            const auto& refs = po.lookup(ref).refs.at(I);
+                            if (refs.size() == 1) {
+                                const NodeRef base_ref = *refs.begin();
+                                node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
+#if 0
+                                {
+                                llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
+                                }
+#endif
+                                continue;
+                            }
+                        }
+                    }
+                }
+                
+                node.addr_def = Address {context};
+                
+            }
+        }
+        
+        
+    }
+    
+}
+
+
 
 
 void AEG::construct_exec() {

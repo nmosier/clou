@@ -501,6 +501,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         Timer timer;
         std::vector<z3::expr> allocas; // this is also used elsewhere
         std::vector<z3::expr> args;
+        
         for (const AddrInfo& addr : addrs) {
             if (llvm::isa<llvm::AllocaInst>(addr.V)) {
                 allocas.push_back(addr.e);

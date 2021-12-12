@@ -45,7 +45,7 @@ std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP
         }
     }
     
-    return offset;
+    return offset / 8;
 }
 
 bool contains_struct(const llvm::Type *T) {
