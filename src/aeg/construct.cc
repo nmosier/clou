@@ -439,7 +439,7 @@ void AEG::construct_tfo() {
     }
     
     
-#if 1
+#if 0
     const z3::expr cold_start_ref = context.make_int("cold-start-node");
     
     for (NodeRef ref : po.reverse_postorder()) {

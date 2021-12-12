@@ -512,7 +512,12 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
             logv(1, "translating to window...\n");
             Solver new_solver {ctx()};
             for (z3::expr old_assertion : solver.assertions()) {
-                new_solver.add(window_model.eval(old_assertion));
+                z3::expr new_assertion = window_model.eval(old_assertion);
+                new_assertion = new_assertion.simplify();
+                assert(!new_assertion.is_false());
+                if (!new_assertion.is_true()) {
+                    new_solver.add(new_assertion);
+                }
             }
             logv(1, "translated to window in " << timer.get_str() << "\n");
             solver = new_solver;
