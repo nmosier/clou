@@ -8,10 +8,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
     autoconf automake autotools-dev libtool \
     clang-12 cmake git libgoogle-perftools-dev libprotobuf-dev llvm-12-dev make pkg-config protobuf-compiler wget libboost-dev \
     apt-utils apt-transport-https ca-certificates gnupg dialog \
-    libz3-dev \
     lldb-12 \
     tmux \
-    less emacs-nox htop valgrind psmisc
+    less emacs-nox htop valgrind psmisc \
+    unzip
 
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"
@@ -28,8 +28,6 @@ RUN rm -f dummy.c
 
 # Configure libsodium
 RUN git clone https://github.com/jedisct1/libsodium.git libsodium
-# RUN cp -r libsodium-v1 libsodium-v4
-# RUN cp -r libsodium-v1 libsodium-ll
 
 ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS -UHAVE_ALLOCA"
 
@@ -53,10 +51,16 @@ RUN mkdir -p /tmp/cores
 
 # Build lcm tool
 WORKDIR "$LCM_BUILD"
-# COPY . "$LCM_DIR"
+ARG z3_version=4.8.13
+ADD https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/z3-${z3_version}-x64-glibc-2.31.zip z3-${z3_version}.zip
+RUN unzip z3-${z3_version}
+ENV Z3_DIR "${LCM_BUILD}/z3-${z3_version}-x64-glibc-2.31"
+# RUN ln -s ${Z3_DIR}/bin ${Z3_DIR}/lib
 COPY CMakeLists.txt $LCM_DIR/
 
 ENV CXXFLAGS -fPIC
+RUN [ -d ${Z3_DIR} ]
 # RUN cmake -DCMAKE_BUILD_TYPE="${build_type}" -DLLVM_DIR="$LLVM_DIR" -DCMAKE_CXX_FLAGS="-fPIC" ..
 # RUN make -j$(nproc)
 
+ENV LD_LIBRARY_PATH="${Z3_DIR}/bin:$LD_LIBRARY_PATH"
