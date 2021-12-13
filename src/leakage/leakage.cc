@@ -424,7 +424,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                 exec_notwindow.insert(ref);
             });
             
-            if (!reaches_main_function) {
+            if (reverse_function_order && !reaches_main_function) {
                 logv(2, "skipping transmitter " << transmitter << " because it doesn't reach main function\n");
                 return;
             }
