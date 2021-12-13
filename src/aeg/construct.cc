@@ -364,16 +364,22 @@ void AEG::construct_addrs() {
                     } else if (const llvm::GlobalValue *G = llvm::dyn_cast<llvm::GlobalValue>(V)) {
                         auto globals_it = globals.find(G);
                         if (globals_it == globals.end()) {
-                            /* get size of global */
+			  /* get size of global */
+			  bool done = false;
+			  llvm::Type *T = G->getValueType();
+			  if (T->isSized()) {
                             const auto bits = DL.getTypeSizeInBits(G->getValueType());
-                            if (bits == 0) {
-                                globals_it = globals.emplace(G, Address(context)).first;
-                            } else {
-                                globals_it = globals.emplace(G, Address(context.context.int_val(global_counter))).first;
-                                global_counter += bits / 8;
+			    if (bits != 0) {
+			      globals_it = globals.emplace(G, Address(context.context.int_val(global_counter))).first;
+			      global_counter += bits / 8;
+			      done = true;
                             }
-                        }
-                        e = globals_it->second;
+			  }
+			  if (!done) {
+			    globals_it = globals.emplace(G, Address(context)).first;
+			  }
+			}
+			e = globals_it->second;
 #if 1
                         llvm::errs() << "GLOBAL: " << *G << " " << util::to_string(e->addr) << "\n";
 #endif
