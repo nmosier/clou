@@ -361,3 +361,57 @@ void CFG::sort() {
 boost::integer_range<NodeRef> CFG::reverse_postorder() const {
     return boost::irange<NodeRef>(0, static_cast<NodeRef>(nodes.size()));
 }
+
+
+#if 0
+// TODO
+std::optional<NodeRefVec> CFG::unique_path(NodeRef src, NodeRef dst) const {
+    // NOTE: Assumes that noderefs are in reverse postorder.
+    
+    if (src > dst) {
+        return std::nullopt;
+    } else if (src == dst) {
+        NodeRefVec path = {src};
+        return path;
+    }
+    
+    NodeRefVec path;
+    NodeRef ref = src;
+    while (true) {
+        const auto& succs = po.fwd.at(ref);
+        switch (succs.size()) {
+            case 0:
+                return std::nullopt;
+                
+            case 1:
+                path.push_back(ref);
+                ref = *succs.begin();
+                break;
+                
+            default:
+                for (const auto& succs)
+        }
+        
+    }
+}
+#endif
+
+// check if in same basic block
+
+bool CFG::same_basic_block(NodeRef src, NodeRef dst) const {
+    NodeRef ref = src;
+    while (true) {
+        if (ref > dst) {
+            return false;
+        } else if (ref == dst) {
+            return true;
+        }
+        
+        const auto& succs = po.fwd.at(ref);
+        if (succs.size() != 1) {
+            return false;
+        }
+        
+        ref = *succs.begin();
+    }
+}

@@ -116,6 +116,8 @@ public:
     std::optional<NodeRef> get_block_successor(NodeRef ref) const;
     
     bool is_ancestor(NodeRef parent, NodeRef child) const;
+    std::optional<NodeRefVec> unique_path(NodeRef src, NodeRef dst) const; // returns unique forward path from src to dst if one exists
+    bool same_basic_block(NodeRef src, NodeRef dst) const;
     
 protected:
     

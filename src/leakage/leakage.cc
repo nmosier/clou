@@ -1024,6 +1024,29 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
     const auto& dst_node = aeg.lookup(dst);
     solver.add(z3::implies(src_node.trans, dst_node.trans), desc("trans->trans").c_str());
     solver.add(z3::implies(dst_node.arch, src_node.arch), desc("arch<-arch").c_str());
+    
+#if 0
+    // EXPERIMENTAL: filter out other control-flow paths.
+    for (NodeRef ref : exec_window) {
+        if (src >= ref && ref >= dst) { // this just prevents us from re-filtering the same nodes over and over
+            if (aeg.po.is_ancestor(src, ref) && aeg.po.is_ancestor(ref, dst)) {
+                // keep
+            } else {
+                // filter
+                const aeg::Node& node = aeg.lookup(ref);
+                solver.add(!node.exec());
+            }
+        }
+    }
+#endif
+    
+    if (aeg.po.same_basic_block(src, dst)) {
+        NodeRef ref = src;
+        while (ref != dst) {
+            solver.add(aeg.lookup(ref).exec());
+            ref = *aeg.po.po.fwd.at(ref).begin();
+        }
+    }
 }
 
 
