@@ -38,6 +38,8 @@ std::string get_time() {
     return timer.get_str();
 }
 
+Transmitters transmitters;
+
 template <typename Graph>
 void output_(const Graph& graph, const std::string& name, const llvm::Function& F) {
     if (!output_dir.empty()) {
@@ -60,8 +62,6 @@ struct LCMPass: public llvm::ModulePass {
     virtual bool runOnModule(llvm::Module& M) override {
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
-        
-        Transmitters transmitters;
         
         for (llvm::Function *F : getFunctionOrder(M)) {
             if (F->isDeclaration()) {

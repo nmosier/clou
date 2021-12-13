@@ -23,6 +23,9 @@
 #include "leakage/proto.h"
 #include "util/sem.h"
 
+extern Transmitters transmitters;
+
+
 namespace aeg {
 
 void AEG::leakage(Solver& solver, TransmitterOutputIt out) {
@@ -766,12 +769,27 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
         z3::solver solver {ctx()};
         aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
             const aeg::Node& node = aeg.lookup(ref);
+            
             z3::expr_vector vec(ctx());
             vec.push_back(node.trans);
             vec.push_back(node.access());
             if (solver.check(vec) != z3::unsat) {
                 candidate_transmitters.insert(ref);
             }
+        });
+    }
+    
+    // filter out any already-seen transmitters
+    {
+        std::erase_if(candidate_transmitters, [&] (NodeRef ref) -> bool {
+            const auto& node = aeg.lookup(ref);
+            if (const llvm::Instruction *I = node.inst->get_inst()) {
+                if (transmitters.contains(I)) {
+                    llvm::errs() << "filtered transmitter: " << *I << "\n";
+                    return true;
+                }
+            }
+            return false;
         });
     }
     
