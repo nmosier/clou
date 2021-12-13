@@ -327,10 +327,10 @@ void AEG::construct_addr_refs() {
 
 void AEG::construct_addrs() {
     constexpr unsigned stack_counter_init = 1;
-    constexpr unsigned global_counter_init = 10000;
+    constexpr int global_counter_init = -1;
     
     unsigned stack_counter = stack_counter_init;
-    unsigned global_counter = global_counter_init;
+    int global_counter = global_counter_init;
     
     std::unordered_map<const llvm::Argument *, Address> main_args;
     std::unordered_map<const llvm::Constant *, Address> globals;
@@ -370,8 +370,8 @@ void AEG::construct_addrs() {
                             if (T->isSized()) {
                                 const auto bits = DL.getTypeSizeInBits(G->getValueType());
                                 if (bits != 0) {
+                                    global_counter -= bits / 8;
                                     globals_it = globals.emplace(G, Address(context.context.int_val(global_counter))).first;
-                                    global_counter += bits / 8;
                                     done = true;
                                 }
                             }
@@ -480,9 +480,11 @@ void AEG::construct_addrs() {
         
     }
     
+#if 0
     if (!(stack_counter < global_counter)) {
         throw std::runtime_error("stack_counter >= global_counter");
     }
+#endif
 }
 
 
