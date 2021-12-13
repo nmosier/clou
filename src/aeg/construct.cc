@@ -456,19 +456,20 @@ void AEG::construct_addrs() {
                 
                 if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(RI->get_inst())) {
                     if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
+#if 0
                         if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(GEP->getPointerOperand())) {
                             const auto& refs = po.lookup(ref).refs.at(I);
                             if (refs.size() == 1) {
                                 const NodeRef base_ref = *refs.begin();
                                 node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
-#if 0
-                                {
-                                    llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
-                                }
-#endif
                                 continue;
                             }
                         }
+#else
+                        const z3::expr base = node.addr_refs.at(GEP->getPointerOperand()).addr;
+                        node.addr_def = Address(base + *offset);
+                        continue;
+#endif
                     }
                 }
                 
