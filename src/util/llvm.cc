@@ -16,6 +16,7 @@ bool getelementptr_can_zero(const llvm::GetElementPtrInst *GEP) {
     return true;
 }
 
+// TODO: unify these 3 GEP offset functions.
 std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP) {
     const llvm::Module *M = GEP->getParent()->getParent()->getParent();
     llvm::DataLayout layout {M};
@@ -47,6 +48,101 @@ std::optional<int> getelementptr_const_offset(const llvm::GetElementPtrInst *GEP
     
     return offset / 8;
 }
+
+std::optional<int> getelementptr_min_offset(const llvm::GetElementPtrInst *GEP) {
+    const llvm::Module *M = GEP->getParent()->getParent()->getParent();
+    llvm::DataLayout DL {M};
+    llvm::Type *T = GEP->getPointerOperandType();
+    std::size_t offset = 0;
+    for (const llvm::Value *V : GEP->indices()) {
+        if (const llvm::ConstantInt *CI = llvm::dyn_cast<llvm::ConstantInt>(V)) {
+            
+            const uint64_t index = CI->getSExtValue();
+            
+            if (const llvm::StructType *ST = llvm::dyn_cast<llvm::StructType>(T)) {
+                for (uint64_t i = 0; i < index; ++i) {
+                    offset += DL.getTypeSizeInBits(ST->getElementType(i));
+                }
+                T = ST->getElementType(index);
+            } else if (const llvm::ArrayType *AT = llvm::dyn_cast<llvm::ArrayType>(T)) {
+                T = AT->getElementType();
+                offset += DL.getTypeSizeInBits(T) * index;
+            } else if (const llvm::PointerType *PT = llvm::dyn_cast<llvm::PointerType>(T)) {
+                T = PT->getElementType();
+                offset += DL.getTypeSizeInBits(T) * index;
+            } else {
+                std::abort();
+            }
+            
+        } else {
+            
+            if (const llvm::ArrayType *AT = llvm::dyn_cast<llvm::ArrayType>(T)) {
+                
+                // assume minimum index is 0
+                T = AT->getElementType();
+                offset += 0;
+                
+            } else {
+                return std::nullopt;
+            }
+            
+        }
+    }
+    
+    return offset / 8;
+}
+
+
+std::optional<int> getelementptr_max_offset(const llvm::GetElementPtrInst *GEP) {
+    const llvm::Module *M = GEP->getParent()->getParent()->getParent();
+    llvm::DataLayout DL {M};
+    llvm::Type *T = GEP->getPointerOperandType();
+    std::size_t offset = 0;
+    for (const llvm::Value *V : GEP->indices()) {
+        if (const llvm::ConstantInt *CI = llvm::dyn_cast<llvm::ConstantInt>(V)) {
+            
+            const uint64_t index = CI->getSExtValue();
+            
+            if (const llvm::StructType *ST = llvm::dyn_cast<llvm::StructType>(T)) {
+                for (uint64_t i = 0; i < index; ++i) {
+                    offset += DL.getTypeSizeInBits(ST->getElementType(i));
+                }
+                T = ST->getElementType(index);
+            } else if (const llvm::ArrayType *AT = llvm::dyn_cast<llvm::ArrayType>(T)) {
+                T = AT->getElementType();
+                offset += DL.getTypeSizeInBits(T) * index;
+            } else if (const llvm::PointerType *PT = llvm::dyn_cast<llvm::PointerType>(T)) {
+                T = PT->getElementType();
+                offset += DL.getTypeSizeInBits(T) * index;
+            } else {
+                std::abort();
+            }
+            
+        } else {
+            
+            if (const llvm::ArrayType *AT = llvm::dyn_cast<llvm::ArrayType>(T)) {
+                
+                // assume index can't go out of bounds
+                T = AT->getElementType();
+                const uint64_t nelems = AT->getNumElements();
+                if (nelems > 0) {
+                    offset += nelems * DL.getTypeSizeInBits(T);
+                    return offset / 8;
+                } else {
+                    return std::nullopt;
+                }
+                
+                
+            } else {
+                return std::nullopt;
+            }
+            
+        }
+    }
+    
+    return offset / 8;
+}
+
 
 bool contains_struct(const llvm::Type *T) {
     if (const auto *AT = llvm::dyn_cast<llvm::ArrayType>(T)) {

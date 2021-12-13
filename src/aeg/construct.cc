@@ -455,21 +455,20 @@ void AEG::construct_addrs() {
                 }
                 
                 if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(RI->get_inst())) {
+                    const z3::expr base = node.addr_refs.at(GEP->getPointerOperand()).addr;
                     if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
-#if 0
-                        if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(GEP->getPointerOperand())) {
-                            const auto& refs = po.lookup(ref).refs.at(I);
-                            if (refs.size() == 1) {
-                                const NodeRef base_ref = *refs.begin();
-                                node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
-                                continue;
-                            }
-                        }
-#else
-                        const z3::expr base = node.addr_refs.at(GEP->getPointerOperand()).addr;
-                        node.addr_def = Address(base + *offset);
+                        node.addr_def = Address((base + *offset).simplify());
                         continue;
-#endif
+                    } else {
+                        const auto min_offset = llvm::getelementptr_min_offset(GEP);
+                        const auto max_offset = llvm::getelementptr_max_offset(GEP);
+                        if (min_offset && max_offset) {
+                            Address addr {context};
+                            addr.addr = z3::max(z3::min(addr.addr, context.context.int_val(*max_offset)), context.context.int_val(*min_offset)) + base;
+                            addr.addr.simplify();
+                            node.addr_def = addr;
+                            continue;
+                        }
                     }
                 }
                 
