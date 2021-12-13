@@ -480,6 +480,9 @@ void AEG::construct_addrs() {
         
     }
     
+    if (!(stack_counter < global_counter)) {
+        throw std::runtime_error("stack_counter >= global_counter");
+    }
 }
 
 
