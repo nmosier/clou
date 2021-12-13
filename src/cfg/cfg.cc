@@ -240,6 +240,17 @@ bool CFG::is_ancestor(NodeRef parent, NodeRef child) const {
     return false;
 }
 
+const llvm::Function *CFG::function() const {
+    for (NodeRef ref = 0; ref < size(); ++ref) {
+        const Node& node = lookup(ref);
+        if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
+            const llvm::Instruction *I = *Ip;
+            return I->getFunction();
+        }
+    }
+    std::abort();
+}
+
 std::string CFG::function_name() const {
     for (NodeRef ref = 0; ref < size(); ++ref) {
         const Node& node = lookup(ref);

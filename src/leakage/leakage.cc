@@ -409,13 +409,26 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         Timer timer;
         // MAKE EXEC WINDOW
         {
+            bool reaches_main_function = false;
             exec_window.clear();
             exec_notwindow.clear();
             aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
                 exec_window.insert(ref);
+                const auto& node = aeg.lookup(ref);
+                if (const llvm::Instruction *I = node.inst->get_inst()) {
+                    if (I->getFunction() == aeg.po.function()) {
+                        reaches_main_function = true;
+                    }
+                }
             }, [&] (NodeRef ref) {
                 exec_notwindow.insert(ref);
             });
+            
+            if (!reaches_main_function) {
+                logv(2, "skipping transmitter " << transmitter << " because it doesn't reach main function\n");
+                return;
+            }
+            
             mems = get_mems1(exec_window);
         }
         
@@ -792,6 +805,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
             return false;
         });
     }
+    
     
     /* make sure that the AEG constraints are satisfiable.
      * NOTE: I should probably move this to AEG::leakage(). */

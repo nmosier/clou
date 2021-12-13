@@ -81,6 +81,7 @@ public:
     
     void dump_graph(const std::string& path) const;
     
+    const llvm::Function *function() const;
     std::string function_name() const;
     
     std::size_t size() const;
