@@ -98,6 +98,9 @@ struct LCMPass: public llvm::ModulePass {
         std::sort(order.begin(), order.end(), [&] (const llvm::Function *F1, const llvm::Function *F2) -> bool {
             return CG[F1]->getNumReferences() < CG[F2]->getNumReferences();
         });
+        if (reverse_function_order) {
+            std::reverse(order.begin(), order.end());
+        }
         return order;
     }
     

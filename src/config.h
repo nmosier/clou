@@ -126,3 +126,5 @@ void close_log();
 
 
 extern std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
+
+extern bool reverse_function_order;
