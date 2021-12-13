@@ -65,16 +65,16 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
 #endif
     logv(2, "Constructing aliases\n");
     construct_aliases(AA);
-
+    
     logv(2, "Constructing com\n");
     construct_com();
-
+    
     logv(2, "Constructing comx\n");
     construct_comx();
     logv(2, "Constructing dependencies\n");
-
+    
     dependencies = construct_dependencies2();
-
+    
     logv(2, "Constructing dominators\n");
     construct_dominators();
     logv(2, "Constructing postdominators\n");
@@ -166,7 +166,7 @@ void AEG::construct_nodes() {
                 }, [&] (const NodeRef ref) -> unsigned {
                     return min_specs_out.at(ref);
                 });
-
+                
                 min_specs_in.emplace(ref, min);
                 
                 if (min >= spec_depth) {
@@ -224,7 +224,7 @@ void AEG::construct_addr_defs() {
                                 node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
 #if 0
                                 {
-                                llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
+                                    llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
                                 }
 #endif
                                 continue;
@@ -340,7 +340,7 @@ void AEG::construct_addrs() {
     for (NodeRef ref : po.reverse_postorder()) {
         const auto& po_node = po.lookup(ref);
         Node& node = lookup(ref);
-
+        
         /* bind refs */
         if (const RegularInst *inst = dynamic_cast<const RegularInst *>(node.inst.get())) {
             
@@ -364,31 +364,34 @@ void AEG::construct_addrs() {
                     } else if (const llvm::GlobalValue *G = llvm::dyn_cast<llvm::GlobalValue>(V)) {
                         auto globals_it = globals.find(G);
                         if (globals_it == globals.end()) {
-			  /* get size of global */
-			  bool done = false;
-			  llvm::Type *T = G->getValueType();
-			  if (T->isSized()) {
-                            const auto bits = DL.getTypeSizeInBits(G->getValueType());
-			    if (bits != 0) {
-			      globals_it = globals.emplace(G, Address(context.context.int_val(global_counter))).first;
-			      global_counter += bits / 8;
-			      done = true;
+                            /* get size of global */
+                            bool done = false;
+                            llvm::Type *T = G->getValueType();
+                            if (T->isSized()) {
+                                const auto bits = DL.getTypeSizeInBits(G->getValueType());
+                                if (bits != 0) {
+                                    globals_it = globals.emplace(G, Address(context.context.int_val(global_counter))).first;
+                                    global_counter += bits / 8;
+                                    done = true;
+                                }
                             }
-			  }
-			  if (!done) {
-			    globals_it = globals.emplace(G, Address(context)).first;
-			  }
-			}
-			e = globals_it->second;
+                            if (!done) {
+                                globals_it = globals.emplace(G, Address(context)).first;
+                            }
+                        }
+                        e = globals_it->second;
 #if 1
                         llvm::errs() << "GLOBAL: " << *G << " " << util::to_string(e->addr) << "\n";
 #endif
-                    } else if (const llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(V)) {
+                    } else if (const llvm::ConstantExpr *C = llvm::dyn_cast<llvm::ConstantExpr>(V)) {
                         auto globals_it = globals.find(G);
                         if (globals_it == globals.end()) {
                             globals_it = globals.emplace(C, Address(context)).first;
                         }
                         e = globals_it->second;
+                        
+                        llvm::errs() << "CONSTANT EXPR: " << *C << "\n";
+                        
                     } else {
                         auto& os = llvm::errs();
                         os << "Expected argument but got " << *V << "\n";
@@ -460,7 +463,7 @@ void AEG::construct_addrs() {
                                 node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
 #if 0
                                 {
-                                llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
+                                    llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
                                 }
 #endif
                                 continue;
@@ -510,7 +513,7 @@ void AEG::construct_exec() {
     }
 #endif
 }
- 
+
 void AEG::construct_arch() {
     // assign arch variables
     for (NodeRef ref : po.reverse_postorder()) {
@@ -554,7 +557,7 @@ void AEG::construct_trans() {
         constraints(z3::atmost(trans, spec_depth), "trans-limit-max");
     }
     
-
+    
 } 
 
 /// depends on construct_po()
@@ -946,11 +949,11 @@ template <Direction dir>
 AEG::DominatorMap AEG::construct_dominators_shared2() const {
     /* At each program point, store the set of instructions that MUST have been executed to reach this instruction. This means that the MEET operator is set intersection.
      */
-   // using NodeRefSet = ::NodeRefBitset;
+    // using NodeRefSet = ::NodeRefBitset;
     std::vector<std::optional<NodeRefSet>> outs(size());
     
     BlockCFG bcfg(po);
-
+    
     NodeRefVec order;
     switch (dir) {
         case Direction::IN:
