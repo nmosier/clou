@@ -784,7 +784,7 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
         std::erase_if(candidate_transmitters, [&] (NodeRef ref) -> bool {
             const auto& node = aeg.lookup(ref);
             if (const llvm::Instruction *I = node.inst->get_inst()) {
-                if (transmitters.contains(I)) {
+                if (::transmitters.contains(I)) {
                     llvm::errs() << "filtered transmitter: " << *I << "\n";
                     return true;
                 }
