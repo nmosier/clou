@@ -270,9 +270,8 @@ void CFG_Unrolled::construct_function(llvm::Function *F, Port& port, IDs& ids) {
     for (const llvm::BasicBlock& B : *F) {
         const llvm::Instruction *T = B.getTerminator();
         if (T->getNumSuccessors() == 0) {
-            if (llvm::isa<llvm::ReturnInst>(T)) {
+            if (llvm::isa<llvm::ReturnInst>(T) || llvm::isa<llvm::UnreachableInst>(T)) {
                 LF.exits.push_back(&B);
-            } else if (llvm::isa<llvm::UnreachableInst>(T)) {
             } else {
                 llvm::errs() << "unrecognized terminator instruction: " << *T << "\n";
                 std::abort();
