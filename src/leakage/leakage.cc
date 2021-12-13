@@ -429,6 +429,67 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                 return;
             }
             
+            /* move all nodes that can't reach the main function */
+            {
+                std::unordered_map<NodeRef, bool> map;
+                
+                const auto skip_ref = [&] (NodeRef ref) -> bool {
+                    return ref == aeg.entry || aeg.exits.contains(ref) || !exec_window.contains(ref);
+                };
+                
+                /* forward pass */
+                for (NodeRef ref : aeg.po.postorder()) {
+                    if (skip_ref(ref)) { continue; }
+                    
+                    const auto& succs = aeg.po.po.fwd.at(ref);
+                    
+                    const bool in = std::transform_reduce(succs.begin(), succs.end(), false,
+                                          std::logical_or(),
+                                          [&] (NodeRef succ) -> bool {
+                        if (aeg.entry == succ || aeg.exits.contains(succ)) { return true; }
+                        if (skip_ref(succ)) { return false; }
+                        return map.at(succ);
+                    });
+                    
+                    bool out = in;
+                    if (!out) {
+                        if (const llvm::Instruction *I = aeg.lookup(ref).inst->get_inst()) {
+                            if (I->getFunction() == aeg.po.function()) {
+                                out = true;
+                            }
+                        }
+                    }
+                    
+                    map.emplace(ref, out);
+                }
+                
+                /* reverse pass */
+                for (NodeRef ref : aeg.po.reverse_postorder()) {
+                    if (skip_ref(ref)) { continue; }
+                    
+                    const auto& preds = aeg.po.po.rev.at(ref);
+                    
+                    const bool in = std::transform_reduce(preds.begin(), preds.end(), false, std::logical_or(),
+                                                          [&] (NodeRef pred) -> bool {
+                        if (aeg.entry == pred || aeg.exits.contains(pred)) { return true; }
+                        if (skip_ref(pred)) { return false; }
+                        return map.at(pred);
+                    });
+                    map.at(ref) = in;
+                }
+                
+                /* prune bad nodes */
+                NodeRefVec pruned;
+                std::copy_if(exec_window.begin(), exec_window.end(), std::back_inserter(pruned), [&] (NodeRef ref) -> bool {
+                    if (skip_ref(ref)) { return false; }
+                    else { return !map.at(ref); }
+                });
+                for (NodeRef ref : pruned) {
+                    exec_window.erase(ref);
+                    exec_notwindow.insert(ref);
+                }
+            }
+                
             mems = get_mems1(exec_window);
         }
         
