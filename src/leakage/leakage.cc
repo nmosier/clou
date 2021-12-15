@@ -488,6 +488,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                     exec_window.erase(ref);
                     exec_notwindow.insert(ref);
                 }
+		logv(2, "pruned " << pruned.size() << " transmitters that don't reach main function\n");
             }
                 
             mems = get_mems1(exec_window);
