@@ -5,54 +5,125 @@
 #include <unistd.h>
 #include <cstdio>
 #include <sys/file.h>
+#include <exception>
+#include <gdbm.h>
+#include <sstream>
+#include <mutex>
 
-class FileLock {
+class gdbm_exception: public std::exception {
 public:
-    FileLock(): fd(-1) {}
-    FileLock(int fd, int operation): fd(fd) {
+    gdbm_exception(const std::string& func, int err = gdbm_errno) {
+        std::stringstream ss;
+        ss << func << ": " << gdbm_strerror(err);
+        msg = ss.str();
+    }
+    
+    virtual const char *what() const noexcept override {
+        return msg.c_str();
+    }
+    
+private:
+    std::string msg;
+};
+
+class FileMutex {
+public:
+    FileMutex(int fd, int operation): fd(fd), operation(operation) {}
+    
+    void lock() {
         lock(operation);
     }
     
-    ~FileLock() {
+    void unlock() {
         lock(LOCK_UN);
     }
     
 private:
     int fd;
+    int operation;
     
-    void lock(int operation) const;
+    void lock(int operation) {
+        if (::flock(fd, operation) < 0) {
+            throw std::system_error(errno, std::generic_category(), "flock");
+        }
+    }
 };
 
-class CFile {
+class SharedDatabase {
 public:
-    CFile(int fd, const char *mode);
-    
-    ~CFile() {
-        ::fclose(f);
+    SharedDatabase() {}
+    SharedDatabase(const std::string& path) {
+        open(path);
     }
     
-    FILE *handle() const {
-        return f;
+    ~SharedDatabase() {
+        if (good()) {
+            close();
+        }
+    }
+    
+    /* Opening/Closing Operations */
+    void open(const std::string& path) {
+        if ((f = gdbm_open(path.c_str(), 0, GDBM_WRITER | GDBM_WRCREAT | GDBM_NOLOCK, 0664, nullptr)) == nullptr) {
+            throw gdbm_exception("gdbm_open");
+        }
+    }
+    
+    void close() {
+        gdbm_close(f);
+        f = nullptr;
+    }
+    
+    bool good() const { return f != nullptr; }
+    operator bool() const { return good(); }
+    
+    /* Modifiers */
+    
+    bool contains(const std::string& key) const {
+        datum d = {
+            .dptr = const_cast<char *>(key.data()),
+            .dsize = static_cast<int>(key.size()),
+        };
+        FileMutex m = mutex(LOCK_SH);
+        std::unique_lock<FileMutex> l {m};
+        const datum ent = gdbm_fetch(f, d);
+        if (ent.dptr == nullptr) {
+            if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
+                return false;
+            } else {
+                throw gdbm_exception("gdbm_fetch");
+            }
+        } else {
+            return true;
+        }
+    }
+    
+    void insert(const std::string& key) {
+        const datum k = {
+            .dptr = const_cast<char *>(key.data()),
+            .dsize = static_cast<int>(key.size()),
+        };
+        FileMutex m = mutex(LOCK_EX);
+        std::unique_lock<FileMutex> l {m};
+        if (gdbm_store(f, k, k, 0) == -1) {
+            throw gdbm_exception("gdbm_store");
+        }
     }
     
 private:
-    FILE *f;
-};
+    GDBM_FILE f = nullptr;
 
-class SharedFileLock: public FileLock {
-public:
-    SharedFileLock(int fd): FileLock(fd, LOCK_SH) {}
-};
-
-
-
-class SharedDatabaseListSet {
-public:
-    SharedDatabaseListSet() {}
-    SharedDatabaseListSet(const std::string& path): path(path) {}
-    bool contains(const std::string& s) const;
-    void insert(const std::string& s) const;
+    int fd() const {
+        return gdbm_fdesc(f);
+    }
     
-private:
-    std::string path;
+    FileMutex mutex(int operation) const {
+        return FileMutex(fd(), operation);
+    }
+    
+    void lock(int operation) const {
+        if (::flock(fd(), operation) < 0) {
+            throw std::system_error(errno, std::generic_category(), "flock");
+        }
+    }
 };

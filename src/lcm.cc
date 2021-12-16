@@ -139,8 +139,9 @@ struct LCMPass: public llvm::ModulePass {
         
         try {
             check_config();
-            
+
             if (analyzed_functions.contains(F.getName().str())) {
+                
                 std::cerr << "skipping analyzed function " << F.getName().str() << "\n";
                 if (client) {
                     mon::Message msg;

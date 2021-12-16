@@ -7,6 +7,7 @@
 #include <memory>
 #include <sys/sem.h>
 #include <vector>
+#include <gdbm.h>
 
 #include "aeg/fwd.h"
 #include "aeg/edge.h"
@@ -118,8 +119,8 @@ extern std::ofstream log_;
 
 void check_config();
 
-class SharedDatabaseListSet;
-extern SharedDatabaseListSet analyzed_functions;
+class SharedDatabase;
+extern SharedDatabase analyzed_functions;
 
 void open_log(const std::string& name);
 void close_log();

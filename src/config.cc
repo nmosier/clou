@@ -9,6 +9,7 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/stat.h>
+#include <gdbm.h>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -65,7 +66,8 @@ OutputCFGs output_cfgs;
 
 mon::Client client;
 
-SharedDatabaseListSet analyzed_functions;
+SharedDatabase analyzed_functions;
+
 
 namespace {
 
@@ -150,7 +152,11 @@ void initialize_post() {
         throw std::system_error(errno, std::generic_category(), "mkdir");
     }
     
-    analyzed_functions = SharedDatabaseListSet(util::to_string(output_dir, "/functions.txt"));
+    {
+        std::stringstream ss;
+        ss << output_dir << "/functions.db";
+        analyzed_functions.open(ss.str());
+    }
     
     std::signal(SIGPIPE, SIG_IGN);
     
