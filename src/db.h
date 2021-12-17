@@ -64,7 +64,7 @@ public:
     
     /* Opening/Closing Operations */
     void open(const std::string& path) {
-        if ((f = gdbm_open(path.c_str(), 0, GDBM_WRITER | GDBM_WRCREAT | GDBM_NOLOCK, 0664, nullptr)) == nullptr) {
+        if ((f = gdbm_open(path.c_str(), 0, GDBM_WRCREAT | GDBM_NOLOCK | GDBM_SYNC, 0664, nullptr)) == nullptr) {
             throw gdbm_exception("gdbm_open");
         }
     }
