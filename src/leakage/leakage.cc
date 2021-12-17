@@ -314,7 +314,7 @@ void Detector::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function
     }
     for (const auto& store_pair : stores) {
         const NodeRef store = store_pair.first;
-
+        
         assert(exec_window.contains(load));
         
         switch (exec_mode) {
@@ -437,74 +437,23 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                 exec_notwindow.insert(ref);
             });
             
+            // TODO: This should be removed, since the 'pruning paths' step will result in an empty window anyway.
             const bool reaches_main_function = func_id_pfx.empty();
             if (reverse_function_order && !reaches_main_function) {
                 logv(2, "skipping transmitter " << transmitter << " because it doesn't reach main function\n");
                 return;
             }
             
-            /* move all nodes that can't reach the main function */
-            {
-                std::unordered_map<NodeRef, bool> map;
-                
-                const auto skip_ref = [&] (NodeRef ref) -> bool {
-                    return ref == aeg.entry || aeg.exits.contains(ref) || !exec_window.contains(ref);
-                };
-                
-                /* forward pass */
-                for (NodeRef ref : aeg.po.postorder()) {
-                    if (skip_ref(ref)) { continue; }
-                    
-                    const auto& succs = aeg.po.po.fwd.at(ref);
-                    
-                    const bool in = std::transform_reduce(succs.begin(), succs.end(), false,
-                                          std::logical_or(),
-                                          [&] (NodeRef succ) -> bool {
-                        if (aeg.entry == succ || aeg.exits.contains(succ)) { return true; }
-                        if (skip_ref(succ)) { return false; }
-                        return map.at(succ);
-                    });
-                    
-                    bool out = in;
-                    if (!out) {
-                        if (const llvm::Instruction *I = aeg.lookup(ref).inst->get_inst()) {
-                            if (I->getFunction() == aeg.po.function()) {
-                                out = true;
-                            }
-                        }
-                    }
-                    
-                    map.emplace(ref, out);
-                }
-                
-                /* reverse pass */
-                for (NodeRef ref : aeg.po.reverse_postorder()) {
-                    if (skip_ref(ref)) { continue; }
-                    
-                    const auto& preds = aeg.po.po.rev.at(ref);
-                    
-                    const bool in = std::transform_reduce(preds.begin(), preds.end(), false, std::logical_or(),
-                                                          [&] (NodeRef pred) -> bool {
-                        if (aeg.entry == pred || aeg.exits.contains(pred)) { return true; }
-                        if (skip_ref(pred)) { return false; }
-                        return map.at(pred);
-                    });
-                    map.at(ref) = in;
-                }
-                
-                /* prune bad nodes */
-                NodeRefVec pruned;
-                std::copy_if(exec_window.begin(), exec_window.end(), std::back_inserter(pruned), [&] (NodeRef ref) -> bool {
-                    if (skip_ref(ref)) { return false; }
-                    else { return !map.at(ref); }
-                });
-                for (NodeRef ref : pruned) {
-                    exec_window.erase(ref);
+            /* pruning paths */
+            auto new_exec_window = aeg.po.prune_exec_window(exec_window);
+            logv(2, "pruned " << (exec_window.size() - new_exec_window.size()) << " transmitters that don't reach main function\n");
+            exec_window = std::move(new_exec_window);
+            for (NodeRef ref : aeg.po.reverse_postorder()) {
+                if (!exec_window.contains(ref)) {
                     exec_notwindow.insert(ref);
                 }
-		logv(2, "pruned " << pruned.size() << " transmitters that don't reach main function\n");
             }
-                
+            
             mems = get_mems1(exec_window);
         }
         
@@ -695,7 +644,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         }
         
         Timer timer;
-
+        
 #if 0
         ::close(fds[0]);
 #endif
@@ -740,7 +689,7 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
 }
 
 void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func) {
-
+    
     std::cerr << "using " << max_parallel << " threads\n";
     
     unsigned num_threads = 0;
@@ -835,7 +784,7 @@ void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_trans
                         .transmitter = transmitter
                     }, desc);
                 }
-            
+                
             }
             
             --num_threads;
@@ -1080,7 +1029,7 @@ void Detector::precompute_rf(NodeRef load) {
     unsigned filtered = 0;
     for (auto it = out.begin(); it != out.end(); ) {
         bool keep = true;
-
+        
         // check if alias expression is always false
         if (it->first != aeg.entry) {
             const z3::expr alias = (aeg.lookup(it->first).get_memory_address() == aeg.lookup(load).get_memory_address());
@@ -1174,7 +1123,7 @@ void Detector::traceback_deps(NodeRef from_ref, std::function<void (const NodeRe
 void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                                   std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     const auto push_ref = util::push(vec, from_ref);
-
+    
     if (mode == CheckMode::SLOW) {
         using output::operator<<;
         logv(1, __FUNCTION__ << ": " << vec << "\n");
@@ -1206,7 +1155,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
         const aeg::Edge::Kind dep_kind = it->first;
         const aeg::ExecMode dep_src_mode = it->second;
         const auto deps = aeg.get_nodes(Direction::IN, from_ref, dep_kind);
-    
+        
         if (deps.empty()) {
             goto label;
         }
@@ -1250,7 +1199,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
         }
     }
     
-    label:
+label:
     
     /* traceback
      * NOTE: only if it's not the universal transmitter.

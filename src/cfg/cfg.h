@@ -92,6 +92,8 @@ public:
     
     void sort();
     
+    NodeRefSet prune_exec_window(const NodeRefSet& window) const;
+    
 private:
     void compute_postorder(NodeRefVec& order) const;
 public:

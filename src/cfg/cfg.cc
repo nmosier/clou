@@ -426,3 +426,63 @@ bool CFG::same_basic_block(NodeRef src, NodeRef dst) const {
         ref = *succs.begin();
     }
 }
+
+
+NodeRefSet CFG::prune_exec_window(const NodeRefSet& window) const {
+    /* first pass:
+     * - postorder
+     * - each node gets common prefix */
+    std::unordered_map<NodeRef, std::vector<FuncID>> map;
+    
+    const auto get_id = [&] (NodeRef ref) {
+        const auto& node = lookup(ref);
+        if (node.id) {
+            return node.id->func;
+        } else {
+            return std::vector<FuncID>();
+        }
+    };
+    
+    for (NodeRef ref : postorder()) {
+        if (!window.contains(ref)) { continue; }
+        auto succs = po.fwd.at(ref);
+        std::erase_if(succs, [&window] (NodeRef ref) {
+            return !window.contains(ref);
+        });
+        auto out = std::transform_reduce(succs.begin(), succs.end(), get_id(ref), [] (const auto& f1, const auto& f2) {
+            std::vector<FuncID> res;
+            util::shared_prefix(f1, f2, std::back_inserter(res));
+            return res;
+        }, get_id);
+        map.emplace(ref, std::move(out));
+    }
+    
+    /* reverse pass */
+    for (NodeRef ref : reverse_postorder()) {
+        if (!window.contains(ref)) { continue; }
+        
+        auto preds = po.rev.at(ref);
+        std::erase_if(preds, [&window] (NodeRef ref) {
+            return !window.contains(ref);
+        });
+        auto out = std::transform_reduce(preds.begin(), preds.end(), map.at(ref), [] (const auto& f1, const auto& f2) {
+            std::vector<FuncID> res;
+            util::shared_prefix(f1, f2, std::back_inserter(res));
+            return res;
+        }, [&] (NodeRef ref) {
+            return map.at(ref);
+        });
+        
+        map.at(ref) = std::move(out);
+    }
+    
+    /* remove nodes that don't reach main function */
+    NodeRefSet newwindow;
+    for (NodeRef ref : window) {
+        if (map.at(ref).empty()) {
+            newwindow.insert(ref);
+        }
+    }
+    
+    return newwindow;
+}
