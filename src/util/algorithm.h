@@ -132,6 +132,16 @@ bool prefixeq_bi(const std::vector<T>& a, const std::vector<T>& b) {
     return std::equal(a.begin(), a.begin() + size, b.begin());
 }
 
+template <class Container, class OutputIt>
+OutputIt shared_prefix(const Container& c1, const Container& c2, OutputIt out) {
+    for (auto it1 = c1.begin(), it2 = c2.begin();
+         it1 != c1.end() && it2 != c2.end() && *it1 == *it2;
+         ++it1, ++it2) {
+        *out++ = *it1;
+    }
+    return out;
+}
+
 template <typename Container>
 std::optional<typename Container::value_type> get_singleton(const Container& container) {
     if (container.size() == 1) {

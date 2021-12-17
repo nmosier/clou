@@ -409,21 +409,35 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         Timer timer;
         // MAKE EXEC WINDOW
         {
+#if 0
             bool reaches_main_function = false;
+#endif
+            std::vector<CFG::FuncID> func_id_pfx; // function ID prefix
             exec_window.clear();
             exec_notwindow.clear();
             aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
                 exec_window.insert(ref);
+#if 0
                 const auto& node = aeg.lookup(ref);
+#endif
+                const auto& po_node = aeg.po.lookup(ref);
+                {
+                    std::vector<CFG::FuncID> new_func_id_pfx;
+                    util::shared_prefix(func_id_pfx, po_node.id->func, std::back_inserter(new_func_id_pfx));
+                    func_id_pfx = std::move(new_func_id_pfx);
+                }
+#if 0
                 if (const llvm::Instruction *I = node.inst->get_inst()) {
                     if (I->getFunction() == aeg.po.function()) {
                         reaches_main_function = true;
                     }
                 }
+#endif
             }, [&] (NodeRef ref) {
                 exec_notwindow.insert(ref);
             });
             
+            const bool reaches_main_function = func_id_pfx.empty();
             if (reverse_function_order && !reaches_main_function) {
                 logv(2, "skipping transmitter " << transmitter << " because it doesn't reach main function\n");
                 return;
