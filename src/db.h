@@ -252,9 +252,12 @@ private:
     std::string path;
 
     GDBM_FILE file() const {
-        int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_EXLOCK, 0664);
+        int fd = ::open(path.c_str(), O_RDWR | O_CREAT, 0664);
         if (fd < 0) {
             throw std::system_error(errno, std::generic_category(), "open");
+        }
+        if (::flock(fd, LOCK_EX) < 0) {
+            throw std::system_error(errno, std::generic_category(), "flock");
         }
         
         GDBM_FILE f = ::gdbm_fd_open(fd, path.c_str(), 0, GDBM_WRCREAT, nullptr);
