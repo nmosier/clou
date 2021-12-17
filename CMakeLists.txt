@@ -24,6 +24,9 @@ pkg_search_module(LIBPROFILER REQUIRED libprofiler)
 include_directories(${LIBPROFILER_INCLUDE_DIRS})
 link_directories(${LIBPROFILER_LIBRARY_DIRS})
 
+find_library(GDBM_LIBRARIES gdbm REQUIRED)
+link_libraries(${GDBM_LIBRARIES})
+
 # set(SANITIZE address)
 if(DEFINED SANITIZE)
   add_compile_options(-fsanitize=${SANITIZE})
