@@ -8,6 +8,7 @@
 #include <exception>
 #include <gdbm.h>
 #include <sstream>
+#include <fcntl.h>
 #include <mutex>
 
 class gdbm_exception: public std::exception {
@@ -49,12 +50,13 @@ private:
     }
 };
 
+#if 0
 namespace gdbm {
 
 class File {
 public:
     File() {}
-    File(const std::string& path, int flags, int mode = 0) {
+    File(const std::string& path, int flags, int mode) {
         open(path, flags, mode);
     }
     
@@ -67,7 +69,37 @@ public:
     bool good() const { return f != nullptr; }
     operator bool() const { return good(); }
     
-    void open(const std::string& path, int flags, int mode = 0) {
+    void open(const std::string& path, int flags, int mode) {
+        int oflags = 0;
+        if ((flags & GDBM_WRCREAT)) {
+            oflags |= O_RDWR | O_CREAT;
+        } else if ((flags & GDBM_READER)) {
+            oflags |= O_RDONLY;
+        } else if ((flags & GDBM_WRITER)) {
+            oflags |= O_RDONL
+            
+        
+
+            int fd;
+            if ((fd = ::open(path.c_str(), O_RDWR | O_CREAT, mode)) < 0) {
+                throw std::system_error(errno, std::generic_category(), "open");
+            }
+            
+            if ((f = ::gdbm_fd_open(fd, path.c_str(), 0, flags, nullptr)) == nullptr) {
+                ::close(fd);
+                throw gdbm_exception("gdbm_fd_open");
+            }
+        } else {
+        }
+    }
+    
+    void open(int fd, const std::string& path, int flags, int mode) {
+        if ((f = ::gdbm_fd_open(fd, path.c_str(), 0, flags, mode, nullptr)) == nullptr) {
+            throw gdbm_exception("gdbm_fd_open");
+        }
+    }
+    
+    void open(const std::string& path, int flags, int mode) {
         if ((f = ::gdbm_open(path.c_str(), 0, flags, mode, nullptr)) == nullptr) {
             throw gdbm_exception("gdbm_open");
         }
@@ -89,6 +121,7 @@ private:
 };
 
 }
+#endif
 
 #if 0
 class SharedDatabase {
@@ -183,42 +216,54 @@ public:
     }
     
     bool contains(const std::string& key) const {
-        gdbm::File f = file();
+        GDBM_FILE f = file();
         datum d = {
             .dptr = const_cast<char *>(key.data()),
             .dsize = static_cast<int>(key.size()),
         };
-        const datum ent = gdbm_fetch(f, d);
-        if (ent.dptr == nullptr) {
-            if (gdbm_errno == GDBM_ITEM_NOT_FOUND) {
+        const auto res = ::gdbm_exists(f, d);
+        const auto err = gdbm_errno;
+        ::gdbm_close(f);
+        if (res) {
+            return true;
+        } else {
+            if (err == GDBM_NO_ERROR) {
                 return false;
             } else {
-                throw gdbm_exception("gdbm_fetch");
+                throw gdbm_exception("gdbm_exists", err);
             }
-        } else {
-            return true;
         }
     }
     
     void insert(const std::string& key) {
-        gdbm::File f = file();
+        GDBM_FILE f = file();
         const datum k = {
             .dptr = const_cast<char *>(key.data()),
             .dsize = static_cast<int>(key.size()),
         };
         if (gdbm_store(f, k, k, 0) == -1) {
+            ::gdbm_close(f);
             throw gdbm_exception("gdbm_store");
         }
-        if (gdbm_sync(f) < 0) {
-            throw gdbm_exception("gdbm_sync");
-        }
+        ::gdbm_close(f);
     }
     
 private:
     std::string path;
-    
-    gdbm::File file() const {
-        return gdbm::File(path, GDBM_WRCREAT, 0664);
+
+    GDBM_FILE file() const {
+        int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_EXLOCK, 0664);
+        if (fd < 0) {
+            throw std::system_error(errno, std::generic_category(), "open");
+        }
+        
+        GDBM_FILE f = ::gdbm_fd_open(fd, path.c_str(), 0, GDBM_WRCREAT, nullptr);
+        if (f == nullptr) {
+            ::close(fd);
+            throw gdbm_exception("gdbm_open");
+        }
+        
+        return f;
     }
 };
 
