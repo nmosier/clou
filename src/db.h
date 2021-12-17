@@ -108,6 +108,9 @@ public:
         if (gdbm_store(f, k, k, 0) == -1) {
             throw gdbm_exception("gdbm_store");
         }
+        if (gdbm_sync(f) < 0) {
+            throw gdbm_exception("gdbm_sync");
+        }
     }
     
 private:
@@ -119,11 +122,5 @@ private:
     
     FileMutex mutex(int operation) const {
         return FileMutex(fd(), operation);
-    }
-    
-    void lock(int operation) const {
-        if (::flock(fd(), operation) < 0) {
-            throw std::system_error(errno, std::generic_category(), "flock");
-        }
     }
 };
