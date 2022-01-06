@@ -20,6 +20,16 @@ public:
     Kosaraju(const NodeList& nodes, const AdjacencyMap& edges): nodes(nodes), edges(edges) {
         reverse(edges, redges);
     }
+    
+    Kosaraju(const AdjacencyMap& edges): edges(edges) {
+        for (const auto& pair : edges) {
+            nodes.insert(pair.first);
+            for (const auto& node : pair.second) {
+                nodes.insert(node);
+            }
+        }
+        reverse(edges, redges);
+    }
 
     template <typename OutputIt>
     OutputIt operator()(OutputIt out) {
@@ -31,16 +41,23 @@ public:
             const T node = *it;
             assign(node, node);
         }
-
-        std::unordered_map<T, SCC> sccs2;
-        for (const auto& pair : sccs) {
-            sccs2[pair.second].insert(pair.first);
+        
+        for (const auto& pair : scc_assignments) {
+            scc_map[pair.second].insert(pair.first);
         }
         
-        return std::transform(sccs2.begin(), sccs2.end(), out,
+        return std::transform(scc_map.begin(), scc_map.end(), out,
                               [] (const auto& pair) {
             return pair.second;
         });
+    }
+    
+    T get_root(T node) const {
+        return scc_assignments.at(node);
+    }
+    
+    const SCC& get_scc(T node) const {
+        return scc_map.at(get_root(node));
     }
     
 private:
@@ -49,7 +66,8 @@ private:
     AdjacencyMap redges;
     std::vector<T> L;
     std::unordered_set<T> visited;
-    std::unordered_map<T, T> sccs;
+    std::unordered_map<T, T> scc_assignments;
+    std::unordered_map<T, SCC> scc_map;
     
     static void reverse(const AdjacencyMap& in, AdjacencyMap& out) {
         for (const auto& in_pair : in) {
@@ -70,8 +88,8 @@ private:
     }
     
     void assign(T node, T root) {
-        if (!sccs.contains(node)) {
-            sccs.emplace(node, root);
+        if (!scc_assignments.contains(node)) {
+            scc_assignments.emplace(node, root);
             for (T pred : redges[node]) {
                 assign(pred, root);
             }
