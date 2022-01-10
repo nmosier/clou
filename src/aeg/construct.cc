@@ -675,7 +675,7 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
 }
 
 
-void AEG::assert_xsaccess_order(const NodeRefSet& window, Solver& solver) {
+void AEG::assert_xsaccess_order(const NodeRefSet& window, z3::solver& solver) {
     z3::context& ctx = context.context;
     const z3::expr xsaccess_order_init = ctx.int_val(0);
     

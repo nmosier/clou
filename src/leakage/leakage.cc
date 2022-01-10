@@ -28,7 +28,7 @@ extern Transmitters transmitters;
 
 namespace aeg {
 
-void AEG::leakage(Solver& solver, TransmitterOutputIt out) {
+void AEG::leakage(z3::solver& solver, TransmitterOutputIt out) {
     std::unique_ptr<lkg::Detector> detector;
     
     switch (leakage_class) {
@@ -183,7 +183,7 @@ void Leakage::print_short(std::ostream& os) const {
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, Solver& solver): aeg(aeg), solver(solver), alias_solver(ctx()), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
+Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), alias_solver(ctx()), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
 
 z3::expr Detector::mem(NodeRef ref) const {
     const auto it = mems.find(ref);
@@ -551,7 +551,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         if (priv) {
             Timer timer;
             logv(1, "translating to window...\n");
-            Solver new_solver {ctx()};
+            z3::solver new_solver {ctx()};
             for (z3::expr old_assertion : solver.assertions()) {
                 z3::expr new_assertion = window_model.eval(old_assertion);
                 new_assertion = new_assertion.simplify();
@@ -569,7 +569,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     logv(0, __FUNCTION__ << ": adding window constraints\n");
     std::optional<Timer> timer_opt = Timer();
     
-    std::optional<z3::scope<Solver>> scope;
+    std::optional<z3::scope> scope;
     if (!priv) {
         scope.emplace(solver);
     }
@@ -596,23 +596,6 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
 
 template <class OutputIt>
 OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out) {
-#if 0
-    int fds[2];
-    io::pipe(fds);
-    
-#ifdef __linux__
-    if (FILE *f = fopen("/proc/sys/fs/pipe-max-size", "r")) {
-        unsigned size;
-        if (fscanf(f, "%u", &size) == 1) {
-            if (fcntl(fds[1], F_SETPIPE_SZ, size) < 0) {
-                throw std::system_error(errno, std::generic_category(), "fcntl(F_SETPIPE_SZ)");
-            }
-            logv(1, "successfully set pipe size to " << size << " bytes\n");
-        }
-        fclose(f);
-    }
-#endif
-#else
     
     char *path;
     if (::asprintf(&path, "%s/tmp/lkg.XXXXXX", output_dir.c_str()) < 0) {
@@ -623,7 +606,6 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
     if (fd < 0) {
         throw std::system_error(errno, std::generic_category(), "mkstemp");
     }
-#endif
     
     ::signal(SIGSEGV, SIG_DFL);
     ::signal(SIGABRT, SIG_DFL);
@@ -645,9 +627,6 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         
         Timer timer;
         
-#if 0
-        ::close(fds[0]);
-#endif
         for_one_transmitter(transmitter, func, true);
         
         if (fast_mode && leaks.size() > 1) {

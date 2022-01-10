@@ -121,21 +121,11 @@ private:
     }
     
 
-public:
-#if 0
-    using Solver = z3::trivial_solver<z3::lazy_solver<z3::solver>>;
-#elif 0
-    using Solver = z3::trivial_solver<z3::solver>;
-#else
-    using Solver = z3::solver;
-#endif
 private:
-    Solver make_solver();
-    
-    
+    z3::solver make_solver();
 
 public:
-    void assert_xsaccess_order(const NodeRefSet& window, Solver& solver);
+    void assert_xsaccess_order(const NodeRefSet& window, z3::solver& solver);
 
     void for_each_pred_in_window(NodeRef ref, unsigned window, std::function<void (NodeRef)> is, std::function<void (NodeRef)> isnt);
 
@@ -168,7 +158,7 @@ private:
 #endif
     
     /** Check for leakage in the AEG. Outputs set of transmitter gadgets. */
-    void leakage(Solver& solver, TransmitterOutputIt out);
+    void leakage(z3::solver& solver, TransmitterOutputIt out);
     
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
     

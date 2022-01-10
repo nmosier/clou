@@ -23,7 +23,7 @@ protected:
     virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
 #endif
     
-    SpectreV1_Detector(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}
+    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver): Detector(aeg, solver) {}
         
 private:
     NodeRefVec loads;
@@ -46,7 +46,7 @@ private:
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
 public:
-    SpectreV1_Classic_Detector(aeg::AEG& aeg, Solver& solver): SpectreV1_Detector(aeg, solver) {}
+    SpectreV1_Classic_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
     
 private:
     virtual DepVec deps() const override final;
@@ -55,7 +55,7 @@ private:
 
 class SpectreV1_Control_Detector final: public SpectreV1_Detector {
 public:
-    SpectreV1_Control_Detector(aeg::AEG& aeg, Solver& solver): SpectreV1_Detector(aeg, solver) {}
+    SpectreV1_Control_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
 private:
     virtual DepVec deps() const override final;
     virtual std::string name() const override final { return "SpectreV1Control"; }

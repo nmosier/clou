@@ -1,6 +1,8 @@
 #include "spectre-v4.h"
 #include "cfg/expanded.h"
 #include "util/algorithm.h"
+#include "aeg/node.h"
+#include "aeg/aeg.h"
 
 namespace lkg {
 

@@ -11,7 +11,6 @@
 #include "cfg/block.h"
 #include "util/z3.h"
 #include "util/scope.h"
-#include "aeg/aeg.h"
 #include "util/timer.h"
 #include "util/algorithm.h"
 
@@ -28,8 +27,6 @@ struct Leakage {
 
 class Detector {
 public:
-    using Solver = aeg::AEG::Solver;
-    
     void run();
     virtual void run_() = 0;
     virtual ~Detector();
@@ -44,7 +41,6 @@ public:
     };
     
 protected:
-    // TODO: move ExecMode to <noderef.h>
     using DepVec = std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>>;
     std::unordered_set<const llvm::Instruction *> transmitters;
     struct next_transmitter {};
@@ -83,7 +79,7 @@ protected:
     using Mems = std::unordered_map<NodeRef, z3::expr>;
     
     aeg::AEG& aeg;
-    Solver solver;
+    z3::solver solver;
     z3::solver alias_solver;
 
     using Actions = std::vector<std::string>;
@@ -98,7 +94,7 @@ protected:
     
     EdgeVec flag_edges;
     
-    Detector(aeg::AEG& aeg, Solver& solver);
+    Detector(aeg::AEG& aeg, z3::solver& solver);
     
     z3::context& ctx();
     
@@ -185,4 +181,4 @@ void append_core(const Solver& solver, const std::string& label) {
 
 
 #define z3_cond_scope \
-const std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope<std::remove_reference<decltype(solver)>::type>(solver)) : std::optional<z3::scope<std::remove_reference<decltype(solver)>::type>>()
+const std::optional<z3::scope> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope(solver)) : std::optional<z3::scope>()

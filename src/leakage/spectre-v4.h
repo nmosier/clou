@@ -6,7 +6,7 @@ namespace lkg {
 
 class SpectreV4_Detector: public Detector {
 public:
-    SpectreV4_Detector(aeg::AEG& aeg, Solver& solver): Detector(aeg, solver) {}
+    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver): Detector(aeg, solver) {}
 private:
     std::vector<float> sats;
     std::vector<float> unknowns;

@@ -18,7 +18,7 @@ bool AEG::may_source_stb(NodeRef load, NodeRef store) const {
     return !stb_size || lookup(load).stores_in < lookup(store).stores_in + static_cast<int>(*stb_size);
 }
 
-AEG::Solver AEG::make_solver() {
+z3::solver AEG::make_solver() {
     z3::context& c = context.context;
     
     if (std::getenv("VERBOSE")) {
@@ -50,9 +50,9 @@ AEG::Solver AEG::make_solver() {
             add(tok);
         }
         std::free(s__);
-        return Solver(acc.mk_solver());
+        return acc.mk_solver();
     } else {
-        return Solver(c);
+        return z3::solver(c);
     }
 }
 
@@ -203,7 +203,7 @@ void AEG::test(TransmitterOutputIt out) {
     
     logv(1, "testing...\n");
     
-    Solver solver = make_solver();
+    z3::solver solver = make_solver();
     
     simplify();
     

@@ -1,5 +1,6 @@
 #include "spectre-v1.h"
 #include "util/timer.h"
+#include "aeg/node.h"
 
 namespace lkg {
 
