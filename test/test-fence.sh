@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu
+set -u
 
 usage() {
     cat <<EOF
@@ -88,36 +88,17 @@ $CLANG $CFLAGS -c -emit-llvm -o $(get_ll_in 0) $TEST
 
 analyze() {
     env LCM_ARGS="${ARGS} -o$(get_dir $1)" $OPT -load $LCM -lcm < $(get_ll_in $1) > $(get_ll_out $1)
-    [[ -f $(get_leakage $1) ]] && [[ -s $(get_leakage $1) ]]
+    [ -s $(get_leakage $1) ]
 }
 
 
 I=0
-while analyze $I; do
+while echo "Pass $I..." && analyze $I; do
+    echo "Pass $I done"
     cp $(get_ll_out $I) $(get_ll_in $((I+1)))
+    echo here
     ((I++))
 done
 echo "$I passes"
 
 exit
-
-# Run first pass with fence insertion
-LCM_ARGS="${ARGS} -o${OUTDIR}/pass1" "$CLANG" -fdeclspec -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -o "${LL}" "$TEST"
-
-# Run second pass to verify there's no leakage
-LCM_ARGS="${ARGS} -o${OUTDIR}/pass2" "$OPT" -load "$LCM" -lcm < "${LL}" > "${OBJ_PREFIX}.bc"
-
-if ! [[ -f "$OUTDIR/pass2/leakage.txt" ]]; then
-    echo "FAIL: no leakage.txt emitted for pass 2"
-    exit 1
-fi
-
-# Check there's no leakage
-if [[ -s "$OUTDIR/pass2/leakage.txt" ]]; then
-    echo "FAIL: found leakage in repaired program"
-    echo "leakage.txt:"
-    cat "$OUTDIR/leakage.txt"
-    exit 1
-fi
-
-echo PASS

@@ -54,7 +54,7 @@ done
 shift $((OPTIND-1))
 
 mkdir -p "$OUTDIR"
-rm -f "$OUTDIR/functions.txt"
+rm -f "$OUTDIR/functions.db"
 
 OBJ="${OUTDIR}/$(basename "${TEST}" .c)"
 
