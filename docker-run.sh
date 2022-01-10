@@ -20,8 +20,8 @@ GUEST_ROOT="/lcm"
 
 
 docker run -it --privileged --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined \
-       -v "${HOST_ROOT}/src":"${GUEST_ROOT}/src":ro \
-       -v "${HOST_ROOT}/test":"${GUEST_ROOT}/test":ro \
-       -v "${HOST_ROOT}/docs":"${GUEST_ROOT}/docs":ro \
-       -v "${HOST_ROOT}/scripts":"${GUEST_ROOT}/scripts":ro \
+       -v "${HOST_ROOT}/src":"${GUEST_ROOT}/src" \
+       -v "${HOST_ROOT}/test":"${GUEST_ROOT}/test" \
+       -v "${HOST_ROOT}/docs":"${GUEST_ROOT}/docs" \
+       -v "${HOST_ROOT}/scripts":"${GUEST_ROOT}/scripts" \
        "$NAME"
