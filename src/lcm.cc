@@ -69,26 +69,29 @@ struct LCMPass: public llvm::ModulePass {
         for (llvm::scc_iterator<llvm::CallGraph *> scc_it = llvm::scc_begin(&CG);
              !scc_it.isAtEnd();
              ++scc_it) {
-            for (llvm::CallGraphNode *scc_node : *scc_it) {
-                if (llvm::Function *F = scc_node->getFunction()) {
-                    if (!F->isDeclaration()) {
-                        llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
-                        open_log(F->getName().str());
-                        timer = Timer(nullptr); // reset timer
-                        runOnFunction(*F, AA, TransmitterOutputIt(transmitters, transmitters.end()));
-                        close_log();
-                    }
-                }
-            }
+            runOnSCC(*scc_it);
         }
         
         bool res = false;
         if (fence_insertion) {
             res = insert_fences(transmitters);
-            
         }
         
         return res;
+    }
+    
+    void runOnSCC(const std::vector<llvm::CallGraphNode *>& scc) {
+        for (llvm::CallGraphNode *scc_node : scc) {
+            if (llvm::Function *F = scc_node->getFunction()) {
+                if (!F->isDeclaration()) {
+                    llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
+                    open_log(F->getName().str());
+                    timer = Timer(nullptr); // reset timer
+                    runOnFunction(*F, AA, TransmitterOutputIt(transmitters, transmitters.end()));
+                    close_log();
+                }
+            }
+        }
     }
     
     template <typename OutputIt>
