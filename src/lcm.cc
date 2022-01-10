@@ -13,6 +13,8 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Analysis/CallGraph.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/ADT/SCCIterator.h>
+#include <llvm/Analysis/CallGraphSCCPass.h>
 
 #include "lcm.h"
 #include "config.h"
@@ -54,24 +56,29 @@ struct LCMPass: public llvm::ModulePass {
     
     LCMPass(): llvm::ModulePass(ID) {}
     
-    virtual void getAnalysisUsage(llvm::AnalysisUsage& usage) const override {
-        usage.addRequiredTransitive<llvm::AAResultsWrapperPass>();
-        usage.addRequiredTransitive<llvm::CallGraphWrapperPass>();
+    virtual void getAnalysisUsage(llvm::AnalysisUsage& AU) const override {
+        AU.addRequiredTransitive<llvm::AAResultsWrapperPass>();
+        AU.addRequired<llvm::CallGraphWrapperPass>();
     }
     
     virtual bool runOnModule(llvm::Module& M) override {
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
         
-        for (llvm::Function *F : getFunctionOrder(M)) {
-            if (F->isDeclaration()) {
-                std::cerr << "skipping function declaration " << F->getName().str() << "\n";
-            } else {
-                llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
-                open_log(F->getName().str());
-                timer = Timer(nullptr); // reset timer
-                runOnFunction(*F, AA, TransmitterOutputIt(transmitters, transmitters.end()));
-                close_log();
+        llvm::CallGraph& CG = getAnalysis<llvm::CallGraphWrapperPass>().getCallGraph();
+        for (llvm::scc_iterator<llvm::CallGraph *> scc_it = llvm::scc_begin(&CG);
+             !scc_it.isAtEnd();
+             ++scc_it) {
+            for (llvm::CallGraphNode *scc_node : *scc_it) {
+                if (llvm::Function *F = scc_node->getFunction()) {
+                    if (!F->isDeclaration()) {
+                        llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
+                        open_log(F->getName().str());
+                        timer = Timer(nullptr); // reset timer
+                        runOnFunction(*F, AA, TransmitterOutputIt(transmitters, transmitters.end()));
+                        close_log();
+                    }
+                }
             }
         }
         
@@ -82,26 +89,6 @@ struct LCMPass: public llvm::ModulePass {
         }
         
         return res;
-    }
-    
-    std::vector<llvm::Function *> getFunctionOrder(llvm::Module& M) {
-        // want to find all roots in call graph
-        llvm::CallGraph& CG = getAnalysis<llvm::CallGraphWrapperPass>().getCallGraph();
-
-        std::vector<llvm::Function *> order;
-        std::transform(M.begin(), M.end(), std::back_inserter(order), [] (llvm::Function& F) {
-            return &F;
-        });
-        for (const llvm::Function *F : order) {
-            std::cerr << F->getName().str() << ": " << CG[F]->getNumReferences() << "\n";
-        }
-        std::sort(order.begin(), order.end(), [&] (const llvm::Function *F1, const llvm::Function *F2) -> bool {
-            return CG[F1]->getNumReferences() < CG[F2]->getNumReferences();
-        });
-        if (reverse_function_order) {
-            std::reverse(order.begin(), order.end());
-        }
-        return order;
     }
     
     template <typename OutputIt>
