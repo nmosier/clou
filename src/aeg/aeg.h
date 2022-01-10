@@ -125,7 +125,7 @@ private:
     z3::solver make_solver();
 
 public:
-    void assert_xsaccess_order(const NodeRefSet& window, z3::solver& solver);
+    std::vector<std::pair<z3::expr, std::string>> assert_xsaccess_order(const NodeRefSet& window);
 
     void for_each_pred_in_window(NodeRef ref, unsigned window, std::function<void (NodeRef)> is, std::function<void (NodeRef)> isnt);
 

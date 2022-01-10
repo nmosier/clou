@@ -29,7 +29,7 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
             for (NodeRef ref : vec) {
                 vec_trans.push_back(aeg.lookup(ref).trans);
             }
-            solver.add(z3::mk_and(vec_trans), "traceback_deps.trans");
+            solver_add(z3::mk_and(vec_trans), "traceback_deps.trans");
         }
         
         /* add <ENTRY> -RFX-> load */
@@ -39,7 +39,7 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 #endif
         if (!spectre_v4_mode.concrete_sourced_stores) {
             if (mode == CheckMode::SLOW) {
-                solver.add(aeg.rfx_exists(aeg.entry, load), "entry -RFX-> load");
+                solver_add(aeg.rfx_exists(aeg.entry, load), "entry -RFX-> load");
             }
         }
         
@@ -83,7 +83,7 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         const auto& node = aeg.lookup(bypassed_store);
         
         if (mode == CheckMode::SLOW) {
-            solver.add(node.arch, "bypassed_store.arch");
+            solver_add(node.arch, "bypassed_store.arch");
             
             // check if sat
             if (solver_check() == z3::unsat) {
@@ -107,7 +107,7 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
             NodeRefVec vec_ = vec;
             vec_.push_back(load);
             if (mode == CheckMode::SLOW) {
-                solver.add(aeg.lookup(load).trans, util::to_string(load, ".trans").c_str());
+                solver_add(aeg.lookup(load).trans, util::to_string(load, ".trans").c_str());
             }
             run_bypassed_store(load, vec_, mode);
         }, mode);
@@ -143,7 +143,7 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
 
     if (mode == CheckMode::SLOW) {
         // TODO: make it so that bypassed store is optoinal
-        solver.add(z3::mk_or(exprs), "bypassed_store");
+        solver_add(z3::mk_or(exprs), "bypassed_store");
         check_solution(load, aeg.entry, aeg.entry, vec, mode);
     }
 }
@@ -206,26 +206,12 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
             continue;
         }
         
-#if 0
-        // check if would be outside of store buffer
-        if (sourced_store != aeg.entry && !aeg.may_source_stb(load, sourced_store)) {
-            continue;
-        }
-#endif
-        
-#if 0
-        // Another approximation of is_ancestor()
-        if (aeg.lookup(sourced_store).stores_in > aeg.lookup(leak.bypassed_store).stores_in) {
-            continue;
-        }
-#endif
-        
         z3_cond_scope;
         
         if (mode == CheckMode::SLOW) {
             const z3::expr same_addr = aeg::Node::same_addr(sourced_store_node, aeg.lookup(load));
-            solver.add(same_addr, "load.addr == sourced_store.addr");
-            solver.add(aeg.rfx_exists(sourced_store, load), "load -RFX-> sourced_store");
+            solver_add(same_addr, "load.addr == sourced_store.addr");
+            solver_add(aeg.rfx_exists(sourced_store, load), "load -RFX-> sourced_store");
         }
         
         const auto action = util::push(actions, util::to_string("sourced ", sourced_store));

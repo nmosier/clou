@@ -133,7 +133,8 @@ void Detector::output_execution(const Leakage& leak) {
     ss << ".dot";
     const std::string path = ss.str();
     assert(solver.check() == z3::sat);
-    const z3::eval eval {solver.get_model()};
+    z3::model model = solver.get_model();
+    const z3::eval eval {z3::model(model, ctx(), z3::model::translate())};
     const auto edge = push_edge(EdgeRef {
         .src = leak.transmitter,
         .dst = aeg.exit_con(eval),
@@ -183,7 +184,13 @@ void Leakage::print_short(std::ostream& os) const {
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), alias_solver(ctx()), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), /* mems(get_mems()), */ partial_order(aeg.po) {}
+Detector::Detector(aeg::AEG& aeg, z3::solver& solver):
+aeg(aeg),
+solver(local_ctx, solver, z3::solver::translate()),
+alias_solver(ctx()),
+init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))),
+partial_order(aeg.po)
+{}
 
 Detector::Mems Detector::get_mems(const NodeRefSet& set) {
     Mems ins;
@@ -253,8 +260,8 @@ void Detector::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function
         const std::string desc = util::to_string(store, " -rf-> ", load);
         if (mode == CheckMode::SLOW) {
             const z3::expr& cond = store_pair.second;
-            solver.add(cond, desc.c_str());
-            solver.add(aeg.lookup(store).exec(exec_mode));
+            solver_add(cond, desc.c_str());
+            solver_add(aeg.lookup(store).exec(exec_mode));
         }
         
         const auto action = util::push(actions, desc);
@@ -298,7 +305,7 @@ void Detector::traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<vo
     // TODO: POSSIBLY UNNECESSARY SCOPE: there is no forking here
     z3_cond_scope;
     if (mode == CheckMode::SLOW) {
-        solver.add(load_node.exec() && load_node.read, util::to_string(load, ".read").c_str());
+        solver.add(translate(load_node.exec() && load_node.read), util::to_string(load, ".read").c_str());
         if (solver_check() == z3::unsat) { return; }
     }
     
@@ -474,12 +481,14 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         scope.emplace(solver);
     }
     
-    for (const z3::expr& e : vec) { solver.add(e); }
+    for (const z3::expr& e : vec) { solver.add(translate(e)); }
     logv(0, __FUNCTION__ << ": added window constraints in " << timer_opt->get_str() << "\n");
     timer_opt = std::nullopt;
     
     if (solver_check() != z3::unsat) {
-        aeg.assert_xsaccess_order(exec_window, solver);
+        for (const auto& assertion : aeg.assert_xsaccess_order(exec_window)) {
+            solver.add(translate(assertion.first), assertion.second.c_str());
+        }
         
         try {
             func(transmitter, CheckMode::SLOW);
@@ -896,17 +905,17 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
         return util::to_string(name, "-", src, "-", dst);
     };
     
-    solver.add(edge, desc(util::to_string(kind)).c_str());
+    solver.add(translate(edge), desc(util::to_string(kind)).c_str());
     
     const auto& src_node = aeg.lookup(src);
     const auto& dst_node = aeg.lookup(dst);
-    solver.add(z3::implies(src_node.trans, dst_node.trans), desc("trans->trans").c_str());
-    solver.add(z3::implies(dst_node.arch, src_node.arch), desc("arch<-arch").c_str());
+    solver.add(translate(z3::implies(src_node.trans, dst_node.trans)), desc("trans->trans").c_str());
+    solver.add(translate(z3::implies(dst_node.arch, src_node.arch)), desc("arch<-arch").c_str());
     
     if (aeg.po.same_basic_block(src, dst)) {
         NodeRef ref = src;
         while (ref != dst) {
-            solver.add(aeg.lookup(ref).exec());
+            solver.add(translate(aeg.lookup(ref).exec()));
             ref = *aeg.po.po.fwd.at(ref).begin();
         }
     }
@@ -985,7 +994,7 @@ void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef 
             
             if (mode == CheckMode::SLOW) {
                 assert_edge(to_ref, from_ref, dep.second, dep_kind);
-                solver.add(aeg.lookup(to_ref).exec(dep_src_mode), util::to_string(to_ref, " ", dep_kind, " ", from_ref, " ", dep_src_mode).c_str());
+                solver.add(translate(aeg.lookup(to_ref).exec(dep_src_mode)), util::to_string(to_ref, " ", dep_kind, " ", from_ref, " ", dep_src_mode).c_str());
             }
             
             const auto push_edge = util::push(flag_edges, EdgeRef {

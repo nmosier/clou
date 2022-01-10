@@ -675,8 +675,9 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
 }
 
 
-void AEG::assert_xsaccess_order(const NodeRefSet& window, z3::solver& solver) {
+std::vector<std::pair<z3::expr, std::string>> AEG::assert_xsaccess_order(const NodeRefSet& window) {
     z3::context& ctx = context.context;
+    std::vector<std::pair<z3::expr, std::string>> assertions;
     const z3::expr xsaccess_order_init = ctx.int_val(0);
     
     /* Assert that xsaccess order respects po among same-address writes */
@@ -691,7 +692,7 @@ void AEG::assert_xsaccess_order(const NodeRefSet& window, z3::solver& solver) {
             
             if (node.can_xsread()) {
                 // assert order
-                solver.add(z3::implies(node.arch && node.xsread, mem[*node.xstate] < *node.xsaccess_order), util::to_string("xsread xswrite arch order ", ref).c_str());
+                assertions.emplace_back(z3::implies(node.arch && node.xsread, mem[*node.xstate] < *node.xsaccess_order), util::to_string("xsread xswrite arch order ", ref));
             }
             
             if (node.can_xswrite()) {
@@ -725,8 +726,10 @@ void AEG::assert_xsaccess_order(const NodeRefSet& window, z3::solver& solver) {
             vec.push_back(z3::ite(node.xsaccess(), *node.xsaccess_order, xsaccess_order_init));
         }
         
-        solver.add(z3::max(before) < z3::min(after), util::to_string("fence order ", fence).c_str());
+        assertions.emplace_back(z3::max(before) < z3::min(after), util::to_string("fence order ", fence));
     }
+    
+    return assertions;
 }
 
 

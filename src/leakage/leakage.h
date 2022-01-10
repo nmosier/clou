@@ -71,6 +71,7 @@ protected:
     CheckStats check_stats;
     std::unordered_set<const llvm::Instruction *> transmitters;
     aeg::AEG& aeg;
+    z3::context local_ctx;
     z3::solver solver;
     z3::solver alias_solver;
     Actions actions;
@@ -136,6 +137,16 @@ protected:
     
     void output_execution(const Leakage& leak);
     
+    template <typename Assertion, typename... Args>
+    void solver_add(const Assertion& assertion, Args&&... args) {
+        solver.add(translate(assertion), std::forward<Args>(args)...);
+    }
+    
+    z3::eval solver_eval() const {
+        return z3::eval(solver.get_model());
+    }
+    
+    
 private:
     CFGOrder partial_order;
     std::vector<std::pair<Leakage, std::string>> leaks;
@@ -145,6 +156,16 @@ private:
     
     void traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                             std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode);
+    
+    z3::expr translate(const z3::expr& global_e) {
+        Z3_ast local_e = Z3_translate(global_e.ctx(), global_e, local_ctx);
+        return z3::expr(local_ctx, local_e);
+    }
+    
+    z3::expr_vector translate(const z3::expr_vector& global_v) {
+        Z3_ast_vector local_v = Z3_ast_vector_translate(global_v.ctx(), global_v, local_ctx);
+        return z3::expr_vector(local_ctx, local_v);
+    }
 };
 
 

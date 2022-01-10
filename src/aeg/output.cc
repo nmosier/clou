@@ -12,7 +12,11 @@ void AEG::dump_graph(const std::string& path) const {
 
 AEG::Execution AEG::analyze_execution(const z3::eval& eval) const {
     Execution exec;
+#if 0
     z3::context& ctx = eval.ctx();
+#else
+    z3::context& ctx = const_cast<z3::context&>(context.context);
+#endif
     
     for (const NodeRef ref : po.reverse_postorder()) {
         const Node& node = lookup(ref);

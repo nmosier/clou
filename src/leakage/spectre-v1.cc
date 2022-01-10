@@ -71,7 +71,11 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
                 return;
                 
             case z3::unknown:
+#if 0
                 logv(1, __FUNCTION__ << ": Z3 error: unknown result: " << solver.reason_unknown() << "\n");
+#else
+                logv(1, __FUNCTION__ << ": Z3 error: unknown result\n");
+#endif
                 std::abort();
                 
             default: std::abort();
@@ -82,7 +86,8 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
         throw lookahead_found();
     }
     
-    z3_eval;
+    
+    const z3::eval eval = solver_eval();
     
     using output::operator<<;
     logv(1, "spectre-v1 leak found: " << vec << "\n");
