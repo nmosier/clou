@@ -183,96 +183,9 @@ void Leakage::print_short(std::ostream& os) const {
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), alias_solver(ctx()), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), mems(get_mems()), partial_order(aeg.po) {}
-
-z3::expr Detector::mem(NodeRef ref) const {
-    const auto it = mems.find(ref);
-    if (it == mems.end()) {
-        return init_mem;
-    } else {
-        return it->second;
-    }
-}
-
-Detector::Mems Detector::get_mems() {
-    z3::context& ctx = this->ctx();
-    auto& po = aeg.po;
-    
-    Mems ins;
-    Mems outs = {{aeg.entry, init_mem}};
-    for (const NodeRef cur : po.reverse_postorder()) {
-        if (cur == aeg.entry) { continue; }
-        const auto& cur_node = aeg.lookup(cur);
-        
-        auto tfos = aeg.get_nodes(Direction::IN, cur, aeg::Edge::TFO);
-        z3::expr mem {ctx};
-        if (tfos.empty()) {
-            mem = init_mem;
-        } else {
-            auto tfo_it = tfos.begin();
-            mem = outs.at(tfo_it->first);
-            ++tfo_it;
-            mem = std::accumulate(tfo_it, tfos.end(), mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
-                return z3::ite(tfo.second, outs.at(tfo.first), acc);
-            });
-        }
-        
-        ins.emplace(cur, mem);
-        
-        if (cur_node.may_write()) {
-            mem = z3::conditional_store(mem, cur_node.get_memory_address(), ctx.int_val(static_cast<unsigned>(cur)), cur_node.exec() && cur_node.write);
-        }
-        
-        outs.emplace(cur, mem);
-    }
-    
-    return ins;
-}
+Detector::Detector(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver), alias_solver(ctx()), init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))), /* mems(get_mems()), */ partial_order(aeg.po) {}
 
 Detector::Mems Detector::get_mems(const NodeRefSet& set) {
-    Mems ins;
-    Mems outs;
-    const auto outs_at = [&] (const NodeRef ref) -> z3::expr {
-        const auto it = outs.find(ref);
-        if (it == outs.end()) {
-            return init_mem;
-        } else {
-            return it->second;
-        }
-    };
-    for (const NodeRef ref : aeg.po.reverse_postorder()) {
-        if (ref == aeg.entry ||
-            set.find(ref) == set.end()) {
-            continue;
-        }
-        const aeg::Node& node = aeg.lookup(ref);
-        
-        const auto tfos = aeg.get_nodes(Direction::IN, ref, aeg::Edge::TFO);
-        z3::expr mem {ctx()};
-        if (tfos.empty()) {
-            mem = init_mem;
-        } else {
-            auto tfo_it = tfos.begin();
-            mem = outs_at(tfo_it->first);
-            ++tfo_it;
-            mem = std::accumulate(tfo_it, tfos.end(), mem, [&] (const z3::expr& acc, const auto& tfo) -> z3::expr {
-                return z3::ite(tfo.second, outs_at(tfo.first), acc);
-            });
-        }
-        
-        ins.emplace(ref, mem);
-        
-        if (node.may_write()) {
-            mem = z3::conditional_store(mem, node.get_memory_address(), ctx().int_val(static_cast<unsigned>(ref)), node.exec() && node.write);
-        }
-        
-        outs.emplace(ref, mem);
-    }
-    
-    return ins;
-}
-
-Detector::Mems Detector::get_mems1(const NodeRefSet& set) {
     Mems ins;
     Mems outs;
     z3::expr mem = init_mem;
@@ -409,30 +322,17 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         Timer timer;
         // MAKE EXEC WINDOW
         {
-#if 0
-            bool reaches_main_function = false;
-#endif
             std::vector<CFG::FuncID> func_id_pfx; // function ID prefix
             exec_window.clear();
             exec_notwindow.clear();
             aeg.for_each_pred_in_window(transmitter, window_size, [&] (NodeRef ref) {
                 exec_window.insert(ref);
-#if 0
-                const auto& node = aeg.lookup(ref);
-#endif
                 const auto& po_node = aeg.po.lookup(ref);
                 {
                     std::vector<CFG::FuncID> new_func_id_pfx;
                     util::shared_prefix(func_id_pfx, po_node.id->func, std::back_inserter(new_func_id_pfx));
                     func_id_pfx = std::move(new_func_id_pfx);
                 }
-#if 0
-                if (const llvm::Instruction *I = node.inst->get_inst()) {
-                    if (I->getFunction() == aeg.po.function()) {
-                        reaches_main_function = true;
-                    }
-                }
-#endif
             }, [&] (NodeRef ref) {
                 exec_notwindow.insert(ref);
             });
@@ -454,7 +354,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
                 }
             }
             
-            mems = get_mems1(exec_window);
+            mems = get_mems(exec_window);
         }
         
         // MAKE TRANS WINDOW
@@ -649,20 +549,12 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
                 std::abort();
             }
         }
-#if 0
-        ::close(fds[1]);
-#endif
         
         logv(0, "RUNTIME: " << ::getppid() << " " << ::getpid() << " " << cpu_time() << "\n");
         
         std::_Exit(0); // quick exit
     } else {
-#if 0
-        *out++ = std::make_pair(pid, Child {.ref = transmitter, .fd = fds[0]});
-        ::close(fds[1]);
-#else
         *out++ = std::make_pair(pid, Child {.ref = transmitter, .fd = fd});
-#endif
         return out;
     }
 }
@@ -861,38 +753,6 @@ NodeRefSet Detector::reachable_r(const NodeRefSet& window, NodeRef init) const {
     return seen;
 }
 
-#if 0
-std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
-    const auto& load_node = aeg.lookup(load);
-    std::unordered_map<NodeRef, z3::expr> nos, yesses;
-    for (NodeRef store : aeg.po.postorder()) {
-        if (!window.contains(store)) { continue; }
-        const auto& store_node = aeg.lookup(store);
-        
-        /* union incomign no's */
-        z3::expr_vector succ_nos {ctx()};
-        for (const NodeRef succ : aeg.po.po.fwd.at(store)) {
-            if (window.contains(succ)) {
-                succ_nos.push_back(nos.at(succ));
-            }
-        }
-        
-        z3::expr no = z3::mk_and(succ_nos);
-        z3::expr yes = no;
-        if (store_node.may_write()) {
-            const z3::expr same_addr = store_node.same_addr(load_node);
-            const z3::expr write = store_node.exec() && store_node.write && same_addr;
-            no = no && !write;
-            yes = yes && write;
-            yesses.emplace(store, yes);
-        }
-        
-        nos.emplace(store, no);
-    }
-    
-    return yesses;
-}
-#else
 std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
     const auto& load_node = aeg.lookup(load);
     z3::expr no = ctx().bool_val(true);
@@ -910,7 +770,6 @@ std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, 
     
     return yesses;
 }
-#endif
 
 void Detector::precompute_rf(NodeRef load) {
     logv(1, "precomputing rf " << load << "\n");
@@ -944,14 +803,12 @@ void Detector::precompute_rf(NodeRef load) {
                 auto *store_type = store_op->getType()->getPointerElementType();
                 
                 if (load_type->isPointerTy() != store_type->isPointerTy()) {
-                    ++ctr;
                     continue;
                 }
                 
                 /* check if type sizes differ */
                 llvm::DataLayout DL(store_inst->get_inst()->getModule());
                 if (DL.getTypeSizeInBits(load_type) != DL.getTypeSizeInBits(store_type)) {
-                    ++ctr;
                     continue;
                 }
             }
@@ -967,7 +824,6 @@ void Detector::precompute_rf(NodeRef load) {
                 if (ai_refs.size() == 1) {
                     const auto ai_ref = *ai_refs.begin();
                     if (ref < ai_ref) {
-                        ctr++;
                         continue; // can't possibly alias
                     }
                 }
@@ -991,19 +847,6 @@ void Detector::precompute_rf(NodeRef load) {
         }
     }
     
-#if 0
-    // NOTE: This is now handled in above while loop.
-    // filter by exec window
-    for (auto it = out.begin(); it != out.end(); ) {
-        if (exec_window.contains(it->first)) {
-            ++it;
-        } else {
-            it = out.erase(it);
-        }
-    }
-#endif
-    
-#if 1
     // filter by satisfiable aliases
     unsigned filtered = 0;
     for (auto it = out.begin(); it != out.end(); ) {
@@ -1031,7 +874,6 @@ void Detector::precompute_rf(NodeRef load) {
         }
     }
     logv(1, __FUNCTION__ << ": filtered " << filtered << "\n");
-#endif
 }
 
 const Detector::Sources& Detector::rf_sources(NodeRef load) {
@@ -1060,21 +902,6 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
     const auto& dst_node = aeg.lookup(dst);
     solver.add(z3::implies(src_node.trans, dst_node.trans), desc("trans->trans").c_str());
     solver.add(z3::implies(dst_node.arch, src_node.arch), desc("arch<-arch").c_str());
-    
-#if 0
-    // EXPERIMENTAL: filter out other control-flow paths.
-    for (NodeRef ref : exec_window) {
-        if (src >= ref && ref >= dst) { // this just prevents us from re-filtering the same nodes over and over
-            if (aeg.po.is_ancestor(src, ref) && aeg.po.is_ancestor(ref, dst)) {
-                // keep
-            } else {
-                // filter
-                const aeg::Node& node = aeg.lookup(ref);
-                solver.add(!node.exec());
-            }
-        }
-    }
-#endif
     
     if (aeg.po.same_basic_block(src, dst)) {
         NodeRef ref = src;
@@ -1246,7 +1073,6 @@ inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
 
 Detector::~Detector() {
     logv(1, "stats: " << check_stats << "\n");
-    logv(1, "SAVED RF COUNTER: " << ctr << "\n");
 }
 
 }

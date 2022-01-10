@@ -3,6 +3,7 @@
 #include <functional>
 #include <vector>
 #include <iostream>
+#include <unordered_map>
 
 #include <z3++.h>
 
@@ -13,6 +14,7 @@
 #include "util/scope.h"
 #include "util/timer.h"
 #include "util/algorithm.h"
+#include "noderef.h"
 
 namespace lkg {
 
@@ -26,50 +28,13 @@ struct Leakage {
 
 
 class Detector {
-public:
-    void run();
-    virtual void run_() = 0;
-    virtual ~Detector();
-    
-    const auto& get_transmitters() const { return transmitters; }
-    
-    struct CheckStats {
-        unsigned sat = 0;
-        unsigned unsat = 0;
-        unsigned unknown = 0;
-        unsigned total() const { return sat + unsat + unknown; }
-    };
-    
 protected:
+    enum class CheckMode { FAST, SLOW };
     using DepVec = std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>>;
-    std::unordered_set<const llvm::Instruction *> transmitters;
+
     struct next_transmitter {};
     struct lookahead_found {};
-    CheckStats check_stats;
     
-    enum class CheckMode { FAST, SLOW };
-    
-    bool lookahead(std::function<void ()> thunk);
-    
-    virtual std::string name() const = 0;
-    virtual std::optional<float> get_timeout() const { return std::nullopt; } // no timeout by default
-    virtual void set_timeout(z3::check_result check_res, float secs) {} // no timeout by default, so nothing to update
-    
-    virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
-    virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
-    
-    z3::check_result solver_check(bool allow_unknown = true);
-    
-    // TODO: Deal with this in a better way?
-    virtual bool disallow_stale_alloca_rfs() const noexcept { return true; }
-    
-    void assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind);
-    bool check_edge(NodeRef src, NodeRef dst) const {
-        return exec_window.contains(src) && exec_window.contains(dst);
-    }
-    
-    virtual DepVec deps() const = 0;
-        
     struct EdgeRef {
         NodeRef src;
         NodeRef dst;
@@ -78,42 +43,71 @@ protected:
     using EdgeVec = std::vector<EdgeRef>;
     using Mems = std::unordered_map<NodeRef, z3::expr>;
     
-    aeg::AEG& aeg;
-    z3::solver solver;
-    z3::solver alias_solver;
-
     using Actions = std::vector<std::string>;
     using PushAction = util::push_scope<Actions>;
-    Actions actions;
-    z3::expr init_mem;
-    Mems mems;
-    NodeRefSet exec_window, exec_notwindow;
-    NodeRefSet trans_window, trans_notwindow;
-    
-    z3::expr mem(NodeRef ref) const;
-    
-    EdgeVec flag_edges;
-    
-    Detector(aeg::AEG& aeg, z3::solver& solver);
-    
-    z3::context& ctx();
-    
-    /* UTILITIES FOR SUBCLASSES */
-    
-    /** Trace back load */
-    
-    void traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
-    void traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
-    void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
     
     using Deps = std::vector<aeg::Edge::Kind>;
-    void traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func,
-                        CheckMode mode);
+    using DepIt = DepVec::const_reverse_iterator;
     
     struct Child {
         NodeRef ref;
         int fd;
     };
+
+public:
+    struct CheckStats {
+        unsigned sat = 0;
+        unsigned unsat = 0;
+        unsigned unknown = 0;
+        unsigned total() const { return sat + unsat + unknown; }
+    };
+    
+    void run();
+    virtual ~Detector();
+    
+    const auto& get_transmitters() const { return transmitters; }
+    
+protected:
+    CheckStats check_stats;
+    std::unordered_set<const llvm::Instruction *> transmitters;
+    aeg::AEG& aeg;
+    z3::solver solver;
+    z3::solver alias_solver;
+    Actions actions;
+    z3::expr init_mem;
+    Mems mems;
+    NodeRefSet exec_window;
+    NodeRefSet exec_notwindow;
+    NodeRefSet trans_window;
+    NodeRefSet trans_notwindow;
+    EdgeVec flag_edges;
+    
+    Detector(aeg::AEG& aeg, z3::solver& solver);
+    
+    /* SUBCLASS INTERFACE */
+    virtual void run_() = 0;
+    virtual std::string name() const = 0;
+    virtual std::optional<float> get_timeout() const { return std::nullopt; } // no timeout by default
+    virtual void set_timeout(z3::check_result check_res, float secs) {} // no timeout by default, so nothing to update
+    virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
+    virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
+    virtual DepVec deps() const = 0;
+    
+    /* UTILITIES FOR SUBCLASSES */
+    bool lookahead(std::function<void ()> thunk);
+    z3::check_result solver_check(bool allow_unknown = true);
+    void assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind);
+    bool check_edge(NodeRef src, NodeRef dst) const {
+        return exec_window.contains(src) && exec_window.contains(dst);
+    }
+    z3::context& ctx();
+
+    void traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    void traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    void traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode);
+    
+    void traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func,
+                        CheckMode mode);
     
     void for_each_transmitter(std::function<void (NodeRef, CheckMode)> func);
     void for_each_transmitter_parallel_private(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func);
@@ -146,20 +140,11 @@ private:
     CFGOrder partial_order;
     std::vector<std::pair<Leakage, std::string>> leaks;
     RF rf; // TODO: remove?
-
-    Mems get_mems();
-    Mems get_mems(const NodeRefSet& set); /*!< only consider nodes in \p set */
-    Mems get_mems1(const NodeRefSet& set); /*!< this uses topological order */
     
-    using DepIt = DepVec::const_reverse_iterator;
+    Mems get_mems(const NodeRefSet& set); /*!< this uses topological order */
+    
     void traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                             std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode);
-
-    
-    
-    friend class Detector_;
-    
-    unsigned ctr = 0;
 };
 
 
