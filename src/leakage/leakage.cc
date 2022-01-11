@@ -109,16 +109,19 @@ void DetectorMain::run() {
     
     // spawn threads
     {
-        std::unique_lock<std::mutex> lock {mutex()};
+        mutex().lock();
         for (const NodeRef candidate_transmitter : candidate_transmitters) {
             std::thread thread {
                 [&, candidate_transmitter] () {
+                    semutil::acquire(semid);
                     Job job {aeg, solver, candidate_transmitter, leaks};
                     static_cast<DetectorJob&>(job).run();
+                    semutil::release(semid);
                 }
             };
             threads.push_back(std::move(thread));
         }
+        mutex().unlock();
     }
     
     /* join threads */
