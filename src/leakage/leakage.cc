@@ -108,16 +108,33 @@ void DetectorMain::run() {
     get_candidate_transmitters<Job>(candidate_transmitters);
     
     // spawn threads
+    const unsigned total_tasks = candidate_transmitters.size();
+    std::atomic<unsigned> completed_tasks = 0;
     {
         mutex().lock();
         for (const NodeRef candidate_transmitter : candidate_transmitters) {
             std::thread thread {
-                [&, candidate_transmitter] () {
-                    semutil::acquire(semid);
-                    Job job {aeg, solver, candidate_transmitter, leaks};
-                    static_cast<DetectorJob&>(job).run();
-                    semutil::release(semid);
-                }
+                    [&, candidate_transmitter] () {
+                        {
+                            semutil::acquire(semid);
+                            Job job {aeg, solver, candidate_transmitter, leaks};
+                            static_cast<DetectorJob&>(job).run();
+                            semutil::release(semid);
+                        }
+                        
+                        ++completed_tasks;
+                        
+                        if (client) {
+                            std::unique_lock<std::mutex> lock {mutex()};
+                            mon::Message msg;
+                            auto *progress = msg.mutable_func_progress();
+                            progress->mutable_func()->set_name(aeg.po.function_name());
+                            const float frac = static_cast<float>(completed_tasks) / static_cast<float>(total_tasks);
+                            std::cerr << "FLOAT: " << frac << "\n";
+                            progress->set_frac(frac);
+                            client.send(msg);
+                        }
+                    }
             };
             threads.push_back(std::move(thread));
         }
