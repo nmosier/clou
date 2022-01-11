@@ -257,6 +257,12 @@ z3::check_result check_timeout(Solver& solver_, unsigned nsecs) {
     return res;
 }
 
+
+z3::expr translate(const z3::expr& e, z3::context& ctx);
+z3::expr_vector translate(const z3::expr_vector& v, z3::context& ctx);
+z3::solver translate(const z3::solver& solver, z3::context& ctx);
+z3::model translate(const z3::model& model, z3::context& ctx);
+
 }
 
 namespace std {

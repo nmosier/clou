@@ -76,7 +76,7 @@ protected:
     CheckStats check_stats;
     std::unordered_set<const llvm::Instruction *> transmitters;
     aeg::AEG& aeg;
-    z3::context local_ctx;
+    z3::context& local_ctx;
     z3::solver solver;
     z3::solver alias_solver;
     Actions actions;
@@ -88,7 +88,7 @@ protected:
     NodeRefSet trans_notwindow;
     EdgeVec flag_edges;
     
-    DetectorJob(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks);
+    DetectorJob(aeg::AEG& aeg, z3::context& local_ctx, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks);
     
     /* SUBCLASS INTERFACE */
     virtual std::string name() const = 0;
@@ -190,6 +190,8 @@ private:
     std::mutex& mutex() const;
     
     void dump();
+    
+    void create_solvers(const z3::solver& from_solver, std::vector<z3::context>& ctxs, std::vector<z3::solver>& to_solvers);
 };
 
 namespace dbg {

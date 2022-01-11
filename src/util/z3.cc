@@ -92,4 +92,26 @@ z3::expr distinct2(const z3::expr_vector& v) {
     }
 }
 
+z3::expr translate(const z3::expr& e, z3::context& ctx) {
+    Z3_ast e_ = Z3_translate(e.ctx(), e, ctx);
+    return z3::expr(ctx, e_);
+}
+
+z3::expr_vector translate(const z3::expr_vector& v, z3::context& ctx) {
+    Z3_ast_vector v_ = Z3_ast_vector_translate(v.ctx(), v, ctx);
+    return z3::expr_vector(ctx, v_);
+}
+
+z3::solver translate(const z3::solver& s, z3::context& ctx) {
+    if (Z3_solver_get_num_scopes(s.ctx(), s) != 0) {
+        throw z3::exception("cannot translate scoped solver");
+    }
+    return z3::solver(ctx, s, z3::solver::translate());
+}
+
+z3::model translate(const z3::model& m, z3::context& ctx) {
+    z3::model m_ = m;
+    return z3::model(m_, ctx, z3::model::translate());
+}
+
 }

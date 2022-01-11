@@ -19,7 +19,7 @@ class SpectreV1_Detector: public DetectorJob {
 public:
     
 protected:
-    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): DetectorJob(aeg, solver, candidate_transmitter, leaks) {}
+    SpectreV1_Detector(aeg::AEG& aeg, z3::context& local_ctx, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): DetectorJob(aeg, local_ctx, solver, candidate_transmitter, leaks) {}
         
 private:
     NodeRefVec loads;
@@ -42,7 +42,7 @@ private:
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
 public:
-    SpectreV1_Classic_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): SpectreV1_Detector(aeg, solver, candidate_transmitter, leaks) {}
+    SpectreV1_Classic_Detector(aeg::AEG& aeg, z3::context& local_ctx, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): SpectreV1_Detector(aeg, local_ctx, solver, candidate_transmitter, leaks) {}
     
     static DepVec get_deps();
     
@@ -53,7 +53,7 @@ private:
 
 class SpectreV1_Control_Detector final: public SpectreV1_Detector {
 public:
-    SpectreV1_Control_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): SpectreV1_Detector(aeg, solver, candidate_transmitter, leaks) {}
+    SpectreV1_Control_Detector(aeg::AEG& aeg, z3::context& local_ctx, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): SpectreV1_Detector(aeg, local_ctx, solver, candidate_transmitter, leaks) {}
     
     static DepVec get_deps();
     

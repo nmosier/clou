@@ -27,7 +27,7 @@ link_directories(${LIBPROFILER_LIBRARY_DIRS})
 find_library(GDBM_LIBRARIES gdbm REQUIRED)
 link_libraries(${GDBM_LIBRARIES})
 
-# set(SANITIZE address)
+# set(SANITIZE thread)
 if(DEFINED SANITIZE)
   add_compile_options(-fsanitize=${SANITIZE})
   add_link_options(-fsanitize=${SANITIZE})

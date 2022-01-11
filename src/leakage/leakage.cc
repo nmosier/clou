@@ -110,14 +110,21 @@ void DetectorMain::run() {
     // spawn threads
     const unsigned total_tasks = candidate_transmitters.size();
     std::atomic<unsigned> completed_tasks = 0;
+    std::vector<z3::context> ctxs (candidate_transmitters.size());
+    std::vector<z3::solver> solvers;
+    
+    // create contexts & solvers
+    create_solvers(solver, ctxs, solvers);
+    
     {
         mutex().lock();
-        for (const NodeRef candidate_transmitter : candidate_transmitters) {
+        
+        for (unsigned i = 0; const NodeRef candidate_transmitter : candidate_transmitters) {
             std::thread thread {
-                    [&, candidate_transmitter] () {
+                    [&, candidate_transmitter] (z3::context *ctx, z3::solver *solver) {
                         {
                             semutil::acquire(semid);
-                            Job job {aeg, solver, candidate_transmitter, leaks};
+                            Job job {aeg, *ctx, *solver, candidate_transmitter, leaks};
                             static_cast<DetectorJob&>(job).run();
                             semutil::release(semid);
                         }
@@ -134,9 +141,11 @@ void DetectorMain::run() {
                             progress->set_frac(frac);
                             client.send(msg);
                         }
-                    }
+                    }, &ctxs.at(i), &solvers.at(i)
             };
             threads.push_back(std::move(thread));
+            
+            ++i;
         }
         mutex().unlock();
     }
@@ -271,11 +280,12 @@ void Leakage::print_short(std::ostream& os) const {
 
 /* LEAKAGE DETECTOR METHODS */
 
-DetectorJob::DetectorJob(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks):
+DetectorJob::DetectorJob(aeg::AEG& aeg, z3::context& local_ctx, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks):
 lock(aeg.context.mutex),
 candidate_transmitter(candidate_transmitter),
 aeg(aeg),
-solver(local_ctx, solver, z3::solver::translate()),
+local_ctx(local_ctx),
+solver(solver),
 alias_solver(ctx()),
 init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))),
 partial_order(aeg.po),
@@ -497,6 +507,7 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
     
     // window size
     {
+        z3::expr window_expr {local_ctx};
         z3::model window_model {local_ctx};
         z3::expr F = ctx().bool_val(false);
         z3::expr zero = ctx().int_val(0);
@@ -1071,4 +1082,52 @@ DetectorJob::~DetectorJob() {
     logv(1, "stats: " << check_stats << "\n");
 }
 
+
+
+
+
+void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3::context>& ctxs, std::vector<z3::solver>& to_solvers) {
+    
+    const auto N = ctxs.size();
+    
+    if (N == 0) { return; }
+    
+    for (z3::context& ctx : ctxs) {
+        to_solvers.emplace_back(ctx);
+    }
+    
+    // do initial translation
+    to_solvers.front() = z3::translate(from_solver, ctxs.front());
+
+    for (std::size_t idx = 1; idx < N; idx *= 2) {
+        std::vector<std::thread> threads;
+        
+#if 1
+        for (std::size_t i = 0; i < idx; ++i) {
+            const std::size_t j = idx + i;
+            if (j < N) {
+                threads.emplace_back([] (const z3::solver& from_solver, z3::solver *to_solver, z3::context *to_ctx) {
+                    *to_solver = z3::translate(from_solver, *to_ctx);
+                }, to_solvers.at(i), &to_solvers.at(j), &ctxs.at(j));
+            }
+        }
+        
+        for (std::thread& thread : threads) {
+            thread.join();
+        }
+#else
+        for (std::size_t i = 0; i < idx; ++i) {
+            const std::size_t j = idx + i;
+            if (j < N) {
+                to_solvers.at(j) = z3::translate(to_solvers.at(i), ctxs.at(j));
+            }
+        }
+#endif
+    }
+    
 }
+
+
+
+}
+

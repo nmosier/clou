@@ -6,7 +6,7 @@ namespace lkg {
 
 class SpectreV4_Detector: public DetectorJob {
 public:
-    SpectreV4_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): DetectorJob(aeg, solver, candidate_transmitter, leaks) {}
+    SpectreV4_Detector(aeg::AEG& aeg, z3::context& local_ctx, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): DetectorJob(aeg, local_ctx, solver, candidate_transmitter, leaks) {}
     
     static DepVec get_deps();
     
