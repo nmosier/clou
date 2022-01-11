@@ -257,7 +257,6 @@ z3::check_result check_timeout(Solver& solver_, unsigned nsecs) {
     return res;
 }
 
-
 }
 
 namespace std {

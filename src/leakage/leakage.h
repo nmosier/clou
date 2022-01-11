@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <unordered_map>
+#include <mutex>
 
 #include <z3++.h>
 
@@ -27,7 +28,10 @@ struct Leakage {
 };
 
 
-class Detector {
+class DetectorJob {
+    friend class DetectorMain;
+private:
+    std::unique_lock<std::mutex> lock;
 protected:
     enum class CheckMode { FAST, SLOW };
     using DepVec = std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>>;
@@ -63,11 +67,12 @@ public:
     };
     
     void run();
-    virtual ~Detector();
+    virtual ~DetectorJob();
     
     const auto& get_transmitters() const { return transmitters; }
     
 protected:
+    NodeRef candidate_transmitter;
     CheckStats check_stats;
     std::unordered_set<const llvm::Instruction *> transmitters;
     aeg::AEG& aeg;
@@ -83,16 +88,16 @@ protected:
     NodeRefSet trans_notwindow;
     EdgeVec flag_edges;
     
-    Detector(aeg::AEG& aeg, z3::solver& solver);
+    DetectorJob(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks);
     
     /* SUBCLASS INTERFACE */
-    virtual void run_() = 0;
     virtual std::string name() const = 0;
     virtual std::optional<float> get_timeout() const { return std::nullopt; } // no timeout by default
     virtual void set_timeout(z3::check_result check_res, float secs) {} // no timeout by default, so nothing to update
     virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
     virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
     virtual DepVec deps() const = 0;
+    virtual void entry(NodeRef, CheckMode) = 0;
     
     /* UTILITIES FOR SUBCLASSES */
     bool lookahead(std::function<void ()> thunk);
@@ -110,12 +115,6 @@ protected:
     void traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func,
                         CheckMode mode);
     
-    void for_each_transmitter(std::function<void (NodeRef, CheckMode)> func);
-    void for_each_transmitter_parallel_private(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func);
-    void for_each_transmitter_parallel_shared(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func);
-
-    template <class OutputIt>
-    OutputIt for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out);
     void for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, bool priv);
     
     auto push_edge(const EdgeRef& edge) {
@@ -149,7 +148,7 @@ protected:
     
 private:
     CFGOrder partial_order;
-    std::vector<std::pair<Leakage, std::string>> leaks;
+    std::vector<std::pair<Leakage, std::string>>& leaks;
     RF rf; // TODO: remove?
     
     Mems get_mems(const NodeRefSet& set); /*!< this uses topological order */
@@ -168,8 +167,30 @@ private:
     }
 };
 
+class DetectorMain {
+public:
+    DetectorMain(aeg::AEG& aeg, z3::solver& solver);
+    
+    template <class Job>
+    void run();
+    
+    auto get_transmitters() const { return transmitters; }
+    
+protected:
+    template <class Job>
+    void get_candidate_transmitters(NodeRefSet& candidate_transmitters) const;
 
-
+private:
+    aeg::AEG& aeg;
+    z3::solver solver;
+    std::vector<std::pair<Leakage, std::string>> leaks;
+    std::unordered_set<const llvm::Instruction *> transmitters;
+    
+    z3::context& ctx() const;
+    std::mutex& mutex() const;
+    
+    void dump();
+};
 
 namespace dbg {
 

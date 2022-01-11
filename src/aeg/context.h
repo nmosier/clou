@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <string>
+#include <mutex>
 
 #include <z3++.h>
 
@@ -10,6 +11,8 @@ namespace aeg {
 
 class Context {
 public:
+    std::mutex mutex;
+    
     Context();
     
     z3::context context;

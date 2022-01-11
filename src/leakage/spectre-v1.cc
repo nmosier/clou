@@ -31,18 +31,16 @@ void SpectreV1_Detector::set_timeout(z3::check_result check_res, float secs) {
     }
 }
 
-void SpectreV1_Detector::run_() {
-    for_each_transmitter([&] (NodeRef transmitter, CheckMode mode) {
-        run2(transmitter, transmitter, mode);
-    });
+void SpectreV1_Detector::entry(NodeRef candidate_transmitter, CheckMode mode) {
+    run2(candidate_transmitter, candidate_transmitter, mode);
 }
 
 
-Detector::DepVec SpectreV1_Classic_Detector::deps() const {
+DetectorJob::DepVec SpectreV1_Classic_Detector::get_deps() {
     return {{aeg::Edge::ADDR_GEP, aeg::ExecMode::EXEC}, {aeg::Edge::ADDR, aeg::ExecMode::TRANS}};
 }
 
-Detector::DepVec SpectreV1_Control_Detector::deps() const {
+DetectorJob::DepVec SpectreV1_Control_Detector::get_deps() {
     return {{aeg::Edge::ADDR_GEP, aeg::ExecMode::EXEC}, {aeg::Edge::CTRL, aeg::ExecMode::TRANS}};
 }
 

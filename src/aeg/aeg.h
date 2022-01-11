@@ -26,7 +26,7 @@
 class CFG_Expanded;
 
 namespace lkg {
-class Detector;
+class DetectorJob;
 }
 
 namespace aeg {
@@ -264,7 +264,7 @@ private:
     std::map<ValueLoc, AddrInfo> vl2addr;
 
     
-    friend class lkg::Detector;
+    friend class lkg::DetectorJob;
     
     llvm::AliasResult compute_alias(const AddrInfo& a, const AddrInfo& b) const;
     llvm::AliasResult compute_alias(NodeRef a, NodeRef b) const;

@@ -6,15 +6,12 @@
 
 namespace lkg {
 
-Detector::DepVec SpectreV4_Detector::deps() const {
+DetectorJob::DepVec SpectreV4_Detector::get_deps() {
     return DepVec {{aeg::Edge::ADDR, aeg::ExecMode::TRANS}, {aeg::Edge::ADDR, aeg::ExecMode::TRANS}};
 }
 
-
-void SpectreV4_Detector::run_() {
-    for_each_transmitter([&] (NodeRef transmitter, CheckMode mode) {
-        run_transmitter(transmitter, mode);
-    });
+void SpectreV4_Detector::entry(NodeRef candidate_transmitter, CheckMode mode) {
+    run_transmitter(candidate_transmitter, mode);
 }
 
 void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {

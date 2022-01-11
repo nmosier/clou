@@ -3,6 +3,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <system_error>
+#include <thread>
 
 #include <gperftools/profiler.h>
 
@@ -29,21 +30,21 @@ extern Transmitters transmitters;
 namespace aeg {
 
 void AEG::leakage(z3::solver& solver, TransmitterOutputIt out) {
-    std::unique_ptr<lkg::Detector> detector;
+    lkg::DetectorMain detector {*this, solver};
     
     switch (leakage_class) {
         case LeakageClass::SPECTRE_V4: {
-            detector = std::make_unique<lkg::SpectreV4_Detector>(*this, solver);
+            detector.run<lkg::SpectreV4_Detector>();
             break;
         }
             
         case LeakageClass::SPECTRE_V1: {
             switch (spectre_v1_mode.mode) {
                 case SpectreV1Mode::Mode::CLASSIC:
-                    detector = std::make_unique<lkg::SpectreV1_Classic_Detector>(*this, solver);
+                    detector.run<lkg::SpectreV1_Classic_Detector>();
                     break;
                 case SpectreV1Mode::Mode::BRANCH_PREDICATE:
-                    detector = std::make_unique<lkg::SpectreV1_Control_Detector>(*this, solver);
+                    detector.run<lkg::SpectreV1_Control_Detector>();
                     break;
                 default: std::abort();
             }
@@ -53,9 +54,7 @@ void AEG::leakage(z3::solver& solver, TransmitterOutputIt out) {
         default: std::abort();
     }
     
-    detector->run();
-    
-    util::copy(detector->get_transmitters(), out);
+    util::copy(detector.get_transmitters(), out);
 }
 
 }
@@ -63,13 +62,75 @@ void AEG::leakage(z3::solver& solver, TransmitterOutputIt out) {
 
 namespace lkg {
 
-z3::context& Detector::ctx() { return aeg.context.context; }
+DetectorMain::DetectorMain(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver) {}
 
+z3::context& DetectorJob::ctx() { return aeg.context.context; }
 
+z3::context& DetectorMain::ctx() const { return aeg.context.context; }
+std::mutex& DetectorMain::mutex() const { return aeg.context.mutex; }
 
-void Detector::run() {
-    run_();
+template <class Job>
+void DetectorMain::get_candidate_transmitters(NodeRefSet& candidate_transmitters) const {
+    const DetectorJob::DepVec& deps = Job::get_deps();
+    const aeg::Edge::Kind kind = deps.back().first;
+    z3::solver candidate_solver {ctx()};
+    aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
+        const aeg::Node& node = aeg.lookup(ref);
+        
+        z3::expr_vector vec {ctx()};
+        vec.push_back(node.trans);
+        vec.push_back(node.access());
+        if (candidate_solver.check(vec) != z3::unsat) {
+            candidate_transmitters.insert(ref);
+        }
+    });
+
+    // filter out any already-seen transmitters
+    {
+        std::erase_if(candidate_transmitters, [&] (NodeRef ref) -> bool {
+            const auto& node = aeg.lookup(ref);
+            if (const llvm::Instruction *I = node.inst->get_inst()) {
+                if (::transmitters.contains(I)) {
+                    llvm::errs() << "filtered transmitter: " << *I << "\n";
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+}
+
+template <class Job>
+void DetectorMain::run() {
+    std::vector<std::thread> threads;
     
+    NodeRefSet candidate_transmitters;
+    get_candidate_transmitters<Job>(candidate_transmitters);
+    
+    // spawn threads
+    {
+        std::unique_lock<std::mutex> lock {mutex()};
+        for (const NodeRef candidate_transmitter : candidate_transmitters) {
+            std::thread thread {
+                [&, candidate_transmitter] () {
+                    Job job {aeg, solver, candidate_transmitter, leaks};
+                    static_cast<DetectorJob&>(job).run();
+                }
+            };
+            threads.push_back(std::move(thread));
+        }
+    }
+    
+    /* join threads */
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+    
+    /* dump information */
+    dump();
+}
+
+void DetectorMain::dump() {
     const std::ios::openmode openmode = batch_mode ? (std::ios::out | std::ios::app) : (std::ios::out);
     
     {
@@ -112,8 +173,14 @@ void Detector::run() {
     }
 }
 
+void DetectorJob::run() {
+    for_one_transmitter(candidate_transmitter, [&] (NodeRef ref, CheckMode check_mode) {
+        entry(ref, check_mode);
+    }, true);
+}
 
-void Detector::output_execution(const Leakage& leak) {
+
+void DetectorJob::output_execution(const Leakage& leak) {
     assert(lookahead_tmp);
     
     leaks.emplace_back(leak, std::accumulate(actions.rbegin(), actions.rend(), std::string(), [] (const std::string& a, const std::string& b) -> std::string {
@@ -184,15 +251,18 @@ void Leakage::print_short(std::ostream& os) const {
 
 /* LEAKAGE DETECTOR METHODS */
 
-Detector::Detector(aeg::AEG& aeg, z3::solver& solver):
+DetectorJob::DetectorJob(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks):
+lock(aeg.context.mutex),
+candidate_transmitter(candidate_transmitter),
 aeg(aeg),
 solver(local_ctx, solver, z3::solver::translate()),
 alias_solver(ctx()),
 init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))),
-partial_order(aeg.po)
+partial_order(aeg.po),
+leaks(leaks)
 {}
 
-Detector::Mems Detector::get_mems(const NodeRefSet& set) {
+DetectorJob::Mems DetectorJob::get_mems(const NodeRefSet& set) {
     Mems ins;
     Mems outs;
     z3::expr mem = init_mem;
@@ -212,7 +282,7 @@ Detector::Mems Detector::get_mems(const NodeRefSet& set) {
     return ins;
 }
 
-bool Detector::lookahead(std::function<void ()> thunk) {
+bool DetectorJob::lookahead(std::function<void ()> thunk) {
     if (!use_lookahead) {
         return true;
     }
@@ -226,7 +296,7 @@ bool Detector::lookahead(std::function<void ()> thunk) {
     }
 }
 
-void Detector::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
+void DetectorJob::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     // Sources new_sources;
     const auto& stores = rf_sources(load);
     if (mode == CheckMode::SLOW) {
@@ -272,7 +342,7 @@ void Detector::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::function
     }
 }
 
-void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
+void DetectorJob::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     const auto edges = aeg.get_nodes(Direction::IN, ref, kind);
     for (const auto& edge : edges) {
         if (!check_edge(edge.first, ref)) { continue; }
@@ -292,7 +362,7 @@ void Detector::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::function<v
     }
 }
 
-void Detector::traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
+void DetectorJob::traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<void (NodeRef, CheckMode)> func, CheckMode mode) {
     const aeg::Node& load_node = aeg.lookup(load);
     
     if (traceback_depth == max_traceback) {
@@ -321,7 +391,7 @@ void Detector::traceback(NodeRef load, aeg::ExecMode exec_mode, std::function<vo
     traceback_edge(aeg::Edge::ADDR, load, func, mode);
 }
 
-void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, bool priv) {
+void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, bool priv) {
     rf.clear();
     
     {
@@ -407,7 +477,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     
     // window size
     {
-        z3::model window_model {ctx()};
+        z3::model window_model {local_ctx};
         z3::expr F = ctx().bool_val(false);
         z3::expr zero = ctx().int_val(0);
         const auto nullify = [&] (const z3::expr& e, z3::expr& repl) {
@@ -458,7 +528,7 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
         if (priv) {
             Timer timer;
             logv(1, "translating to window...\n");
-            z3::solver new_solver {ctx()};
+            z3::solver new_solver {local_ctx};
             for (z3::expr old_assertion : solver.assertions()) {
                 z3::expr new_assertion = window_model.eval(old_assertion);
                 new_assertion = new_assertion.simplify();
@@ -503,8 +573,9 @@ void Detector::for_one_transmitter(NodeRef transmitter, std::function<void (Node
     }
 }
 
+#if 0
 template <class OutputIt>
-OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out) {
+OutputIt DetectorJob::for_new_transmitter(NodeRef transmitter, std::function<void (NodeRef, CheckMode)> func, OutputIt out) {
     
     char *path;
     if (::asprintf(&path, "%s/tmp/lkg.XXXXXX", output_dir.c_str()) < 0) {
@@ -567,120 +638,10 @@ OutputIt Detector::for_new_transmitter(NodeRef transmitter, std::function<void (
         return out;
     }
 }
+#endif
 
-void Detector::for_each_transmitter_parallel_private(NodeRefSet& candidate_transmitters, std::function<void (NodeRef, CheckMode)> func) {
-    
-    std::cerr << "using " << max_parallel << " threads\n";
-    
-    unsigned num_threads = 0;
-    std::unordered_map<pid_t, Child> children;
-    std::size_t total_candidate_transmitters = candidate_transmitters.size();
-    std::size_t i = 0;
-    while (true) {
-        
-        /* spawn new child if possible */
-        if (num_threads < max_parallel && !candidate_transmitters.empty()) {
-            const auto it = candidate_transmitters.begin();
-            const NodeRef transmitter = *it;
-            candidate_transmitters.erase(it);
-            
-            for_new_transmitter(transmitter, func, std::inserter(children, children.end()));
-            ++num_threads;
-            
-            ++i;
-            logv(1, i << "/" << total_candidate_transmitters << "\n");
-            
-            if (client) {
-                mon::Message msg;
-                auto *progress = msg.mutable_func_progress();
-                progress->mutable_func()->set_name(aeg.po.function_name());
-                const float frac = static_cast<float>(i) / static_cast<float>(total_candidate_transmitters);
-                progress->set_frac(frac);
-                client.send(msg);
-            }
-        }
-        
-        /* reap dead children if necessary */
-        if (num_threads == max_parallel || (num_threads > 0 && candidate_transmitters.empty())) {
-            int status;
-            pid_t pid;
-            while (true) {
-                pid = ::wait(&status);
-                if (pid < 0 && errno != EINTR) {
-                    std::perror("wait");
-                    std::abort();
-                }
-                if (pid >= 0) {
-                    break;
-                }
-            }
-            
-            const Child& child = children.at(pid);
-            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                std::cerr << "child aborted or had nonzero exit code: ";
-                print_status(std::cerr, status);
-                std::cerr << "\n";
-                logv(0, "restarting " << child.ref << "\n");
-                
-                // try to recover
-                --i;
-                candidate_transmitters.insert(child.ref);
-                
-            } else {
-                
-                logv(0, "finished " << child.ref << "\n");
-                
-                const int fd = children.at(pid).fd;
-                if (::lseek(fd, 0, SEEK_SET) < 0) {
-                    throw std::system_error(errno, std::generic_category(), "lseek");
-                }
-                
-                std::vector<char> buf;
-                if (io::readall(fd, buf) < 0) {
-                    std::perror("read");
-                    std::abort();
-                }
-                ::close(fd);
-                
-                const char *ptr = buf.data();
-                while (ptr < buf.data() + buf.size()) {
-                    lkg::LeakageMsg msg;
-                    uint32_t size = *reinterpret_cast<const uint32_t *>(ptr);
-                    ptr += 4;
-                    if (!msg.ParseFromArray(ptr, size)) {
-                        std::cerr << "bad message\n";
-                        std::abort();
-                    }
-                    ptr += size;
-                    
-                    NodeRefVec vec;
-                    util::copy(msg.vec(), std::back_inserter(vec));
-                    assert(msg.vec().size() > 1);
-                    assert(vec.size() > 1);
-                    NodeRef transmitter = msg.transmitter();
-                    std::string desc = msg.desc();
-                    leaks.emplace_back(Leakage {
-                        .vec = vec,
-                        .transmitter = transmitter
-                    }, desc);
-                }
-                
-            }
-            
-            --num_threads;
-        }
-        
-        if (num_threads == 0 && candidate_transmitters.empty()) {
-            break;
-        }
-        
-        /* update number of live threads */
-        client.send_property(aeg.function_name(), "threads", num_threads);
-    }
-}
-
-
-void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> func) {
+#if 0
+void DetectorJob::for_each_transmitter(std::function<void (NodeRef, CheckMode)> func) {
     const aeg::Edge::Kind kind = deps().back().first;
     NodeRefSet candidate_transmitters;
     {
@@ -748,8 +709,9 @@ void Detector::for_each_transmitter(std::function<void (NodeRef, CheckMode)> fun
         }
     }
 }
+#endif
 
-NodeRefSet Detector::reachable_r(const NodeRefSet& window, NodeRef init) const {
+NodeRefSet DetectorJob::reachable_r(const NodeRefSet& window, NodeRef init) const {
     NodeRefVec todo = {init};
     NodeRefSet seen;
     while (!todo.empty()) {
@@ -762,7 +724,7 @@ NodeRefSet Detector::reachable_r(const NodeRefSet& window, NodeRef init) const {
     return seen;
 }
 
-std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
+std::unordered_map<NodeRef, z3::expr> DetectorJob::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
     const auto& load_node = aeg.lookup(load);
     z3::expr no = ctx().bool_val(true);
     std::unordered_map<NodeRef, z3::expr> yesses;
@@ -780,7 +742,7 @@ std::unordered_map<NodeRef, z3::expr> Detector::precompute_rf_one(NodeRef load, 
     return yesses;
 }
 
-void Detector::precompute_rf(NodeRef load) {
+void DetectorJob::precompute_rf(NodeRef load) {
     logv(1, "precomputing rf " << load << "\n");
     Timer timer;
     
@@ -885,7 +847,7 @@ void Detector::precompute_rf(NodeRef load) {
     logv(1, __FUNCTION__ << ": filtered " << filtered << "\n");
 }
 
-const Detector::Sources& Detector::rf_sources(NodeRef load) {
+const DetectorJob::Sources& DetectorJob::rf_sources(NodeRef load) {
     auto it = rf.find(load);
     if (it == rf.end()) {
         precompute_rf(load);
@@ -895,12 +857,12 @@ const Detector::Sources& Detector::rf_sources(NodeRef load) {
     return it->second;
 }
 
-void Detector::rf_sources(NodeRef load, Sources&& sources) {
+void DetectorJob::rf_sources(NodeRef load, Sources&& sources) {
     rf[load] = sources;
 }
 
 
-void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind) {
+void DetectorJob::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::Edge::Kind kind) {
     const auto desc = [src, dst] (const std::string& name) -> std::string {
         return util::to_string(name, "-", src, "-", dst);
     };
@@ -924,7 +886,7 @@ void Detector::assert_edge(NodeRef src, NodeRef dst, const z3::expr& edge, aeg::
 
 
 
-void Detector::traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+void DetectorJob::traceback_deps(NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     NodeRefVec vec;
     DepVec deps;
     if (custom_deps.empty()) {
@@ -935,7 +897,7 @@ void Detector::traceback_deps(NodeRef from_ref, std::function<void (const NodeRe
     traceback_deps_rec(deps.rbegin(), deps.rend(), vec, from_ref, func, mode);
 }
 
-void Detector::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
+void DetectorJob::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                                   std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     const auto push_ref = util::push(vec, from_ref);
     
@@ -1031,7 +993,9 @@ label:
 }
 
 
-z3::check_result Detector::solver_check(bool allow_unknown) {
+z3::check_result DetectorJob::solver_check(bool allow_unknown) {
+    lock.unlock();
+    
     z3::check_result res;
     Stopwatch timer;
     timer.start();
@@ -1065,11 +1029,14 @@ z3::check_result Detector::solver_check(bool allow_unknown) {
             ++check_stats.unknown;
             break;
     }
+    
+    lock.lock();
+    
     return res;
 }
 
 template <typename OS>
-inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
+inline OS& operator<<(OS& os, const DetectorJob::CheckStats& stats) {
     const auto frac = [&] (unsigned n) -> std::string {
         if (stats.total() == 0) { return "0%"; }
         std::stringstream ss;
@@ -1080,7 +1047,7 @@ inline OS& operator<<(OS& os, const Detector::CheckStats& stats) {
     return os;
 }
 
-Detector::~Detector() {
+DetectorJob::~DetectorJob() {
     logv(1, "stats: " << check_stats << "\n");
 }
 

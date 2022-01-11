@@ -15,19 +15,15 @@ struct SpectreV1_Leakage {
     }
 };
 
-class SpectreV1_Detector: public Detector {
+class SpectreV1_Detector: public DetectorJob {
 public:
     
 protected:
-#if 0
-    virtual aeg::Edge::Kind cur_dep() const { return *(deps().rbegin() + loads.size()); }
-#endif
-    
-    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver): Detector(aeg, solver) {}
+    SpectreV1_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): DetectorJob(aeg, solver, candidate_transmitter, leaks) {}
         
 private:
     NodeRefVec loads;
-    virtual void run_() override final;
+    virtual void entry(NodeRef ref, CheckMode mode) override final;
     
     virtual void run_transmitter(NodeRef transmitter, CheckMode mode) override;
     virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) override;
@@ -46,18 +42,23 @@ private:
 
 class SpectreV1_Classic_Detector final: public SpectreV1_Detector {
 public:
-    SpectreV1_Classic_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
+    SpectreV1_Classic_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): SpectreV1_Detector(aeg, solver, candidate_transmitter, leaks) {}
+    
+    static DepVec get_deps();
     
 private:
-    virtual DepVec deps() const override final;
-    virtual std::string name() const override final { return "SpectreV1Classic"; }
+    virtual DepVec deps() const override { return get_deps(); }
+    virtual std::string name() const override { return "SpectreV1Classic"; }
 };
 
 class SpectreV1_Control_Detector final: public SpectreV1_Detector {
 public:
-    SpectreV1_Control_Detector(aeg::AEG& aeg, z3::solver& solver): SpectreV1_Detector(aeg, solver) {}
+    SpectreV1_Control_Detector(aeg::AEG& aeg, z3::solver& solver, NodeRef candidate_transmitter, std::vector<std::pair<Leakage, std::string>>& leaks): SpectreV1_Detector(aeg, solver, candidate_transmitter, leaks) {}
+    
+    static DepVec get_deps();
+    
 private:
-    virtual DepVec deps() const override final;
+    virtual DepVec deps() const override { return get_deps(); }
     virtual std::string name() const override final { return "SpectreV1Control"; }
 };
 
