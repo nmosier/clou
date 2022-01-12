@@ -76,10 +76,11 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
         Translations::Value value {callee_id};
         if (!C->getType()->isVoidTy()) {
             for (const auto& exit : port.exits) {
-                const llvm::ReturnInst *R = llvm::cast<llvm::ReturnInst>(&exit.first->back());
-                if (const llvm::Value *RV = R->getReturnValue()) {
-                    if (llvm::isa<llvm::Instruction>(RV) || llvm::isa<llvm::Argument>(RV)) {
-                        value.Vs.insert(RV);
+                if (const llvm::ReturnInst *R = llvm::dyn_cast<llvm::ReturnInst>(&exit.first->back())) {
+                    if (const llvm::Value *RV = R->getReturnValue()) {
+                        if (llvm::isa<llvm::Instruction>(RV) || llvm::isa<llvm::Argument>(RV)) {
+                            value.Vs.insert(RV);
+                        }
                     }
                 }
             }
