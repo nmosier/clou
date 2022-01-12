@@ -3,6 +3,7 @@
 #include <string>
 #include <ostream>
 #include <optional>
+#include <mutex>
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
@@ -24,6 +25,17 @@ std::optional<int> getelementptr_max_offset(const llvm::GetElementPtrInst *GEP);
 bool contains_struct(const llvm::Type *T);
 
 bool pointer_is_read_only(const llvm::Value *P);
+
+struct locked_raw_ostream {
+    std::unique_lock<std::mutex> lock;
+    llvm::raw_ostream& os;
+    
+    locked_raw_ostream(llvm::raw_ostream& os, std::mutex& mutex): lock(mutex), os(os) {}
+    
+    operator llvm::raw_ostream&() { return os; }
+};
+
+locked_raw_ostream cerr();
 
 }
 

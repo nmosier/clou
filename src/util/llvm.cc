@@ -208,4 +208,11 @@ bool pointer_is_read_only(const llvm::Value *P) {
     std::abort();
 }
 
+
+locked_raw_ostream cerr() {
+    static std::mutex mutex;
+    return locked_raw_ostream(llvm::errs(), mutex);
+}
+
+
 }
