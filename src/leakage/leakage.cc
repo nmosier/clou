@@ -116,6 +116,7 @@ void DetectorMain::run() {
     // create contexts & solvers
     create_solvers(solver, ctxs, solvers);
     
+    
     {
         mutex().lock();
         
@@ -1106,9 +1107,10 @@ void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3:
         for (std::size_t i = 0; i < idx; ++i) {
             const std::size_t j = idx + i;
             if (j < N) {
-                threads.emplace_back([] (const z3::solver& from_solver, z3::solver *to_solver, z3::context *to_ctx) {
-                    *to_solver = z3::translate(from_solver, *to_ctx);
-                }, to_solvers.at(i), &to_solvers.at(j), &ctxs.at(j));
+                threads.emplace_back([] (const z3::solver *from_solver, z3::solver *to_solver, z3::context *to_ctx) {
+                    std::cerr << "from_solver=" << from_solver << ", " << "to_solver=" << to_solver << ", to_ctx=" << to_ctx << "\n";
+                    *to_solver = z3::translate(*from_solver, *to_ctx);
+                }, &to_solvers.at(i), &to_solvers.at(j), &ctxs.at(j));
             }
         }
         
