@@ -214,5 +214,6 @@ locked_raw_ostream cerr() {
     return locked_raw_ostream(llvm::errs(), mutex);
 }
 
+  std::mutex errs_mutex;
 
 }

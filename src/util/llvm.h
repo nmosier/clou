@@ -26,6 +26,7 @@ bool contains_struct(const llvm::Type *T);
 
 bool pointer_is_read_only(const llvm::Value *P);
 
+  extern std::mutex errs_mutex;
 struct locked_raw_ostream {
     std::unique_lock<std::mutex> lock;
     llvm::raw_ostream& os;

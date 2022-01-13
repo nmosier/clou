@@ -170,25 +170,25 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Function& F) {
 
 extern unsigned verbose;
 std::string get_time();
-#define logv(level, msg) \
-do { \
-if (verbose >= level) { \
-std::string s; \
-llvm::raw_string_ostream ss(s); \
-ss << "[" << get_time() << "] " << msg; \
-llvm::cerr() << s; \
-} \
-} while (false)
 
-#define logv_(level, msg) \
-do { \
-if (verbose >= level) { \
-std::string s; \
-llvm::raw_string_ostream ss(s); \
-ss << msg; \
-llvm::cerr() << s; \
-} \
-} while (false)
+
+#define logv(level, msg)					\
+  do {								\
+    if (verbose >= level) {					\
+      std::unique_lock<std::mutex> lock {llvm::errs_mutex};	\
+      llvm::errs() << "[" << get_time() << "] " << msg;		\
+    }								\
+  } while (false)
+
+#define logv_(level, msg)			\
+  do {						\
+    if (verbose >= level) {			\
+      std::string s;				\
+      llvm::raw_string_ostream ss(s);		\
+      ss << msg;				\
+      llvm::cerr() << s;			\
+    }						\
+  } while (false)
 
 
 extern char prog[];
