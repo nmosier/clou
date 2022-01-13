@@ -1088,14 +1088,18 @@ DetectorJob::~DetectorJob() {
 
 
 void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3::context>& ctxs, std::vector<z3::solver>& to_solvers) {
+
     
     const auto N = ctxs.size();
+    
     
     if (N == 0) { return; }
     
     for (z3::context& ctx : ctxs) {
         to_solvers.emplace_back(ctx);
     }
+
+    std::vector<std::mutex> mutexes (N);    
     
     // do initial translation
     to_solvers.front() = z3::translate(from_solver, ctxs.front());
@@ -1104,13 +1108,15 @@ void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3:
         std::vector<std::thread> threads;
         
 #if 1
+	std::mutex mutex;
         for (std::size_t i = 0; i < idx; ++i) {
             const std::size_t j = idx + i;
             if (j < N) {
-                threads.emplace_back([] (const z3::solver *from_solver, z3::solver *to_solver, z3::context *to_ctx) {
-                    std::cerr << "from_solver=" << from_solver << ", " << "to_solver=" << to_solver << ", to_ctx=" << to_ctx << "\n";
-                    *to_solver = z3::translate(*from_solver, *to_ctx);
-                }, &to_solvers.at(i), &to_solvers.at(j), &ctxs.at(j));
+	      threads.emplace_back([] (const z3::solver *from_solver, z3::solver *to_solver, z3::context *to_ctx, std::mutex *from_mutex, std::mutex *to_mutex) {
+				     std::unique_lock<std::mutex> to_lock {*to_mutex};
+				     std::unique_lock<std::mutex> from_lock {*from_mutex};
+				     *to_solver = z3::translate(*from_solver, *to_ctx);
+				   }, &to_solvers.at(i), &to_solvers.at(j), &ctxs.at(j), &mutexes.at(i), &mutexes.at(j));
             }
         }
         
@@ -1124,6 +1130,23 @@ void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3:
                 to_solvers.at(j) = z3::translate(to_solvers.at(i), ctxs.at(j));
             }
         }
+
+
+	{
+	  std::vector<std::thread> threads;
+	  for (z3::solver& solver : to_solvers) {
+	    const auto func = [] (z3::solver *solver) {
+				z3::context ctx;
+				(void) z3::translate(*solver, ctx);
+			      };
+	    threads.emplace_back(func, &solver);
+	  }
+
+	  for (std::thread& thread : threads) {
+	    thread.join();
+	  }
+	}
+	
 #endif
     }
     
