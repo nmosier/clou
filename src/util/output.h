@@ -16,6 +16,8 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Value.h>
 
+#include "util/llvm.h"
+
 namespace output {
 
 template <typename OutputStream, typename InputIt, typename Transform>
@@ -174,7 +176,7 @@ if (verbose >= level) { \
 std::string s; \
 llvm::raw_string_ostream ss(s); \
 ss << "[" << get_time() << "] " << msg; \
-llvm::errs() << s; \
+llvm::cerr() << s; \
 } \
 } while (false)
 
@@ -184,7 +186,7 @@ if (verbose >= level) { \
 std::string s; \
 llvm::raw_string_ostream ss(s); \
 ss << msg; \
-llvm::errs() << s; \
+llvm::cerr() << s; \
 } \
 } while (false)
 
