@@ -106,45 +106,49 @@ void DetectorMain::run() {
     
     NodeRefSet candidate_transmitters;
     get_candidate_transmitters<Job>(candidate_transmitters);
+    NodeRefVec candidate_transmitter_vec (candidate_transmitters.begin(), candidate_transmitters.end());
     
     // spawn threads
     const unsigned total_tasks = candidate_transmitters.size();
     std::atomic<unsigned> completed_tasks = 0;
+    std::atomic<unsigned> next_task = 0;
     
     // create contexts & solvers
     ParallelContextVec solvers = create_solvers(solver, candidate_transmitters.size());
     
-    
     {
         mutex().lock();
         
-        for (unsigned i = 0; const NodeRef candidate_transmitter : candidate_transmitters) {
-            std::thread thread {
-                    [&, candidate_transmitter] (ParallelContext *pctx) {
-                        {
-                            semutil::acquire(semid);
-                            Job job {aeg, pctx->ctx, pctx->solver, candidate_transmitter, leaks};
-                            static_cast<DetectorJob&>(job).run();
-                            semutil::release(semid);
-                        }
-                        
-                        ++completed_tasks;
-                        
-                        if (client) {
-                            std::unique_lock<std::mutex> lock {mutex()};
-                            mon::Message msg;
-                            auto *progress = msg.mutable_func_progress();
-                            progress->mutable_func()->set_name(aeg.po.function_name());
-                            const float frac = static_cast<float>(completed_tasks) / static_cast<float>(total_tasks);
-                            std::cerr << "FLOAT: " << frac << "\n";
-                            progress->set_frac(frac);
-                            client.send(msg);
-                        }
-                    }, &solvers.at(i)
+        for (unsigned i = 0; i < candidate_transmitter_vec.size(); ++i) {
+            const auto func = [&, total_tasks] (ParallelContext *pctx) {
+                while (true) {
+                    // get next task
+                    const auto task = next_task++;
+                    if (task >= total_tasks) { break; }
+                    
+                    // run task
+                    {
+                        semutil::acquire(semid);
+                        Job job {aeg, pctx->ctx, pctx->solver, candidate_transmitter_vec.at(task), leaks};
+                        static_cast<DetectorJob&>(job).run();
+                        semutil::release(semid);
+                    }
+                    
+                    ++completed_tasks;
+                    
+                    if (client) {
+                        std::unique_lock<std::mutex> lock {mutex()};
+                        mon::Message msg;
+                        auto *progress = msg.mutable_func_progress();
+                        progress->mutable_func()->set_name(aeg.po.function_name());
+                        const float frac = static_cast<float>(completed_tasks) / static_cast<float>(total_tasks);
+                        std::cerr << "FLOAT: " << frac << "\n";
+                        progress->set_frac(frac);
+                        client.send(msg);
+                    }
+                }
             };
-            threads.push_back(std::move(thread));
-            
-            ++i;
+            threads.emplace_back(func, &solvers.at(i));
         }
         mutex().unlock();
     }
@@ -1111,74 +1115,6 @@ DetectorMain::ParallelContextVec DetectorMain::create_solvers(z3::solver &from_s
     
     return to_solvers;
 }
-
-#if 0
-void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3::context>& ctxs, std::vector<z3::solver>& to_solvers) {
-
-    
-    const auto N = ctxs.size();
-    
-    
-    if (N == 0) { return; }
-    
-    for (z3::context& ctx : ctxs) {
-        to_solvers.emplace_back(ctx);
-    }
-
-    std::vector<std::mutex> mutexes (N);    
-    
-    // do initial translation
-    to_solvers.front() = z3::translate(from_solver, ctxs.front());
-
-    for (std::size_t idx = 1; idx < N; idx *= 2) {
-        std::vector<std::thread> threads;
-        
-#if 1
-	std::mutex mutex;
-        for (std::size_t i = 0; i < idx; ++i) {
-            const std::size_t j = idx + i;
-            if (j < N) {
-	      threads.emplace_back([] (const z3::solver *from_solver, z3::solver *to_solver, z3::context *to_ctx, std::mutex *from_mutex, std::mutex *to_mutex) {
-				     std::unique_lock<std::mutex> to_lock {*to_mutex};
-				     std::unique_lock<std::mutex> from_lock {*from_mutex};
-				     *to_solver = z3::translate(*from_solver, *to_ctx);
-				   }, &to_solvers.at(i), &to_solvers.at(j), &ctxs.at(j), &mutexes.at(i), &mutexes.at(j));
-            }
-        }
-        
-        for (std::thread& thread : threads) {
-            thread.join();
-        }
-#else
-        for (std::size_t i = 0; i < idx; ++i) {
-            const std::size_t j = idx + i;
-            if (j < N) {
-                to_solvers.at(j) = z3::translate(to_solvers.at(i), ctxs.at(j));
-            }
-        }
-
-
-	{
-	  std::vector<std::thread> threads;
-	  for (z3::solver& solver : to_solvers) {
-	    const auto func = [] (z3::solver *solver) {
-				z3::context ctx;
-				(void) z3::translate(*solver, ctx);
-			      };
-	    threads.emplace_back(func, &solver);
-	  }
-
-	  for (std::thread& thread : threads) {
-	    thread.join();
-	  }
-	}
-	
-#endif
-    }
-    
-}
-#endif
-
 
 
 }
