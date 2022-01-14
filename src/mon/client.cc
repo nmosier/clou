@@ -29,6 +29,8 @@ void Client::write(const T *buf, std::size_t count) {
 }
 
 void Client::connect(const char *path) {
+    std::lock_guard<std::recursive_mutex> lock {mutex};
+    
     assert(!good());
     
     int sock;
@@ -55,6 +57,8 @@ void Client::connect(const char *path) {
 }
 
 void Client::disconnect() {
+    std::lock_guard<std::recursive_mutex> lock {mutex};
+    
     assert(good());
     
     if (std::fclose(f) < 0) {

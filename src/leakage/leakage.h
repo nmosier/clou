@@ -191,7 +191,15 @@ private:
     
     void dump();
     
-    void create_solvers(const z3::solver& from_solver, std::vector<z3::context>& ctxs, std::vector<z3::solver>& to_solvers);
+    struct ParallelContext {
+        z3::context ctx;
+        z3::solver solver;
+        
+        ParallelContext(): ctx(), solver(ctx) {}
+    };
+    using ParallelContextVec = std::vector<ParallelContext>;
+    
+    ParallelContextVec create_solvers(z3::solver& from_solver, unsigned N) const;
 };
 
 namespace dbg {

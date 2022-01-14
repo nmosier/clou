@@ -5,6 +5,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <arpa/inet.h>
+#include <mutex>
 
 #include "util/protobuf.h"
 
@@ -29,10 +30,11 @@ public:
     
     template <typename Msg>
     void send(const Msg& msg);
-    bool recv(Message& msg);
-    bool send_then_recv(const Message& out, Message& in);
     
-    bool good() const { return f != nullptr; }
+    bool good() const {
+        std::lock_guard<std::recursive_mutex> lock {mutex};
+        return f != nullptr;
+    }
     operator bool() const { return good(); }
     
     void send_connect();
@@ -48,6 +50,7 @@ public:
     
 private:
     FILE *f;
+    mutable std::recursive_mutex mutex;
     
     void connect(const char *path);
     void disconnect();
@@ -58,6 +61,7 @@ private:
 
 template <typename Msg>
 void Client::send(const Msg& msg) {
+    std::lock_guard<std::recursive_mutex> lock {mutex};
     if (!good()) { return; }
     std::string buf;
     msg.SerializeToString(&buf);

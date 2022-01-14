@@ -110,11 +110,9 @@ void DetectorMain::run() {
     // spawn threads
     const unsigned total_tasks = candidate_transmitters.size();
     std::atomic<unsigned> completed_tasks = 0;
-    std::vector<z3::context> ctxs (candidate_transmitters.size());
-    std::vector<z3::solver> solvers;
     
     // create contexts & solvers
-    create_solvers(solver, ctxs, solvers);
+    ParallelContextVec solvers = create_solvers(solver, candidate_transmitters.size());
     
     
     {
@@ -122,10 +120,10 @@ void DetectorMain::run() {
         
         for (unsigned i = 0; const NodeRef candidate_transmitter : candidate_transmitters) {
             std::thread thread {
-                    [&, candidate_transmitter] (z3::context *ctx, z3::solver *solver) {
+                    [&, candidate_transmitter] (ParallelContext *pctx) {
                         {
                             semutil::acquire(semid);
-                            Job job {aeg, *ctx, *solver, candidate_transmitter, leaks};
+                            Job job {aeg, pctx->ctx, pctx->solver, candidate_transmitter, leaks};
                             static_cast<DetectorJob&>(job).run();
                             semutil::release(semid);
                         }
@@ -142,7 +140,7 @@ void DetectorMain::run() {
                             progress->set_frac(frac);
                             client.send(msg);
                         }
-                    }, &ctxs.at(i), &solvers.at(i)
+                    }, &solvers.at(i)
             };
             threads.push_back(std::move(thread));
             
@@ -1084,9 +1082,37 @@ DetectorJob::~DetectorJob() {
 }
 
 
+DetectorMain::ParallelContextVec DetectorMain::create_solvers(z3::solver &from_solver, unsigned int N) const {
+    ParallelContextVec to_solvers (N);
+    
+    if (N == 0) { return to_solvers; }
 
+    const auto translate = [] (const z3::solver *from_solver, z3::solver& to_solver) {
+        to_solver = z3::translate(*from_solver, to_solver.ctx());
+    };
+    
+    translate(&from_solver, to_solvers.front().solver);
 
+    for (std::size_t idx = 1; idx < N; idx *= 2) {
+        std::vector<std::thread> threads;
+        for (std::size_t i = 0; i < idx; ++i) {
+            const std::size_t j = idx + i;
+            if (j < N) {
+                threads.emplace_back([] (const z3::solver *from_solver, z3::solver *to_solver) {
+                    *to_solver = z3::translate(*from_solver, to_solver->ctx());
+                }, &to_solvers.at(i).solver, &to_solvers.at(j).solver);
+            }
+        }
+        
+        for (std::thread& thread : threads) {
+            thread.join();
+        }
+    }
+    
+    return to_solvers;
+}
 
+#if 0
 void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3::context>& ctxs, std::vector<z3::solver>& to_solvers) {
 
     
@@ -1151,6 +1177,7 @@ void DetectorMain::create_solvers(const z3::solver& from_solver, std::vector<z3:
     }
     
 }
+#endif
 
 
 
