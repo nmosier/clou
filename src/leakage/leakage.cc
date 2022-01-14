@@ -114,12 +114,12 @@ void DetectorMain::run() {
     std::atomic<unsigned> next_task = 0;
     
     // create contexts & solvers
-    ParallelContextVec solvers = create_solvers(solver, candidate_transmitters.size());
+    ParallelContextVec solvers = create_solvers(solver, std::min<unsigned>(max_parallel, candidate_transmitters.size()));
     
     {
         mutex().lock();
         
-        for (unsigned i = 0; i < candidate_transmitter_vec.size(); ++i) {
+        for (unsigned i = 0; i < solvers.size(); ++i) {
             const auto func = [&, total_tasks] (ParallelContext *pctx) {
                 while (true) {
                     // get next task

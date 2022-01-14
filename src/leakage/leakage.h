@@ -77,7 +77,7 @@ protected:
     std::unordered_set<const llvm::Instruction *> transmitters;
     aeg::AEG& aeg;
     z3::context& local_ctx;
-    z3::solver& solver;
+    z3::solver solver;
     z3::solver alias_solver;
     Actions actions;
     z3::expr init_mem;
