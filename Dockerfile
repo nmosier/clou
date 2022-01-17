@@ -11,13 +11,27 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
     lldb-12 \
     tmux \
     less emacs-nox htop valgrind psmisc \
-    unzip
+    unzip python3-setuptools
 
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"
 ENV CXX="/usr/bin/clang++-12"
 ENV LCM_DIR="$HOME/lcm"
 ENV LCM_BUILD="$LCM_DIR/build"
+ENV LCM_SCRIPTS="$LCM_DIR/scripts"
+
+WORKDIR "$LCM_SCRIPTS"
+COPY scripts/cloucc.sh .
+
+# Set up custom z3
+ENV Z3_DIR="$LCM_BUILD/z3/install"
+WORKDIR "$LCM_BUILD"
+RUN git clone --depth=1 https://github.com/nmosier/z3.git
+WORKDIR "$LCM_BUILD/z3/build"
+RUN mkdir -p ../install
+RUN cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="Z3_DIR" ..
+RUN make -j$(nproc)
+RUN make install
 
 # Set up dummy libclou.so
 WORKDIR "$LCM_BUILD"
@@ -27,14 +41,20 @@ RUN clang-12 -shared -o src/libclou.so dummy.c
 RUN rm -f dummy.c
 
 # Configure libsodium
-RUN git clone https://github.com/jedisct1/libsodium.git libsodium
-
+RUN git clone --depth=1 https://github.com/jedisct1/libsodium.git libsodium
 ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS -UHAVE_ALLOCA"
-
 WORKDIR "$LCM_BUILD/libsodium"
 RUN autoreconf -i
-RUN ./configure --disable-asm CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/libclou.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS"
+RUN ./configure --disable-asm CC="$LCM_SCRIPTS/cloucc.sh" CFLAGS="-Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/libclou.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS" || ( cat config.log; exit 1)
 RUN mkdir lcm
+
+# Configure openssl
+WORKDIR "$LCM_BUILD"
+RUN git clone --depth=1 https://github.com/openssl/openssl.git openssl
+WORKDIR openssl
+RUN ./Configure CC="$LCM_SCRIPTS/cloucc.sh" CFLAGS="-Xclang -load -Xclang $LCM_BUILD/src/libclou.so"
+RUN mkdir lcm
+
 
 # WORKDIR "$LCM_BUILD/libsodium-v4"
 # RUN autoreconf -i
@@ -51,9 +71,6 @@ RUN mkdir -p /tmp/cores
 
 # Build lcm tool
 WORKDIR "$LCM_BUILD"
-ARG z3_version=4.8.13
-ADD https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/z3-${z3_version}-x64-glibc-2.31.zip z3-${z3_version}.zip
-RUN unzip z3-${z3_version}
 # Uncomment to use newer Z3 version
 # ENV Z3_DIR "${LCM_BUILD}/z3-${z3_version}-x64-glibc-2.31"
 COPY CMakeLists.txt $LCM_DIR/

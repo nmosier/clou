@@ -6,3 +6,4 @@ add_library(cfg_objs OBJECT
   unrolled.cc unrolled.h
   block.cc block.h
   )
+target_include_directories(cfg_objs PUBLIC ${Boost_INCLUDE_DIRS})

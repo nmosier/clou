@@ -16,7 +16,7 @@ add_library(proto OBJECT
   client.h
   client.cc
   )
-target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/..)
+target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/.. ${Protobuf_INCLUDE_DIRS})
 target_link_libraries(proto PUBLIC ${Protobuf_LIBRARIES})
 
 find_package(Curses REQUIRED)
