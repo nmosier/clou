@@ -802,8 +802,16 @@ void DetectorJob::precompute_rf(NodeRef load) {
             const auto *load_op = load_node.get_memory_address_pair().first;
             if (const auto *store_inst = dynamic_cast<const MemoryInst *>(store_node.inst.get())) {
                 const auto *store_op = store_inst->get_memory_operand();
+
+                if (llvm::to_string(*load_op->getType()) == "type opaque") {
+                    goto label;
+                }
                 
                 auto *load_type = load_op->getType()->getPointerElementType();
+                if (load_type != load_node.inst->get_inst()->getType()) {
+                    llvm::errs() << "load_type = " << *load_type << "\n";
+                    llvm::errs() << "load_node->inst.get_inst()->getType() = " << *load_node.inst->get_inst()->getType() << "\n";
+                }
                 assert(load_type == load_node.inst->get_inst()->getType());
                 auto *store_type = store_op->getType()->getPointerElementType();
                 
@@ -818,6 +826,8 @@ void DetectorJob::precompute_rf(NodeRef load) {
                 }
             }
         }
+        
+        label:
         
         
         
