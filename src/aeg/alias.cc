@@ -577,7 +577,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         }
         
         /* process pairs in allocas x geps_nonzero */
-        logv_(1, allocas.size() * geps_nonzero.size() << " pairs (1/2)\n");
+        logv(1, allocas.size() * geps_nonzero.size() << " pairs (1/2)\n");
 #if 0
         for (const auto& alloca : allocas) {
             for (const auto& gep_nonzero : geps_nonzero) {

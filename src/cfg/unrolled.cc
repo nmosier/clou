@@ -53,13 +53,13 @@ bool CFG_Unrolled::construct_call(const llvm::CallBase *C, Port& port, IDs& ids)
     
     /* add parameter translations */
     {
+#if 0
         assert(F->arg_size() == C->arg_size());
+#else
+        assert(F->arg_size() <= C->arg_size());
+#endif
         auto FA_it = F->arg_begin();
         auto CA_it = C->arg_begin();
-#if 0
-        const Translations::Key trans_key {callee_id, &*FA_it};
-        Translations::Value trans_value {callee_id};
-#endif
         for (; FA_it != F->arg_end(); ++FA_it, ++CA_it) {
             const Translations::Key key {callee_id, &*FA_it};
             const Translations::Value value {caller_id, {*CA_it}};
