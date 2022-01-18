@@ -54,28 +54,6 @@ private:
     void construct_function(llvm::Function *F, Port& port, IDs& ids);
     void construct_loop_forest(const LoopForest *LF, Port& port, IDs& ids);
     
-#if 0
-    using ArgBinding = std::unordered_map<const llvm::Argument *, NodeRefSet>;
-    using InstBinding = std::unordered_map<const llvm::Instruction *, NodeRefSet>;
-    struct Binding {
-        ArgBinding args;
-        InstBinding insts;
-        
-        std::optional<NodeRefSet> bind(const llvm::Value *V) const;
-        
-        void join(const Binding& other) {
-            // join args
-            for (const auto& arg : other.args) {
-                args[arg.first].insert(arg.second.begin(), arg.second.end());
-            }
-            // join insts
-            for (const auto& inst : other.insts) {
-                insts[inst.first].insert(inst.second.begin(), inst.second.end());
-            }
-        }
-    };
-#endif
-    
     template <typename InputIt>
     void connect(InputIt src_begin, InputIt src_end, NodeRef dst) {
         for (auto src_it = src_begin; src_it != src_end; ++src_it) {
