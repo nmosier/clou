@@ -180,16 +180,6 @@ std::string get_time();
     }								\
   } while (false)
 
-#define logv_(level, msg)			\
-  do {						\
-    if (verbose >= level) {			\
-      std::string s;				\
-      llvm::raw_string_ostream ss(s);		\
-      ss << msg;				\
-      llvm::cerr() << s;			\
-    }						\
-  } while (false)
-
 
 extern char prog[];
 
