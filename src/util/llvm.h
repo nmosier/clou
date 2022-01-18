@@ -36,8 +36,6 @@ struct locked_raw_ostream {
     operator llvm::raw_ostream&() { return os; }
 };
 
-locked_raw_ostream cerr();
-
 }
 
 template <typename T>
