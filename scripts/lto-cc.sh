@@ -11,9 +11,7 @@ COMPILE_FOUND=
 
 ARGS=()
 
-if [[ ! "$OPT_ARGS" ]]; then
-    OPT_ARGS=("-load" "@clou_lib@" "-lcm")
-fi
+OPT_ARGS=("-load" "/lcm/build/src/libclou.so" "-lcm")
 
 for ARG in "$@"; do
     case "$ARG" in
@@ -69,6 +67,7 @@ link() {
     "$LLVM_LINK" -o "$LLVM_LINK_OUT" "${LLVM_OBJS[@]}"
 
     LLVM_LINK_OUT1="$(mktemp)"
+    echo "$LLVM_OPT" "${OPT_ARGS[@]}" -o "$LLVM_LINK_OUT1" "$LLVM_LINK_OUT"
     "$LLVM_OPT" "${OPT_ARGS[@]}" -o "$LLVM_LINK_OUT1" "$LLVM_LINK_OUT"
 
     "$CLANG" "$LLVM_LINK_OUT1" "${OTHER_ARGS[@]}"
@@ -76,14 +75,19 @@ link() {
 
 if [[ "$LINK_FLAG_FOUND" && "$COMPILE_FLAG_FOUND" ]]; then
     if [[ ! "$COMPILE_FOUND" && "$SHARED_FOUND" ]]; then
+	echo LINK1
 	link "${ARGS[@]}"
     else
+	echo DEFAULT2
 	"$CLANG" "${ARGS[@]}"
     fi
 elif [[ "$COMPILE_FLAG_FOUND" ]]; then
+    echo COMPILE
     compile "${ARGS[@]}"
 elif [[ "$LINK_FLAG_FOUND" || "$SHARED_FOUND" ]]; then
+    echo LINK2
     link "${ARGS[@]}"
 else
+    echo DEFAULT2
     "$CLANG" "${ARGS[@]}"
 fi

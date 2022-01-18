@@ -29,7 +29,7 @@ WORKDIR "$LCM_BUILD"
 RUN git clone --depth=1 https://github.com/nmosier/z3.git
 WORKDIR "$LCM_BUILD/z3/build"
 RUN mkdir -p ../install
-RUN cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="Z3_DIR" ..
+RUN cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$Z3_DIR" ..
 RUN make -j$(nproc)
 RUN make install
 
