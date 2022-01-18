@@ -27,3 +27,5 @@ target_link_libraries(clou PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES
 if(APPLE)
   target_link_options(clou PRIVATE -undefined dynamic_lookup)
 endif()
+
+add_subdirectory(passes)
