@@ -329,106 +329,6 @@ struct ComponentList: Component {
     }
 };
 
-#if 0
-struct Monitor;
-
-class Client {
-public:
-    Client(int fd, Monitor& monitor): fd(fd), monitor(monitor) {
-        mon::ClientConnect msg;
-        if (!parse(msg)) {
-            close();
-        }
-        pid = msg.pid();
-    }
-    
-    bool good() const noexcept { return fd >= 0; }
-    operator bool() const noexcept { return good(); }
-    
-    void run() {
-        while (true) {
-            struct pollfd pfd = {
-                .fd = fd,
-                .events = POLLIN
-            };
-            if (::poll(&pfd, 1, -1) < 0) {
-                std::perror("poll");
-                break;
-            }
-            
-            /* check flags */
-            if ((pfd.revents & POLLIN)) {
-                mon::Message msg;
-                if (!parse(msg)) {
-                    break;
-                }
-                handle(msg);
-            } else {
-                if ((pfd.revents & POLLHUP)) {
-                } else if ((pfd.revents & POLLNVAL)) {
-                    error("poll: invalid socket");
-                } else if ((pfd.revents & POLLERR)) {
-                    std::cerr << prog << ": error on socket\n";
-                } else {
-                    std::abort();
-                }
-                break;
-            }
-        }
-        
-        close();
-        
-        /* cleanup monitor state */
-    }
-    
-private:
-    int fd = -1;
-    pid_t pid = -1;
-    Monitor& monitor;
-    
-    void close() {
-        ::close(fd);
-        fd = -1;
-    }
-    
-    template <typename T>
-    bool read(T *buf_, std::size_t count, bool report_eof) {
-        char *buf = reinterpret_cast<char *>(buf_);
-        std::size_t rem = count * sizeof(T);
-        while (rem > 0) {
-            const ::ssize_t bytes_read = ::read(fd, buf, rem);
-            if (bytes_read < 0) {
-                std::perror("read");
-                close();
-                return false;
-            } else if (bytes_read == 0) {
-                if (report_eof) {
-                    std::cerr << "warning: unexpected EOF\n";
-                }
-                close();
-                return false;
-            }
-            rem -= bytes_read;
-            buf += bytes_read;
-        }
-        return true;
-    }
-    
-    template <typename Message>
-    bool parse(Message& msg) {
-        std::uint32_t buflen;
-        if (!read(&buflen, 1, false)) { return false; }
-        buflen = ntohl(buflen);
-        std::vector<char> buf(buflen);
-        if (!read(buf.data(), buf.size(), true)) { return false; }
-        return true;
-    }
-    
-    void handle(mon::Message& msg);
-};
-#endif
-
-
 struct Monitor: Component {
     /* Control stuff */
     std::mutex mutex;
@@ -438,6 +338,28 @@ struct Monitor: Component {
     std::thread display_thd;
     std::unordered_set<std::string> analyzed_functions;
     RunningDuration clock;
+    
+    struct ThreadStats {
+        unsigned long num_samples = 0;
+        unsigned long total_threads = 0;
+        
+        void update(unsigned num_threads) {
+            ++num_samples;
+            total_threads += num_threads;
+        }
+        
+        float average_threads() const {
+            return static_cast<float>(total_threads) / static_cast<float>(num_samples);
+        }
+        
+        std::string str() const {
+            std::stringstream ss;
+            ss << "average threads: " << average_threads();
+            return ss.str();
+        }
+    };
+    
+    ThreadStats thread_stats;
 
     /* Display stuff */
     unsigned msgs = 0;
@@ -474,6 +396,8 @@ struct Monitor: Component {
         aborted_jobs.display();
         ::printw("\nANALYZED: %zu\n", analyzed_functions.size());
         ::printw("THREADS: %d\n",  *num_threads - ::semctl(semid, 0, GETVAL));
+        thread_stats.update(*num_threads - ::semctl(semid, 0, GETVAL));
+        ::printw("%s\n", thread_stats.str().c_str());
     }
     
     void run();
@@ -519,32 +443,6 @@ private:
         return true;
     }
 };
-
-#if 0
-struct Handler {
-    Monitor& monitor;
-    pid_t pid;
-    std::string func;
-    
-    void handle(const mon::Message& msg) {
-        switch (msg.message_case()) {
-            case mon::Message::kFuncStarted:
-                
-        }
-    }
-    
-    void handle_func_started()
-};
-
-void Client::handle(mon::Message& msg) {
-    std::unique_lock<std::mutex> lock {monitor.mutex};
-    
-    switch (msg.message_case()) {
-
-    }
-    
-}
-#endif
 
 
 void Monitor::run() {
