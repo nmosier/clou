@@ -44,18 +44,17 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     };
     logv(2, "Number of loads: " << count_kind(Inst::Kind::LOAD) << "\n");
     logv(2, "Number of stores: " << count_kind(Inst::Kind::STORE) << "\n");
-    
-    
+        
     logv(2, "Constructing nodes\n");
     construct_nodes();
     logv(2, "Construct arch\n");
     construct_arch();
-    constrain_arch();
+    // constrain_arch();
     logv(2, "Constructing tfo\n");
     construct_tfo();
-    constrain_tfo();
+    // constrain_tfo();
     logv(2, "Constructing exec\n");
-    constrain_exec();
+    // constrain_exec();
     logv(2, "Constructing addrs\n");
     construct_addrs();
     logv(2, "Constructing aliases\n");
@@ -66,7 +65,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     
     logv(2, "Constructing comx\n");
     construct_comx();
-    constrain_comx();
+    // constrain_comx();
     logv(2, "Constructing dependencies\n");
     
     dependencies = construct_dependencies2();

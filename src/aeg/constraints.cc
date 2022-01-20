@@ -48,6 +48,17 @@ void AEG::constrain_arch() {
     }), 1), "one-exit-arch");
 }
 
+void AEG::constrain_arch(const NodeRefSet& window, z3::solver& solver) {
+    z3::expr_vector v {context};
+    for (NodeRef exit : exits) {
+        if (window.contains(exit)) {
+            v.push_back(lookup(exit).arch);
+        }
+    }
+    
+    solver.add(z3::exactly(v, 1) /*, "one-exit-arch" */);
+}
+
 void AEG::constrain_exec() {
     // exclusive architectural/transient execution
     for (const NodeRef ref : node_range()) {
@@ -58,6 +69,15 @@ void AEG::constrain_exec() {
     }
     
     constrain_trans();
+}
+
+void AEG::constrain_exec(const NodeRefSet& window, z3::solver& solver) {
+    for (NodeRef ref : window) {
+        Node& node = lookup(ref);
+        std::stringstream ss;
+        ss << "excl-exec:" << ref;
+        solver.add(!(node.arch && node.trans) /* , ss.str().c_str() */);
+    }
 }
 
 void AEG::constrain_trans() {
@@ -83,8 +103,33 @@ void AEG::constrain_trans() {
         }
         constraints(z3::atmost(trans, spec_depth), "trans-limit-max");
     }
+}
+
+void AEG::constrain_trans(const NodeRefSet& window, z3::solver& solver) {
+    // transient execution of node requires incoming tfo edge
+    for (NodeRef ref : window) {
+        Node& node = lookup(ref);
+        auto tfos = get_nodes(Direction::IN, ref, Edge::TFO);
+        std::erase_if(tfos, [&window] (const auto& x) -> bool {
+            return !window.contains(x.first);
+        });
+        const auto tfo_vec = z3::transform(context.context, tfos, [] (const auto& edge) -> z3::expr {
+            return edge.second;
+        });
+        const auto f = z3::exactly(tfo_vec, 1);
+        std::stringstream ss;
+        ss << "trans-tfo:" << ref;
+        solver.add(z3::implies(node.trans, f) /* , ss.str().c_str() */);
+    }
     
-    
+    // ensure that the number of transiently executed nodes doesn't exceed trans limit
+    {
+        z3::expr_vector trans {context};
+        for (NodeRef ref : window) {
+            trans.push_back(lookup(ref).trans);
+        }
+        solver.add(z3::atmost2(trans, spec_depth) /* , "trans-limit-max" */);
+    }
 }
 
 void AEG::constrain_tfo() {
@@ -123,12 +168,69 @@ void AEG::constrain_tfo() {
     constraints(z3::exactly(cold_start, 1), "one-cold-start");
 }
 
+void AEG::constrain_tfo(const NodeRefSet &window, z3::solver &solver) {
+    for (const NodeRef src : window) {
+        Node& src_node = lookup(src);
+        
+        z3::expr_vector tfos {context};
+        for (const auto& edge : get_nodes(Direction::OUT, src, Edge::TFO)) {
+            if (window.contains(edge.first)) {
+                tfos.push_back(edge.second);
+            }
+        }
+        
+        if (!exits.contains(src)) {
+            std::stringstream ss;
+            ss << "tfo-succ:" << src;
+            solver.add(z3::implies(src_node.exec(), z3::atmost2(tfos, 1)) /*, ss.str().c_str() */);
+        }
+    }
+    
+    // assert only one tfo window
+    z3::expr_vector tfos {context};
+    for_each_edge(Edge::TFO, [&] (NodeRef src, NodeRef dst, const Edge& edge) {
+        const Node& src_node = lookup(src);
+        const Node& dst_node = lookup(dst);
+        if (window.contains(src) && window.contains(dst)) {
+            tfos.push_back(src_node.arch && dst_node.trans && edge.exists);
+        }
+    });
+    solver.add(z3::atmost2(tfos, 1) /*, "at-most-one-spec-intro" */);
+    
+    // only one cold arch start
+    z3::expr_vector cold_start {context};
+    for (NodeRef ref : po.reverse_postorder()) {
+        if (ref == entry || exits.contains(ref) || !window.contains(ref)) { continue; }
+        const Node& node = lookup(ref);
+        const auto tfo_ins = get_nodes(Direction::IN, ref, Edge::TFO);
+        z3::expr_vector tfo_ins_v {context};
+        for (const auto& p : tfo_ins) {
+            if (window.contains(p.first)) {
+                tfo_ins_v.push_back(p.second);
+            }
+        }
+        cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
+    }
+    solver.add(z3::exactly(cold_start, 1) /*, "one-cold-start" */);
+}
+
 void AEG::constrain_comx() {
     for (NodeRef ref : node_range()) {
         Node& node = lookup(ref);
         if (!node.is_special()) {
             if (node.can_xsaccess()) {
                 node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
+            }
+        }
+    }
+}
+
+void AEG::constrain_comx(const NodeRefSet& window, z3::solver& solver) {
+    for (NodeRef ref : window) {
+        Node& node = lookup(ref);
+        if (!node.is_special()) {
+            if (node.can_xsaccess()) {
+                solver.add(*node.xstate == node.get_memory_address() /* , "xstate-addr-eq" */);
             }
         }
     }

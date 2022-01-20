@@ -86,14 +86,9 @@ private:
     unsigned nedges = 0;
     
     void construct_nodes();
-    void constrain_exec();
     void construct_arch();
-    void constrain_arch();
-    void constrain_trans();
     void construct_tfo();
-    void constrain_tfo();
     void construct_addr_defs();
-    
     void construct_addr_refs();
     void construct_addrs();
     void construct_aliases(llvm::AliasAnalysis& AA);
@@ -101,14 +96,24 @@ private:
     void construct_xsaccess_order(const NodeRefSet& xsaccesses);
     void construct_mem();
     void construct_comx();
-    void constrain_comx();
     void construct_addr();
     void construct_addr_gep();
-    static bool construct_addr_gep_nonconst(const llvm::Value *V);
     void construct_data();
     void construct_ctrl();
     void construct_ctrl2();
     void construct_taint();
+    
+    void constrain_arch();
+    void constrain_exec();
+    void constrain_trans();
+    void constrain_tfo();
+    void constrain_comx();
+    
+    void constrain_arch(const NodeRefSet& window, z3::solver& solver);
+    void constrain_exec(const NodeRefSet& window, z3::solver& solver);
+    void constrain_trans(const NodeRefSet& window, z3::solver& solver);
+    void constrain_tfo(const NodeRefSet& window, z3::solver& solver);
+    void constrain_comx(const NodeRefSet& window, z3::solver& solver);
     
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);
