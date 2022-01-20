@@ -56,6 +56,7 @@ int semid = -1;
 int shmid = -1;
 std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
 bool reverse_function_order = false;
+std::string file_regex;
 
 namespace {
 std::optional<std::string> logdir;
@@ -81,6 +82,7 @@ Options:
 --help, -h           show help
 --func, -f <name>[,<name>]...   only examine given functions
 --skip-func, -F <name>  skip given function
+--file <regex>       only analyze files matching given regex
 --verbose, -v        verbosity++
 --edges, -E          include edges in execution graph output
 --aa <flag>[,<flag>...]
@@ -212,6 +214,7 @@ int parse_args() {
         DEPS,
         SKIP_FUNC,
         REVERSE_FUNCTION_ORDER,
+	FILE_REGEX,
     };
     
     struct option opts[] = {
@@ -244,6 +247,7 @@ int parse_args() {
         {"deps", optional_argument, nullptr, DEPS},
         {"skip-func", required_argument, nullptr, 'F'},
         {"reverse-function-order", optional_argument, nullptr, REVERSE_FUNCTION_ORDER},
+	{"file", required_argument, nullptr, FILE_REGEX},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -518,6 +522,10 @@ int parse_args() {
             case REVERSE_FUNCTION_ORDER:
                 reverse_function_order = parse_bool_opt(optarg);
                 break;
+
+	case FILE_REGEX:
+	  file_regex = optarg;
+	  break;
                 
             default:
                 usage();
