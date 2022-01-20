@@ -581,6 +581,10 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
             aeg.constrain_exec(exec_window, solver_add);
             aeg.constrain_tfo(exec_window,  solver_add);
             aeg.constrain_comx(exec_window, solver_add);
+            
+            aeg.for_each_edge([&] (NodeRef src, NodeRef dst, const aeg::Edge& edge) {
+                edge.constraints.add_to(solver_add);
+            });
 
         }
         

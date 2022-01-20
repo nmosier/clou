@@ -233,6 +233,7 @@ void AEG::test(TransmitterOutputIt out) {
     {
         Timer timer;
         
+#if 0
         // add edge constraints
         {
             logv(0, __FUNCTION__ << ": adding edge constraints...\n");
@@ -245,6 +246,7 @@ void AEG::test(TransmitterOutputIt out) {
             });
             progress.done();
         }
+#endif
         
         // add node constraints
         {

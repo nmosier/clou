@@ -23,8 +23,7 @@ struct Constraints {
     Constraints() {}
     explicit Constraints(const z3::expr& expr, const std::string& name): exprs({{expr, name}}) {}
     
-    template <class Solver>
-    void add_to(Solver& solver) const {
+    void add_to(z3::solver& solver) const {
         for (const auto& p : exprs) {
             add_to(solver, p);
         }
@@ -39,6 +38,8 @@ struct Constraints {
         }
     }
     
+    void add_to(std::function<void (const z3::expr&, const std::string&)> func) const;
+    
     void operator()(const z3::expr& clause, const std::string& name);
     
     void simplify();
@@ -48,8 +49,7 @@ struct Constraints {
     void dump(std::unordered_map<std::string, unsigned>& hist) const;
     
 private:
-    template <class Solver>
-    void add_to(Solver& solver, const std::pair<z3::expr, std::string>& p) const {
+    void add_to(z3::solver& solver, const std::pair<z3::expr, std::string>& p) const {
         std::stringstream ss;
         ss << p.second << ":" << constraint_counter++;
 #if 0

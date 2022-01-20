@@ -13,6 +13,11 @@ z3::expr Constraints::get(z3::context& ctx) const {
     }));
 }
 
+void Constraints::add_to(std::function<void (const z3::expr&, const std::string&)> func) const {
+    for (const auto& expr : exprs) {
+        func(expr.first, expr.second);
+    }
+}
 
 void Constraints::operator()(const z3::expr& clause, const std::string& name) {
     assert(!name.empty());
