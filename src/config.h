@@ -36,6 +36,7 @@ extern unsigned window_size;
 extern bool profile;
 extern bool fence_insertion;
 extern int semid;
+extern std::string file_regex;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;
