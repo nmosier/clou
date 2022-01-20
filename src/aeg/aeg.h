@@ -109,11 +109,12 @@ private:
     void constrain_tfo();
     void constrain_comx();
     
-    void constrain_arch(const NodeRefSet& window, z3::solver& solver);
-    void constrain_exec(const NodeRefSet& window, z3::solver& solver);
-    void constrain_trans(const NodeRefSet& window, z3::solver& solver);
-    void constrain_tfo(const NodeRefSet& window, z3::solver& solver);
-    void constrain_comx(const NodeRefSet& window, z3::solver& solver);
+    using AssertFunc = std::function<void (const z3::expr&, const std::string&)>;
+    void constrain_arch(const NodeRefSet& window,  AssertFunc solver_add);
+    void constrain_exec(const NodeRefSet& window,  AssertFunc solver_add);
+    void constrain_trans(const NodeRefSet& window, AssertFunc solver_add);
+    void constrain_tfo(const NodeRefSet& window,   AssertFunc solver_add);
+    void constrain_comx(const NodeRefSet& window,  AssertFunc solver_add);
     
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);

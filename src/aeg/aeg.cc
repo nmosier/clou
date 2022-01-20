@@ -262,16 +262,19 @@ void AEG::test(TransmitterOutputIt out) {
         logv(0, __FUNCTION__ << ": adding main constraints...");
         constraints.add_to_progress(solver);
         constraints.dump(hist);
-        
+
+#if 0
         // add extra constraints
         NodeRefSet noderefs;
         for (NodeRef ref : node_range()) {
             noderefs.insert(ref);
         }
+        
         constrain_arch(noderefs, solver);
         constrain_exec(noderefs, solver);
         constrain_tfo(noderefs, solver);
         constrain_comx(noderefs, solver);
+#endif
 
         logv(0, __FUNCTION__ << ": added constraints ");
     }

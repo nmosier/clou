@@ -48,7 +48,7 @@ void AEG::constrain_arch() {
     }), 1), "one-exit-arch");
 }
 
-void AEG::constrain_arch(const NodeRefSet& window, z3::solver& solver) {
+void AEG::constrain_arch(const NodeRefSet& window, AssertFunc solver_add) {
     z3::expr_vector v {context};
     for (NodeRef exit : exits) {
         if (window.contains(exit)) {
@@ -56,7 +56,7 @@ void AEG::constrain_arch(const NodeRefSet& window, z3::solver& solver) {
         }
     }
     
-    solver.add(z3::exactly(v, 1) /*, "one-exit-arch" */);
+    solver_add(z3::exactly(v, 1), "one-exit-arch");
 }
 
 void AEG::constrain_exec() {
@@ -71,12 +71,12 @@ void AEG::constrain_exec() {
     constrain_trans();
 }
 
-void AEG::constrain_exec(const NodeRefSet& window, z3::solver& solver) {
+void AEG::constrain_exec(const NodeRefSet& window, AssertFunc solver_add) {
     for (NodeRef ref : window) {
         Node& node = lookup(ref);
         std::stringstream ss;
         ss << "excl-exec:" << ref;
-        solver.add(!(node.arch && node.trans) /* , ss.str().c_str() */);
+        solver_add(!(node.arch && node.trans), ss.str());
     }
 }
 
@@ -105,7 +105,7 @@ void AEG::constrain_trans() {
     }
 }
 
-void AEG::constrain_trans(const NodeRefSet& window, z3::solver& solver) {
+void AEG::constrain_trans(const NodeRefSet& window, AssertFunc solver_add) {
     // transient execution of node requires incoming tfo edge
     for (NodeRef ref : window) {
         Node& node = lookup(ref);
@@ -119,7 +119,7 @@ void AEG::constrain_trans(const NodeRefSet& window, z3::solver& solver) {
         const auto f = z3::exactly(tfo_vec, 1);
         std::stringstream ss;
         ss << "trans-tfo:" << ref;
-        solver.add(z3::implies(node.trans, f) /* , ss.str().c_str() */);
+        solver_add(z3::implies(node.trans, f), ss.str());
     }
     
     // ensure that the number of transiently executed nodes doesn't exceed trans limit
@@ -128,7 +128,7 @@ void AEG::constrain_trans(const NodeRefSet& window, z3::solver& solver) {
         for (NodeRef ref : window) {
             trans.push_back(lookup(ref).trans);
         }
-        solver.add(z3::atmost2(trans, spec_depth) /* , "trans-limit-max" */);
+        solver_add(z3::atmost2(trans, spec_depth), "trans-limit-max");
     }
 }
 
@@ -168,7 +168,7 @@ void AEG::constrain_tfo() {
     constraints(z3::exactly(cold_start, 1), "one-cold-start");
 }
 
-void AEG::constrain_tfo(const NodeRefSet &window, z3::solver &solver) {
+void AEG::constrain_tfo(const NodeRefSet &window, AssertFunc solver_add) {
     for (const NodeRef src : window) {
         Node& src_node = lookup(src);
         
@@ -182,7 +182,7 @@ void AEG::constrain_tfo(const NodeRefSet &window, z3::solver &solver) {
         if (!exits.contains(src)) {
             std::stringstream ss;
             ss << "tfo-succ:" << src;
-            solver.add(z3::implies(src_node.exec(), z3::atmost2(tfos, 1)) /*, ss.str().c_str() */);
+            solver_add(z3::implies(src_node.exec(), z3::atmost2(tfos, 1)), ss.str());
         }
     }
     
@@ -195,7 +195,7 @@ void AEG::constrain_tfo(const NodeRefSet &window, z3::solver &solver) {
             tfos.push_back(src_node.arch && dst_node.trans && edge.exists);
         }
     });
-    solver.add(z3::atmost2(tfos, 1) /*, "at-most-one-spec-intro" */);
+    solver_add(z3::atmost2(tfos, 1), "at-most-one-spec-intro");
     
     // only one cold arch start
     z3::expr_vector cold_start {context};
@@ -211,7 +211,7 @@ void AEG::constrain_tfo(const NodeRefSet &window, z3::solver &solver) {
         }
         cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
     }
-    solver.add(z3::exactly(cold_start, 1) /*, "one-cold-start" */);
+    solver_add(z3::exactly(cold_start, 1), "one-cold-start");
 }
 
 void AEG::constrain_comx() {
@@ -225,12 +225,12 @@ void AEG::constrain_comx() {
     }
 }
 
-void AEG::constrain_comx(const NodeRefSet& window, z3::solver& solver) {
+void AEG::constrain_comx(const NodeRefSet& window, AssertFunc solver_add) {
     for (NodeRef ref : window) {
         Node& node = lookup(ref);
         if (!node.is_special()) {
             if (node.can_xsaccess()) {
-                solver.add(*node.xstate == node.get_memory_address() /* , "xstate-addr-eq" */);
+                solver_add(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
             }
         }
     }
