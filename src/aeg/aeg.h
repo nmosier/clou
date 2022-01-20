@@ -86,14 +86,14 @@ private:
     unsigned nedges = 0;
     
     void construct_nodes();
-    void construct_exec();
-    void construct_arch_po();
-    void construct_trans_tfo();
+    void constrain_exec();
     void construct_arch();
-    void construct_trans();
-    void construct_po();
+    void constrain_arch();
+    void constrain_trans();
     void construct_tfo();
+    void constrain_tfo();
     void construct_addr_defs();
+    
     void construct_addr_refs();
     void construct_addrs();
     void construct_aliases(llvm::AliasAnalysis& AA);
@@ -101,6 +101,7 @@ private:
     void construct_xsaccess_order(const NodeRefSet& xsaccesses);
     void construct_mem();
     void construct_comx();
+    void constrain_comx();
     void construct_addr();
     void construct_addr_gep();
     static bool construct_addr_gep_nonconst(const llvm::Value *V);

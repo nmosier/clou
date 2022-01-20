@@ -137,7 +137,21 @@ z3::expr Node::get_trans(const NodeRefSet& window, NodeRef ref) const {
     return get_bool(window, ref, trans, false);
 }
 
+z3::expr Node::get_read(const NodeRefSet& window, NodeRef ref) const {
+    return get_bool(window, ref, read, false);
+}
 
+z3::expr Node::get_write(const NodeRefSet& window, NodeRef ref) const {
+    return get_bool(window, ref, write, false);
+}
+
+z3::expr Node::get_xsread(const NodeRefSet& window, NodeRef ref) const {
+    return get_bool(window, ref, xsread, false);
+}
+
+z3::expr Node::get_xswrite(const NodeRefSet& window, NodeRef ref) const {
+    return get_bool(window, ref, xswrite, false);
+}
 
 
 }

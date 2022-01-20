@@ -66,6 +66,10 @@ struct Node {
     
     z3::expr get_arch(const NodeRefSet& window, NodeRef ref) const;
     z3::expr get_trans(const NodeRefSet& window, NodeRef ref) const;
+    z3::expr get_read(const NodeRefSet& window, NodeRef ref) const;
+    z3::expr get_write(const NodeRefSet& window, NodeRef ref) const;
+    z3::expr get_xsread(const NodeRefSet& window, NodeRef ref) const;
+    z3::expr get_xswrite(const NodeRefSet& window, NodeRef ref) const;
 
 private:
     z3::expr get_member(const NodeRefSet& window, NodeRef ref, const z3::expr& val, const z3::expr& dfl) const;

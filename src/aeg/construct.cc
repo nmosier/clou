@@ -50,19 +50,14 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_nodes();
     logv(2, "Construct arch\n");
     construct_arch();
+    constrain_arch();
     logv(2, "Constructing tfo\n");
     construct_tfo();
+    constrain_tfo();
     logv(2, "Constructing exec\n");
-    construct_exec();
-#if 0
-    logv(2, "Constructing addr defs\n");
-    construct_addr_defs();
-    logv(2, "Constructing addr refs\n");
-    construct_addr_refs();
-#else
+    constrain_exec();
     logv(2, "Constructing addrs\n");
     construct_addrs();
-#endif
     logv(2, "Constructing aliases\n");
     construct_aliases(AA);
     
@@ -71,6 +66,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     
     logv(2, "Constructing comx\n");
     construct_comx();
+    constrain_comx();
     logv(2, "Constructing dependencies\n");
     
     dependencies = construct_dependencies2();
@@ -79,10 +75,6 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_dominators();
     logv(2, "Constructing postdominators\n");
     construct_postdominators();
-#if 0
-    logv(2, "Constructing control-equivalents\n");
-    construct_control_equivalents();
-#endif
     
     // syntactic memory dependencies
     logv(2, "Constructing addr\n");
@@ -222,11 +214,6 @@ void AEG::construct_addr_defs() {
                             if (refs.size() == 1) {
                                 const NodeRef base_ref = *refs.begin();
                                 node.addr_def = lookup(base_ref).addr_def.value() + *offset;
-#if 0
-                                {
-                                    llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
-                                }
-#endif
                                 continue;
                             }
                         }
@@ -273,9 +260,6 @@ void AEG::construct_addr_refs() {
                             globals_it = globals.emplace(G, Address(context.make_int("addr"))).first;
                         }
                         e = globals_it->second;
-#if 0
-                        llvm::errs() << "GLOBAL: " << *G << "\n" << inst->I << "\n";
-#endif
                     } else {
                         auto& os = llvm::errs();
                         os << "Expected argument but got " << *V << "\n";
@@ -297,22 +281,12 @@ void AEG::construct_addr_refs() {
                     } else {
                         e = Address {context};
                         if (defs.size() != 0) {
-#if 0
-                            using output::operator<<;
-                            std::stringstream desc;
-                            desc << "addr-ref:" << ref << "-" << defs;
-                            node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
-                                                                    [&] (NodeRef def) {
-                                return lookup_def(def) == *e;
-                            }, context.FALSE), desc.str().c_str());
-#else
                             auto it = defs.begin();
                             z3::expr acc = lookup_def(*it);
                             for (; it != defs.end(); ++it) {
                                 acc = z3::ite(lookup(*it).arch, lookup_def(*it), acc);
                             }
                             e = acc;
-#endif
                         }
                     }
                 }
@@ -413,22 +387,12 @@ void AEG::construct_addrs() {
                     } else {
                         e = Address(context.make_int("addr"));
                         if (defs.size() != 0) {
-#if 0
-                            using output::operator<<;
-                            std::stringstream desc;
-                            desc << "addr-ref:" << ref << "-" << defs;
-                            node.constraints(util::any_of<z3::expr>(defs.begin(), defs.end(),
-                                                                    [&] (NodeRef def) {
-                                return lookup_def(def) == *e;
-                            }, context.FALSE), desc.str().c_str());
-#else
                             auto it = defs.begin();
                             z3::expr acc = lookup_def(*it);
                             for (; it != defs.end(); ++it) {
                                 acc = z3::ite(lookup(*it).arch, lookup_def(*it), acc);
                             }
                             e = acc;
-#endif
                         }
                     }
                 }
@@ -486,38 +450,6 @@ void AEG::construct_addrs() {
 #endif
 }
 
-
-
-
-void AEG::construct_exec() {
-    // TODO: test making this its own variable
-    // NOTE: depends on results of construct_tfo().
-    
-    // exclusive architectural/transient execution
-    for (const NodeRef ref : node_range()) {
-        Node& node = lookup(ref);
-        std::stringstream ss;
-        ss << "excl-exec:" << ref;
-        node.constraints(!(node.arch && node.trans), ss.str());
-    }
-    
-    // construct_arch();
-    construct_trans();
-    
-    
-#if 0
-    // help the solver out by adding constraints saying that if a node is transiently executed, then its children cannot be architecturally executed
-    for (const NodeRef ref : node_range()) {
-        if (ref == entry || exits.find(ref) != exits.end()) { continue; }
-        
-        auto& node = lookup(ref);
-        for (NodeRef succ : po.po.fwd.at(ref)) {
-            node.constraints(z3::implies(node.trans, !lookup(succ).arch), "trans-implies-succ-not-arch");
-        }
-    }
-#endif
-}
-
 void AEG::construct_arch() {
     // assign arch variables
     for (NodeRef ref : po.reverse_postorder()) {
@@ -528,50 +460,14 @@ void AEG::construct_arch() {
             arch = context.make_bool("arch");
         }
     }
-    
-    // one exit arch
-    constraints(z3::exactly(z3::transform(exits, [&] (NodeRef ref) -> z3::expr {
-        return lookup(ref).arch;
-    }), 1), "one-exit-arch");
-    
-    std::cerr << "ARCH EXIT: " << lookup(*exits.begin()).arch << "\n";
 }
 
-void AEG::construct_trans() {
-    // NOTE: depends on results of construct_tfo()
-    
-    // transient execution of node requires incoming tfo edge
-    for (const auto ref : node_range()) {
-        Node& node = lookup(ref);
-        const auto tfos = get_edges(Direction::IN, ref, Edge::TFO);
-        // TODO: experiment with using z3::{atleast,exactly}(vec, 1) instead.
-        const auto tfo_vec = z3::transform(context.context, tfos, [] (const auto& edge) -> z3::expr {
-            return edge->exists;
-        });
-        const auto f = z3::exactly(tfo_vec, 1);
-        node.constraints(z3::implies(node.trans, f), "trans-tfo");
-    }
-    
-    // ensure that the number of transiently executed nodes doesn't exceed trans limit
-    {
-        z3::expr_vector trans {context.context};
-        for (NodeRef ref : node_range()) {
-            trans.push_back(lookup(ref).trans);
-        }
-        constraints(z3::atmost(trans, spec_depth), "trans-limit-max");
-    }
-    
-    
-} 
-
-/// depends on construct_po()
 void AEG::construct_tfo() {
     std::size_t nedges = 0;
     for (const NodeRef src : node_range()) {
         if (src == entry || exits.find(src) != exits.end()) { continue; }
         
         Node& src_node = lookup(src);
-        z3::expr_vector tfos {context};
         for (const NodeRef dst : po.po.fwd.at(src)) {
             // add optional edge
             const Node& dst_node = lookup(dst);
@@ -581,56 +477,15 @@ void AEG::construct_tfo() {
                 cond.push_back(src_node.arch && dst_node.trans);
             }
             cond.push_back(src_node.trans && dst_node.trans);
-            const z3::expr exists = add_optional_edge(src, dst, Edge {
+            add_optional_edge(src, dst, Edge {
                 Edge::TFO,
                 z3::mk_or(cond)
             }, "tfo");
             ++nedges;
-            tfos.push_back(exists);
-        }
-        
-        // add 'at most one tfo successor' constraint
-        if (exits.find(src) == exits.end()) {
-            src_node.constraints(z3::implies(src_node.exec(), z3::atmost2(tfos, 1)), "tfo-succ");
         }
     }
     std::cerr << "added " << nedges << " tfo edges\n";
-    
-    // assert only one tfo window
-    z3::expr_vector tfos {context.context};
-    for_each_edge(Edge::TFO, [&] (const NodeRef src, const NodeRef dst, const Edge& edge) {
-        const Node& src_node = lookup(src);
-        const Node& dst_node = lookup(dst);
-        tfos.push_back(src_node.arch && dst_node.trans && edge.exists);
-    });
-    constraints(z3::atmost2(tfos, 1), "at-most-one-spec-intro");
-    
-    // if node introduces speculation, it has no arch successor in tfo
-    if (partial_executions) {
-        for (const NodeRef ref : node_range()) {
-            const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
-            const auto some_trans_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
-                return p.second && lookup(p.first).trans;
-            }));
-            const auto no_arch_succ = z3::mk_or(z3::transform(context.context, tfos, [&] (const auto& p) -> z3::expr {
-                return p.second && lookup(p.first).arch;
-            }));
-        }
-    }
-    
-    
-    // only one cold arch start
-    z3::expr_vector cold_start {context.context};
-    for (NodeRef ref : po.reverse_postorder()) {
-        if (ref == entry || exits.contains(ref)) { continue; }
-        const Node& node = lookup(ref);
-        const auto tfo_ins = get_edges(Direction::IN, ref, Edge::TFO);
-        const auto tfo_ins_v = z3::transform(context.context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });
-        cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
-    }
-    constraints(z3::exactly(cold_start, 1), "one-cold-start");
 }
-
 
 void AEG::construct_comx() {
     /* Set xsread, xswrite */
@@ -650,7 +505,6 @@ void AEG::construct_comx() {
         if (!node.is_special()) {
             if (xsread != Option::NO || xswrite != Option::NO) {
                 node.xstate = context.make_int("xstate");
-                node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
                 xsaccesses.insert(i);
             }
         }
