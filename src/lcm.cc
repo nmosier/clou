@@ -62,6 +62,21 @@ struct LCMPass: public llvm::ModulePass {
     }
     
     virtual bool runOnModule(llvm::Module& M) override {
+      /* check if filename matches regex */
+      bool match = false;
+      if (file_regex.empty()) {
+	match = true;
+      } else {
+	if (std::regex_match(M.getSourceFileName(), std::regex {file_regex})) {
+	  match = true;
+	}
+      }
+      if (!match) {
+	std::cerr << "skipping file " << M.getSourceFileName() << "\n";
+	return false;
+      }
+
+      
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
         
