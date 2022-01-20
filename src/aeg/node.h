@@ -58,11 +58,20 @@ struct Node {
     int stores_out;
     
     z3::context& ctx() const { return arch.ctx(); }
-
+    
     z3::expr exec() const { return arch || trans; }
     z3::expr exec(ExecMode mode) const;
     z3::expr xsaccess() const { return xsread || xswrite; }
     z3::expr access() const { return read || write; }
+    
+    z3::expr get_arch(const NodeRefSet& window, NodeRef ref) const;
+    z3::expr get_trans(const NodeRefSet& window, NodeRef ref) const;
+
+private:
+    z3::expr get_member(const NodeRefSet& window, NodeRef ref, const z3::expr& val, const z3::expr& dfl) const;
+    z3::expr get_bool(const NodeRefSet& window, NodeRef ref, const z3::expr& val, bool dfl) const;
+    
+public:
     
     bool can_xsaccess() const { return can_xsread() || can_xswrite(); }
     

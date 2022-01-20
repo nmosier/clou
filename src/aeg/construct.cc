@@ -221,7 +221,7 @@ void AEG::construct_addr_defs() {
                             const auto& refs = po.lookup(ref).refs.at(I);
                             if (refs.size() == 1) {
                                 const NodeRef base_ref = *refs.begin();
-                                node.addr_def = Address((lookup(base_ref).addr_def->addr + *offset));
+                                node.addr_def = lookup(base_ref).addr_def.value() + *offset;
 #if 0
                                 {
                                     llvm::errs() << "GEP address: " << util::to_string((lookup(base_ref).addr_def->addr + *offset)) << ": " << *GEP << "\n";
@@ -233,7 +233,7 @@ void AEG::construct_addr_defs() {
                     }
                 }
                 
-                node.addr_def = Address {context};
+                node.addr_def = Address {context.make_int("addr")};
                 
             }
         }
@@ -264,13 +264,13 @@ void AEG::construct_addr_refs() {
                     } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
                         auto main_args_it = main_args.find(A);
                         if (main_args_it == main_args.end()) {
-                            main_args_it = main_args.emplace(A, Address {context}).first;
+                            main_args_it = main_args.emplace(A, Address(context.make_int("addr"))).first;
                         }
                         e = main_args_it->second;
                     } else if (const llvm::Constant *G = llvm::dyn_cast<llvm::Constant>(V)) {
                         auto globals_it = globals.find(G);
                         if (globals_it == globals.end()) {
-                            globals_it = globals.emplace(G, Address {context}).first;
+                            globals_it = globals.emplace(G, Address(context.make_int("addr"))).first;
                         }
                         e = globals_it->second;
 #if 0
@@ -290,7 +290,7 @@ void AEG::construct_addr_refs() {
                      * to one of the possiblities.
                      */
                     const auto lookup_def = [&] (NodeRef def) {
-                        return *lookup(def).addr_def;
+                        return lookup(def).addr_def.value();
                     };
                     if (defs.size() == 1) {
                         e = lookup_def(*defs.begin());
@@ -358,7 +358,7 @@ void AEG::construct_addrs() {
                     } else if (const llvm::Argument *A = llvm::dyn_cast<llvm::Argument>(V)) {
                         auto main_args_it = main_args.find(A);
                         if (main_args_it == main_args.end()) {
-                            main_args_it = main_args.emplace(A, Address {context}).first;
+                            main_args_it = main_args.emplace(A, Address(context.make_int("addr"))).first;
                         }
                         e = main_args_it->second;
                     } else if (const llvm::GlobalValue *G = llvm::dyn_cast<llvm::GlobalValue>(V)) {
@@ -376,17 +376,17 @@ void AEG::construct_addrs() {
                                 }
                             }
                             if (!done) {
-                                globals_it = globals.emplace(G, Address(context)).first;
+                                globals_it = globals.emplace(G, Address(context.make_int("addr"))).first;
                             }
                         }
                         e = globals_it->second;
 #if 1
-                        llvm::errs() << "GLOBAL: " << *G << " " << util::to_string(e->addr) << "\n";
+                        llvm::errs() << "GLOBAL: " << *G << " " << util::to_string(*e) << "\n";
 #endif
                     } else if (const llvm::ConstantExpr *C = llvm::dyn_cast<llvm::ConstantExpr>(V)) {
                         auto globals_it = globals.find(G);
                         if (globals_it == globals.end()) {
-                            globals_it = globals.emplace(C, Address(context)).first;
+                            globals_it = globals.emplace(C, Address(context.make_int("addr"))).first;
                         }
                         e = globals_it->second;
                         
@@ -406,12 +406,12 @@ void AEG::construct_addrs() {
                      * to one of the possiblities.
                      */
                     const auto lookup_def = [&] (NodeRef def) {
-                        return *lookup(def).addr_def;
+                        return lookup(def).addr_def.value();
                     };
                     if (defs.size() == 1) {
                         e = lookup_def(*defs.begin());
                     } else {
-                        e = Address {context};
+                        e = Address(context.make_int("addr"));
                         if (defs.size() != 0) {
 #if 0
                             using output::operator<<;
@@ -455,7 +455,7 @@ void AEG::construct_addrs() {
                 }
                 
                 if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(RI->get_inst())) {
-                    const z3::expr base = node.addr_refs.at(GEP->getPointerOperand()).addr;
+                    const z3::expr base = node.addr_refs.at(GEP->getPointerOperand());
                     if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
                         node.addr_def = Address((base + *offset).simplify());
                         continue;
@@ -464,15 +464,14 @@ void AEG::construct_addrs() {
                         const auto max_offset = llvm::getelementptr_max_offset(GEP);
                         if (min_offset && max_offset) {
                             Address addr {context};
-                            addr.addr = z3::max(z3::min(addr.addr, context.context.int_val(*max_offset)), context.context.int_val(*min_offset)) + base;
-                            addr.addr.simplify();
+                            addr = z3::max(z3::min(addr, context.context.int_val(*max_offset)), context.context.int_val(*min_offset)) + base;
                             node.addr_def = addr;
                             continue;
                         }
                     }
                 }
                 
-                node.addr_def = Address {context};
+                node.addr_def = Address(context.make_int("addr"));
                 
             }
         }

@@ -304,7 +304,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             const AddrInfo addr = {
                 .id = id,
                 .V = V,
-                .e = *node.addr_def,
+                .e = node.addr_def.value(),
                 .ref = i
             };
             addrs.push_back(addr);

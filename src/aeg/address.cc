@@ -3,7 +3,8 @@
 
 namespace aeg {
 
+#if 0
 Address::Address(Context& ctx): addr(ctx.make_int("addr")) {}
-
+#endif
 
 }

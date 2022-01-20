@@ -7,6 +7,9 @@
 namespace aeg {
 
 
+using Address = z3::expr;
+
+#if 0
 // TODO: inline this
 struct Address {
     z3::expr addr;
@@ -24,6 +27,7 @@ struct Address {
 inline std::ostream& operator<<(std::ostream& os, const Address& x) {
     return os << "addr(" << x.addr << ")";
 }
+#endif
 
 
 }

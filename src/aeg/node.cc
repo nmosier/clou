@@ -121,5 +121,23 @@ bool Node::access_order_less::operator()(NodeRef a, NodeRef b) const {
     return a_it < b_it;
 }
 
+z3::expr Node::get_member(const NodeRefSet &window, NodeRef ref, const z3::expr& val, const z3::expr &dfl) const {
+    return window.contains(ref) ? val : dfl;
+}
+
+z3::expr Node::get_bool(const NodeRefSet &window, NodeRef ref, const z3::expr& val, bool dfl) const {
+    return get_member(window, ref, val, ctx().bool_val(dfl));
+}
+
+z3::expr Node::get_arch(const NodeRefSet& window, NodeRef ref) const {
+    return get_bool(window, ref, arch, false);
+}
+
+z3::expr Node::get_trans(const NodeRefSet& window, NodeRef ref) const {
+    return get_bool(window, ref, trans, false);
+}
+
+
+
 
 }
