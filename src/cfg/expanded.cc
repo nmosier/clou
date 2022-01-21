@@ -60,7 +60,7 @@ void CFG_Expanded::resolve_single_ref(const llvm::Instruction *I, const llvm::Va
         kind = INST;
     } else if (llvm::isa<llvm::Argument>(V)) {
         kind = ARG;
-    } else if (llvm::isa<llvm::Constant>(V) || llvm::isa<llvm::BasicBlock>(V)) {
+    } else if (llvm::isa<llvm::Constant>(V) || llvm::isa<llvm::BasicBlock>(V) || llvm::isa<llvm::MetadataAsValue>(V)) {
         kind = OTHER;
     } else {
         kind = UNKNOWN;
