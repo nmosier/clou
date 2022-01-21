@@ -426,7 +426,7 @@ void AEG::construct_addrs() {
                         const auto min_offset = llvm::getelementptr_min_offset(GEP);
                         const auto max_offset = llvm::getelementptr_max_offset(GEP);
                         if (min_offset && max_offset) {
-                            Address addr {context};
+			  Address addr {context.make_int("addr")};
                             addr = z3::max(z3::min(addr, context.context.int_val(*max_offset)), context.context.int_val(*min_offset)) + base;
                             node.addr_def = addr;
                             continue;
