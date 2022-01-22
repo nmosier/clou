@@ -258,3 +258,11 @@ inline void print_status(std::ostream& os, int status) {
         os << "(unknown status)";
     }
 }
+
+
+namespace util {
+
+void mkdir(const std::string& path);
+std::string dirname(const std::string& path);
+
+}

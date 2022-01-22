@@ -148,9 +148,10 @@ bool parse_bool_opt(const char *s) {
 
 void initialize_post() {
     /* initialize output directory */
-    if ((::mkdir(output_dir.c_str(), 0777) < 0 && errno != EEXIST) ||
+    if ((::mkdir(output_dir.c_str(), 0777) < 0 && errno != EEXIST)            ||
         (::mkdir((output_dir + "/logs").c_str(), 0777) < 0 && errno != EEXIST)||
-        (::mkdir((output_dir + "/tmp").c_str(), 0777) < 0 && errno != EEXIST)) {
+        (::mkdir((output_dir + "/tmp").c_str(), 0777) < 0 && errno != EEXIST) ||
+        (::mkdir((output_dir + "/lkg").c_str(), 0777) < 0 && errno != EEXIST)) {
         throw std::system_error(errno, std::generic_category(), "mkdir");
     }
     

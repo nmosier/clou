@@ -32,6 +32,10 @@ namespace aeg {
 void AEG::leakage(z3::solver& solver, TransmitterOutputIt out) {
     lkg::DetectorMain detector {*this, solver};
     
+#if 0
+    ProfilerStart(util::to_string(function_name(), ".", ::getpid(), ".prof").c_str());
+#endif
+    
     switch (leakage_class) {
         case LeakageClass::SPECTRE_V4: {
             detector.run<lkg::SpectreV4_Detector>();
@@ -53,6 +57,10 @@ void AEG::leakage(z3::solver& solver, TransmitterOutputIt out) {
             
         default: std::abort();
     }
+    
+#if 0
+    ProfilerStop();
+#endif
     
     util::copy(detector.get_transmitters(), out);
 }
@@ -223,6 +231,32 @@ void DetectorJob::output_execution(const Leakage& leak) {
         res += b;
         return res;
     }));
+    
+    // DEBUG: print out debug locations of vec
+    {
+        std::stringstream ss;
+        ss << output_dir << "/lkg/" << aeg.function_name() << ".lkg";
+        std::ofstream ofs {ss.str()};
+        
+        for (NodeRef ref : leak.vec) {
+            std::string s;
+            llvm::raw_string_ostream os {s};
+            const aeg::Node& node = aeg.lookup(ref);
+            os << ref << ": ";
+            if (const llvm::Instruction *I = node.inst->get_inst()) {
+                os << *I << ": ";
+                const llvm::DebugLoc& DL = I->getDebugLoc();
+                if (DL) {
+                    llvm::print_full_debug_info(os, DL);
+                } else {
+                    os << "(no debug info)\n";
+                }
+            } else {
+                os << "(not an instruction): (no debug info)\n";
+            }
+            ofs << s;
+        }
+    }
     
     std::stringstream ss;
     ss << output_dir << "/" << name();
