@@ -1,3 +1,6 @@
+#include <fstream>
+#include <sstream>
+
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Operator.h>
 
@@ -209,11 +212,50 @@ bool pointer_is_read_only(const llvm::Value *P) {
 }
 
 
+// TODO: delete
 locked_raw_ostream cerr() {
     static std::mutex mutex;
     return locked_raw_ostream(llvm::errs(), mutex);
 }
 
-  std::mutex errs_mutex;
+std::mutex errs_mutex;
+
+
+
+llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::DebugLoc& DL) {
+    
+    std::string s;
+    llvm::raw_string_ostream ss {s};
+    DL.print(ss);
+    
+    char *s_ = ::strdup(s.c_str());
+    char *tok = s_;
+    const char *path_ = ::strsep(&tok, ":");
+    assert(path_ != nullptr);
+    
+    std::stringstream path;
+    if (const char *src_dir = std::getenv("SRC")) {
+        path << src_dir << "/";
+    }
+    path << path_;
+    std::free(s_);
+    
+    std::ifstream ifs {path.str()};
+    os << path.str() << ":\n";
+    std::string line;
+    for (unsigned i = 0; i < DL.getLine() && ifs; ++i) {
+        std::getline(ifs, line);
+    }
+    
+    if (!ifs) {
+        os << "(no debug info)\n";
+    } else {
+        os << line << "\n";
+        os << std::string(DL.getCol() - 1, ' ') << '^' << "\n";
+    }
+        
+    return os;
+}
+
 
 }

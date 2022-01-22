@@ -4,7 +4,7 @@ add_library(util_objs OBJECT
   llvm.h llvm.cc
   tuple.h
   z3.h z3.cc
-  output.h
+  output.h output.cc
   functional.h
   algorithm.h
   iterator.h

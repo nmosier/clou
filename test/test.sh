@@ -61,7 +61,7 @@ OBJ="${OUTDIR}/$(basename "${TEST}" .c)"
 LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec $CFLAGS -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${OBJ}.o" "$TEST"
 
 preprocess() {
-    grep -v '^$' | sort | tr -s ' '
+    grep -v '^$' | sed 's/, !dbg[^;]*//g' | sort | tr -s ' '
 }
 
 awk -F'--' '{print $2}' "$OUTDIR/leakage.txt" | preprocess | awk '

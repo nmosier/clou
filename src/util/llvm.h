@@ -9,6 +9,7 @@
 #include <llvm/IR/Instructions.h>
 
 namespace llvm {
+
 template <typename T>
 std::string to_string(const T& x) {
     std::string s;
@@ -35,6 +36,8 @@ struct locked_raw_ostream {
     
     operator llvm::raw_ostream&() { return os; }
 };
+
+llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::DebugLoc& DL);
 
 }
 
