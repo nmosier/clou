@@ -11,8 +11,9 @@ void CFG_Calls::construct(const CFG& in) {
         NodeRefSet& set = map[in_ref];
         if (const auto *I = std::get_if<const llvm::Instruction *>(&in_node.v)) {
             if (const auto *C = llvm::dyn_cast<llvm::CallBase>(*I)) {
-                const std::string callee_name = C->getCalledFunction()->getName().str();
-                if (!callee_name.starts_with("llvm.dbg.")) {
+                const auto callee = C->getCalledFunction();
+                const bool is_debug_intrinsic = callee != nullptr && callee->getName().startswith("llvm.dbg.");
+                if (!is_debug_intrinsic) {
                     for (const llvm::Value *arg : C->args()) {
                         if (arg->getType()->isPointerTy()) {
                             const NodeRef ref = add_node(Node(CFG::Node::Call {
