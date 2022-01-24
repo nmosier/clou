@@ -241,7 +241,7 @@ llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::Debu
     std::free(s_);
     
     std::ifstream ifs {path.str()};
-    os << path.str() << ":\n";
+    os << path.str() << ":" << DL.getLine() << ":\n";
     std::string line;
     for (unsigned i = 0; i < DL.getLine() && ifs; ++i) {
         std::getline(ifs, line);
