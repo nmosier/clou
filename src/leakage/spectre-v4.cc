@@ -211,7 +211,11 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
             solver_add(aeg.rfx_exists(sourced_store, load), "load -RFX-> sourced_store");
         }
         
+#if 0
         const auto action = util::push(actions, util::to_string("sourced ", sourced_store));
+#else
+        const auto action = util::push(actions, {.src = sourced_store, .edge = aeg::Edge::Kind::RFX, .dst = load});
+#endif
         
         check_solution(load, bypassed_store, sourced_store, vec, mode);
         

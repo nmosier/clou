@@ -223,14 +223,13 @@ void DetectorJob::run() {
 void DetectorJob::output_execution(const Leakage& leak) {
     assert(lookahead_tmp);
     
-    leaks.emplace_back(leak, std::accumulate(actions.rbegin(), actions.rend(), std::string(), [] (const std::string& a, const std::string& b) -> std::string {
-        std::string res = a;
-        if (!res.empty()) {
-            res += "; ";
-        }
-        res += b;
-        return res;
-    }));
+    // get actions description
+    std::stringstream actions_ss;
+    for (const Action& action : actions) {
+        actions_ss << action << " ";
+    }
+    
+    leaks.emplace_back(leak, actions_ss.str());
     
     // DEBUG: print out debug locations of vec
     {
@@ -238,6 +237,41 @@ void DetectorJob::output_execution(const Leakage& leak) {
         ss << output_dir << "/lkg/" << aeg.function_name() << ".lkg";
         std::ofstream ofs {ss.str()};
         
+        std::string s;
+        llvm::raw_string_ostream os {s};
+        
+        const auto print_ref = [&] (NodeRef ref) {
+            os << ref << ": ";
+
+            const aeg::Node& node = aeg.lookup(ref);
+            os << util::to_string(*node.inst) << ": ";
+            if (const llvm::Instruction *I = node.inst->get_inst()) {
+                const llvm::DebugLoc& DL = I->getDebugLoc();
+                if (DL) {
+                    llvm::print_full_debug_info(os, DL);
+                }
+            }
+            
+            os << "\n";
+        };
+        
+#if 1
+        std::optional<NodeRef> src;
+        for (auto it = actions.rbegin(); it != actions.rend(); ++it) {
+            const Action& action = *it;
+            if (!src) {
+                print_ref(action.src);
+            } else {
+                assert(*src == action.src);
+            }
+            os << aeg::Edge::kind_tostr(action.edge) << "\n";
+            print_ref(action.dst);
+            src = action.dst;
+        }
+        
+        ofs << s;
+
+#else
         for (NodeRef ref : leak.vec) {
             std::string s;
             llvm::raw_string_ostream os {s};
@@ -256,6 +290,7 @@ void DetectorJob::output_execution(const Leakage& leak) {
             }
             ofs << s;
         }
+#endif
     }
     
     std::stringstream ss;
@@ -400,8 +435,8 @@ void DetectorJob::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::funct
             solver_add(cond, desc.c_str());
             solver_add(aeg.lookup(store).exec(exec_mode));
         }
-        
-        const auto action = util::push(actions, desc);
+
+        const auto action = util::push(actions, {.src = store, .edge = aeg::Edge::Kind::RF, .dst = load});
         
         // new_sources.insert(store_pair);
         // TODO: need to separately check if this is due to something else
@@ -417,7 +452,7 @@ void DetectorJob::traceback_edge(aeg::Edge::Kind kind, NodeRef ref, std::functio
         if (mode == CheckMode::SLOW) {
             assert_edge(edge.first, ref, edge.second, kind);
         }
-        const auto action = util::push(actions, util::to_string(edge.first, " -", kind, "-> ", ref));
+        const auto action = util::push(actions, {.src = edge.first, .edge = kind, .dst = ref});
         
         if (mode == CheckMode::SLOW && use_lookahead && !lookahead([&] () {
             func(edge.first, CheckMode::FAST);
@@ -525,8 +560,10 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
     if (transmitters.find(aeg.lookup(transmitter).inst->get_inst()) != transmitters.end()) {
         return;
     }
-    
+
+#if 0
     const auto action = util::push(actions, util::to_string("transmitter ", transmitter));
+#endif
     
     const aeg::Node& transmitter_node = aeg.lookup(transmitter);
     
@@ -1057,7 +1094,11 @@ void DetectorJob::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeR
             });
             
             const std::string desc = util::to_string(to_ref, "-", dep_kind, "->", from_ref);
+#if 0
             const auto push_action = util::push(actions, desc);
+#else
+            const auto push = util::push(actions, {.src = to_ref, .edge = dep_kind, .dst = from_ref});
+#endif
             
             if (mode == CheckMode::SLOW) {
                 logv(1, __FUNCTION__ << ": committed " << desc << "\n");
@@ -1171,6 +1212,11 @@ DetectorMain::ParallelContextVec DetectorMain::create_solvers(z3::solver &from_s
     }
     
     return to_solvers;
+}
+
+std::ostream& operator<<(std::ostream& os, const DetectorJob::Action& action) {
+    os << action.src << "-" << action.edge << "->" << action.dst;
+    return os;
 }
 
 
