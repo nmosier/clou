@@ -240,12 +240,15 @@ void DetectorJob::output_execution(const Leakage& leak) {
         std::string s;
         llvm::raw_string_ostream os {s};
         
+        std::unordered_set<const llvm::Function *> functions;
+        
         const auto print_ref = [&] (NodeRef ref) {
             os << ref << ": ";
 
             const aeg::Node& node = aeg.lookup(ref);
             os << util::to_string(*node.inst) << ": ";
             if (const llvm::Instruction *I = node.inst->get_inst()) {
+                functions.insert(I->getFunction());
                 const llvm::DebugLoc& DL = I->getDebugLoc();
                 if (DL) {
                     llvm::print_full_debug_info(os, DL);
@@ -267,6 +270,12 @@ void DetectorJob::output_execution(const Leakage& leak) {
             os << aeg::Edge::kind_tostr(action.edge) << "\n";
             print_ref(action.dst);
             src = action.dst;
+        }
+        
+        // also dump relevant functions
+        os << "\nFunctions:\n";
+        for (const llvm::Function *F : functions) {
+            os << *F << "\n";
         }
         
         ofs << s;
