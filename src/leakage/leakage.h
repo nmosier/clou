@@ -5,6 +5,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <mutex>
+#include <variant>
 
 #include <z3++.h>
 
@@ -47,16 +48,18 @@ protected:
     using EdgeVec = std::vector<EdgeRef>;
     using Mems = std::unordered_map<NodeRef, z3::expr>;
     
-    using Actions = std::vector<std::string>;
+    struct Action {
+        NodeRef src;
+        NodeRef dst;
+        aeg::Edge::Kind edge;
+    };
+    friend std::ostream& operator<<(std::ostream&, const Action&);
+
+    using Actions = std::vector<Action>;
     using PushAction = util::push_scope<Actions>;
     
     using Deps = std::vector<aeg::Edge::Kind>;
     using DepIt = DepVec::const_reverse_iterator;
-    
-    struct Child {
-        NodeRef ref;
-        int fd;
-    };
 
 public:
     struct CheckStats {
@@ -201,6 +204,8 @@ private:
     
     ParallelContextVec create_solvers(z3::solver& from_solver, unsigned N) const;
 };
+
+std::ostream& operator<<(std::ostream& os, const DetectorJob::Action& action);
 
 namespace dbg {
 
