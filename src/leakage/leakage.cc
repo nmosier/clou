@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <system_error>
 #include <thread>
+#include <sys/stat.h>
 
 #include <gperftools/profiler.h>
 
@@ -234,7 +235,15 @@ void DetectorJob::output_execution(const Leakage& leak) {
     // DEBUG: print out debug locations of vec
     {
         std::stringstream ss;
-        ss << output_dir << "/lkg/" << aeg.function_name() << ".lkg";
+        ss << output_dir << "/lkg/" << aeg.function_name() << "/";
+        if (::mkdir(ss.str().c_str(), 0775) < 0 && errno != EEXIST) {
+            throw std::system_error(errno, std::generic_category(), "mkdir");
+        }
+        for (NodeRef ref : leak.vec) {
+            ss << ref << "-";
+        }
+        ss << ".txt";
+        
         std::ofstream ofs {ss.str()};
         
         std::string s;
