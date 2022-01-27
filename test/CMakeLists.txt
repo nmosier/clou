@@ -77,42 +77,28 @@ foreach(STL_SRC ${STL_SRCS})
   
 endforeach()
 
-set(LIBSODIUM ${CMAKE_CURRENT_SOURCE_DIR}/../../libsodium/src/libsodium)
-add_test(NAME spectre-v1-medium
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
-  -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-medium
-  -L $<TARGET_FILE:clou>
-  -x "-Epo,tfo,rf,rfx,addr,data -d20 --spectre-v1=mode=classic --fast --aa=transient -fpoly1305_blocks"
-  ${LIBSODIUM}/crypto_onetimeauth/poly1305/donna/poly1305_donna.c -I ${LIBSODIUM}/include/sodium
-  )
+file(GLOB FWD_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/fwd*.c)
+foreach(FWD_SRC ${FWD_SRCS})
 
-# set(SPECTRE_V1_LARGE_FILE crypto_core/ed25519/core_h2c.c)
-# set(SPECTRE_V1_LARGE_FUNC _sodium_core_h2c_string_to_hash)
-# set(SPECTRE_V1_LARGE_FILE crypto_shorthash/siphash24/ref/shorthash_siphashx24_ref.c)
-# set(SPECTRE_V1_LARGE_FUNC crypto_shorthash_siphashx24)
-set(SPECTRE_V1_LARGE_FILE crypto_core/ed25519/ref10/ed25519_ref10.c)
-set(SPECTRE_V1_LARGE_FUNC _sodium_fe25519_invert)
+  get_filename_component(FWD_NAME ${FWD_SRC} NAME_WLE)
+  set(FWD_ARGS "--max-transient=250 --window=500 --spectre-v1=mode=classic --aa=transient --partial")
 
-add_test(NAME spectre-v1-large
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
-  -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-large
-  -L $<TARGET_FILE:clou>
-  -x "--spectre-v1=mode=classic --max-transient=25 --fast --aa=transient -f${SPECTRE_V1_LARGE_FUNC} --stb=56"
-  ${LIBSODIUM}/${SPECTRE_V1_LARGE_FILE} -I ${LIBSODIUM}/include/sodium
-  )
+  add_test(NAME ${FWD_NAME}
+    COMMAND ${TEST_SH}
+    -O ${CMAKE_CURRENT_BINARY_DIR}/${FWD_NAME}
+    -T ${FWD_SRC}
+    -R ${CMAKE_CURRENT_SOURCE_DIR}/${FWD_NAME}.ref
+    -L $<TARGET_FILE:clou>
+    -A "${FWD_ARGS}"
+    )
 
-add_test(NAME spectre-v4-large
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
-  -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v4-large
-  -L $<TARGET_FILE:clou>
-  -x "--spectre-v4 --fast --max-transient=25 --aa=transient  -f_sodium_blake2b_init_key --stb=56"
-  ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
-  )
-
-add_test(NAME spectre-v1-xl
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../run.sh
-  -O ${CMAKE_CURRENT_BINARY_DIR}/spectre-v1-xl
-  -L $<TARGET_FILE:clou>
-  -x "--spectre-v1=mode=classic --max-transient=100 --window=200 --fast --aa=transient --stb=56"
-  ${LIBSODIUM}/crypto_generichash/blake2b/ref/blake2b-ref.c -I ${LIBSODIUM}/include/sodium
-  )
+  add_test(NAME ${FWD_NAME}f
+    COMMAND ${TEST_FENCE_SH}
+    -O ${CMAKE_CURRENT_BINARY_DIR}/${FWD_NAME}f
+    -T ${FWD_SRC}
+    -L $<TARGET_FILE:clou>
+    -A "${FWD_ARGS}"
+    )
+  set_tests_properties(${FWD_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
+  
+endforeach()

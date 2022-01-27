@@ -20,6 +20,7 @@ ENV LCM_DIR="$HOME/lcm"
 ENV LCM_BUILD="$LCM_DIR/build"
 ENV LCM_SCRIPTS="$LCM_DIR/scripts"
 ENV SRC="$LCM_DIR"
+RUN echo "export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc)" >> ~/.bashrc
 
 WORKDIR "$LCM_SCRIPTS"
 COPY scripts/cloucc.sh .

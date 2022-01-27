@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu
+set -e
 
 usage() {
     cat <<EOF

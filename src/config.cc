@@ -55,7 +55,6 @@ bool fence_insertion = false;
 int semid = -1;
 int shmid = -1;
 std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
-bool reverse_function_order = false;
 std::string file_regex;
 
 namespace {
@@ -108,7 +107,6 @@ Options:
 --profile            enable profiler
 --fence=[<bool>]     perform automatic fence insertion
 --deps=[<vec>]       set custom dependencies (empty means use default)
---reverse-function-order=[<bool>]  reverse function order (bad for overall runtime, good for proving difficult cases with leakage)
 )=";
     fprintf(f, "%s", s);
 }
@@ -214,8 +212,7 @@ int parse_args() {
         FENCE,
         DEPS,
         SKIP_FUNC,
-        REVERSE_FUNCTION_ORDER,
-	FILE_REGEX,
+        FILE_REGEX,
     };
     
     struct option opts[] = {
@@ -247,7 +244,6 @@ int parse_args() {
         {"fence", optional_argument, nullptr, FENCE},
         {"deps", optional_argument, nullptr, DEPS},
         {"skip-func", required_argument, nullptr, 'F'},
-        {"reverse-function-order", optional_argument, nullptr, REVERSE_FUNCTION_ORDER},
 	{"file", required_argument, nullptr, FILE_REGEX},
         {nullptr, 0, nullptr, 0}
     };
@@ -520,10 +516,6 @@ int parse_args() {
                 break;
             }
                 
-            case REVERSE_FUNCTION_ORDER:
-                reverse_function_order = parse_bool_opt(optarg);
-                break;
-
 	case FILE_REGEX:
 	  file_regex = optarg;
 	  break;
