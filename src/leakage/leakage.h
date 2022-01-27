@@ -139,9 +139,12 @@ protected:
     
     void output_execution(const Leakage& leak);
     
-    template <typename Assertion, typename... Args>
-    void solver_add(const Assertion& assertion, Args&&... args) {
-        solver.add(translate(assertion), std::forward<Args>(args)...);
+    void solver_add(const z3::expr& e) {
+        solver.add(e);
+    }
+    
+    void solver_add(const z3::expr& e, const std::string& s) {
+        solver.add(e);
     }
     
     z3::eval solver_eval() const {
