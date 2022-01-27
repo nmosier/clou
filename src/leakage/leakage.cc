@@ -81,13 +81,15 @@ std::mutex& DetectorMain::mutex() const { return aeg.context.mutex; }
 template <class Job>
 void DetectorMain::get_candidate_transmitters(NodeRefSet& candidate_transmitters) const {
     const DetectorJob::DepVec& deps = Job::get_deps();
-    const aeg::Edge::Kind kind = deps.back().first;
+    const auto& dep = deps.back();
+    const auto kind = dep.first;
+    const auto exec_mode = dep.second;
     z3::solver candidate_solver {ctx()};
     aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
         const aeg::Node& node = aeg.lookup(ref);
         
         z3::expr_vector vec {ctx()};
-        vec.push_back(node.trans);
+        vec.push_back(node.exec(exec_mode));
         vec.push_back(node.access());
         if (candidate_solver.check(vec) != z3::unsat) {
             candidate_transmitters.insert(ref);
@@ -450,8 +452,8 @@ void DetectorJob::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::funct
         const std::string desc = util::to_string(store, " -rf-> ", load);
         if (mode == CheckMode::SLOW) {
             const z3::expr& cond = store_pair.second;
-            solver_add(cond, desc.c_str());
-            solver_add(aeg.lookup(store).exec(exec_mode));
+            solver_add(translate(cond), desc.c_str());
+            solver_add(translate(aeg.lookup(store).exec(exec_mode)));
         }
 
         const auto action = util::push(actions, {.src = store, .edge = aeg::Edge::Kind::RF, .dst = load});
@@ -536,7 +538,7 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
             
             // TODO: This should be removed, since the 'pruning paths' step will result in an empty window anyway.
             const bool reaches_main_function = func_id_pfx.empty();
-            if (reverse_function_order && !reaches_main_function) {
+            if (!reaches_main_function) {
                 logv(2, "skipping transmitter " << transmitter << " because it doesn't reach main function\n");
                 return;
             }
@@ -897,6 +899,7 @@ void DetectorJob::precompute_rf(NodeRef load) {
         const auto& store_node = aeg.lookup(ref);
         if (!store_node.may_write()) { continue; }
         
+#if 0
         /* make sure that types agree */
         {
             /* either both pointers or neither pointers */
@@ -930,7 +933,7 @@ void DetectorJob::precompute_rf(NodeRef load) {
         }
         
         label:
-        
+#endif
         
         
         /* check if this store occurs before AllocaInst is allocated */
