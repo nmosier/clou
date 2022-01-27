@@ -58,7 +58,7 @@ rm -f "$OUTDIR/functions.db"
 
 OBJ="${OUTDIR}/$(basename "${TEST}" .c)"
 
-LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -fdeclspec $CFLAGS -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${OBJ}.o" "$TEST"
+LCM_ARGS="-o$OUTDIR $ARGS" $DEBUGGER $VALGRIND "$CLANG" -g -fdeclspec $CFLAGS -Wno-\#warnings -Xclang -load -Xclang "$LCM" -c -emit-llvm -S -o "${OBJ}.o" "$TEST"
 
 preprocess() {
     grep -v '^$' | sed 's/, !dbg[^;]*//g' | sort | tr -s ' '
