@@ -155,7 +155,15 @@ llvm::AliasResult AEG::compute_alias(const AddrInfo& a, const AddrInfo& b) const
     
     /* check if LLVM's built-in alias analysis is valid */
     if (po.llvm_alias_valid(a.id, b.id)) {
+#if 0
         return AA.alias(a.V, b.V);
+#else
+        auto alias_result = AA.alias(a.V, b.V);
+        if (alias_result == llvm::NoAlias) {
+            alias_result = llvm::MayAlias;
+        }
+        return alias_result;
+#endif
     }
     
     if (a.vl() == b.vl()) {
@@ -519,7 +527,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     }
 #endif
     
-#if 1
+#if 0
     /* AA: apply LLVM's built-in alias analysis if possible
      * Restrictions: both VLs must have the same call stack and loops must nest.
      * We can make this efficient by sorting all addresses into different buckets by function callstack.
