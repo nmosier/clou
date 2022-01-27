@@ -12,7 +12,10 @@ ARGS="${ARGS-}"
 CLANG="$(which clang-12)"
 DEBUGGER=
 VALGRIND=
+
 CFLAGS=${CFLAGS-}
+
+export SRC=$(dirname "$0")/..
 
 while getopts "hO:T:R:L:A:C:gV" OPTC; do
     case $OPTC in
@@ -53,8 +56,8 @@ done
 
 shift $((OPTIND-1))
 
+rm -rf "$OUTDIR"
 mkdir -p "$OUTDIR"
-rm -f "$OUTDIR/functions.db"
 
 OBJ="${OUTDIR}/$(basename "${TEST}" .c)"
 
