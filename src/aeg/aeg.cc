@@ -12,6 +12,7 @@
 #include "cfg/expanded.h"
 #include "util/iterator.h"
 #include "util/algorithm.h"
+#include "aeg/edge.h"
 
 namespace aeg {
 
@@ -101,6 +102,43 @@ z3::expr AEG::add_optional_edge(NodeRef src, NodeRef dst, const Edge& e_, const 
     return e.exists;
 }
 
+z3::expr AEG::same_addr(NodeRef a, NodeRef b) const {
+    const Node& a_node = lookup(a);
+    const Node& b_node = lookup(b);
+    if (a_node.is_special() || b_node.is_special()) {
+        return context.TRUE;
+    } else {
+        return get_memory_address(a) == get_memory_address(b);
+    }
+}
+
+z3::expr AEG::get_memory_address(NodeRef ref) const {
+    const Node& node = lookup(ref);
+    const Address& addr = node.get_memory_address();
+    
+    z3::expr trans = context.FALSE;
+    
+    switch (leakage_class) {
+        case LeakageClass::SPECTRE_V1: {
+            // check for transient ADDR_GEP
+            for (const auto& p : get_nodes(Direction::IN, ref, Edge::Kind::ADDR_GEP)) {
+                trans = trans || ((node.trans || lookup(p.first).trans) && p.second);
+            }
+            break;
+        }
+            
+        case LeakageClass::SPECTRE_V4: {
+            // check if load
+            trans = node.trans && node.read;
+            break;
+        }
+            
+        default: std::abort();
+    }
+    
+    return z3::ite(trans, addr.trans, addr.arch).simplify();
+}
+
 namespace {
 std::ostream& operator<<(std::ostream& os, const std::pair<z3::expr, std::string>& p) {
     return os << p.second << ":" << p.first;
@@ -115,7 +153,7 @@ std::ostream& operator<<(std::ostream& os, const Constraints& c) {
 }
 
 template <typename OutputIt>
-OutputIt AEG::get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) {
+OutputIt AEG::get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) const {
     assert(!is_pseudoedge(kind));
     const auto& map = graph(dir);
     for (const auto& p : map.at(ref)) {
@@ -128,7 +166,7 @@ OutputIt AEG::get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kin
     return out;
 }
 
-AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, Edge::Kind kind) {
+AEG::EdgePtrVec AEG::get_edges(Direction dir, NodeRef ref, Edge::Kind kind) const {
     EdgePtrVec es;
     get_edges(dir, ref, std::back_inserter(es), kind);
     return es;

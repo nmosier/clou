@@ -131,7 +131,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
             ss << ref << " " << *node.inst << "\n";
 
             if (node.inst->is_memory()) {
-                ss << "{" << eval(node.get_memory_address()) << "} ";
+                ss << "{" << eval(get_memory_address(ref)) << "} ";
             }
             
             const bool xsread = (bool) eval(node.xsread);

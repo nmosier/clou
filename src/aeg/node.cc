@@ -29,6 +29,10 @@ bool Node::is_special() const {
     return inst->is_special();
 }
 
+Address Node::get_memory_address() const {
+    return get_memory_address_pair().second;
+}
+
 z3::expr Node::exec(ExecMode mode) const {
     switch (mode) {
         case ExecMode::ARCH:  return arch;
@@ -66,18 +70,6 @@ void Node::simplify() {
     arch = arch.simplify();
     trans = trans.simplify();
     constraints.simplify();
-}
-
-
-z3::expr Node::same_addr(const Node& a, const Node& b) {
-    z3::context& ctx = a.arch.ctx();
-    if (a.is_special() || b.is_special()) {
-        return ctx.bool_val(true);
-    }
-    if (!a.inst->is_memory() || !b.inst->is_memory()) {
-        return ctx.bool_val(false);
-    }
-    return a.get_memory_address() == b.get_memory_address();
 }
 
 

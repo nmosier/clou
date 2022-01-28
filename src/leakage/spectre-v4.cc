@@ -124,7 +124,7 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
         // if it is a write, then check whether it can be bypassed
         if (node.may_write() && aeg.may_source_stb(load, bypassed_store)) {
             if (mode == CheckMode::SLOW) {
-                exprs.push_back(node.arch && node.write && node.same_addr(aeg.lookup(load)));
+                exprs.push_back(node.arch && node.write && aeg.same_addr(bypassed_store, load));
             }
             if (mode == CheckMode::FAST) {
                 throw lookahead_found();
@@ -202,7 +202,7 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
         z3_cond_scope;
         
         if (mode == CheckMode::SLOW) {
-            const z3::expr same_addr = aeg::Node::same_addr(sourced_store_node, aeg.lookup(load));
+            const z3::expr same_addr = aeg.same_addr(sourced_store, load);
             solver_add(same_addr, "load.addr == sourced_store.addr");
             solver_add(aeg.rfx_exists(sourced_store, load), "load -RFX-> sourced_store");
         }

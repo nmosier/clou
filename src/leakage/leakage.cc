@@ -395,7 +395,7 @@ DetectorJob::Mems DetectorJob::get_mems(const NodeRefSet& set) {
         ins.emplace(ref, mem);
         
         if (node.may_write()) {
-            mem = z3::conditional_store(mem, node.get_memory_address(), ctx().int_val(static_cast<unsigned>(ref)), node.exec() && node.write);
+            mem = z3::conditional_store(mem, aeg.get_memory_address(ref), ctx().int_val(static_cast<unsigned>(ref)), node.exec() && node.write);
         }
         
         outs.emplace(ref, mem);
@@ -863,7 +863,6 @@ NodeRefSet DetectorJob::reachable_r(const NodeRefSet& window, NodeRef init) cons
 }
 
 std::unordered_map<NodeRef, z3::expr> DetectorJob::precompute_rf_one(NodeRef load, const NodeRefSet& window) {
-    const auto& load_node = aeg.lookup(load);
     z3::expr no = ctx().bool_val(true);
     std::unordered_map<NodeRef, z3::expr> yesses;
     for (NodeRef store : aeg.po.postorder()) {
@@ -871,7 +870,7 @@ std::unordered_map<NodeRef, z3::expr> DetectorJob::precompute_rf_one(NodeRef loa
         const auto& store_node = aeg.lookup(store);
         if (!store_node.may_write()) { continue; }
         
-        const z3::expr write = store_node.exec() && store_node.write && store_node.same_addr(load_node);
+        const z3::expr write = store_node.exec() && store_node.write && aeg.same_addr(store, load);
         yesses.emplace(store, no && write);
         
         no = no && !write;
@@ -974,7 +973,7 @@ void DetectorJob::precompute_rf(NodeRef load) {
         
         // check if alias expression is always false
         if (it->first != aeg.entry) {
-            const z3::expr alias = (aeg.lookup(it->first).get_memory_address() == aeg.lookup(load).get_memory_address());
+            const z3::expr alias = aeg.get_memory_address(it->first) == aeg.get_memory_address(load);
             if (alias.simplify().is_false()) {
                 keep = false;
             } else {

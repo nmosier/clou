@@ -224,7 +224,7 @@ void AEG::constrain_comx() {
         Node& node = lookup(ref);
         if (!node.is_special()) {
             if (node.can_xsaccess()) {
-                node.constraints(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
+                node.constraints(*node.xstate == get_memory_address(ref), "xstate-addr-eq");
             }
         }
     }
@@ -235,7 +235,7 @@ void AEG::constrain_comx(const NodeRefSet& window, AssertFunc solver_add) {
         Node& node = lookup(ref);
         if (!node.is_special()) {
             if (node.can_xsaccess()) {
-                solver_add(*node.xstate == node.get_memory_address(), "xstate-addr-eq");
+                solver_add(*node.xstate == get_memory_address(ref), "xstate-addr-eq");
             }
         }
     }

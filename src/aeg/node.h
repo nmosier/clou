@@ -90,17 +90,8 @@ public:
     bool can_xsread() const { return !xsread.is_false(); }
     bool can_xswrite() const { return !xswrite.is_false(); }
 
-    // TODO: remove this.
-    z3::expr get_addr_def() const { return *addr_def; }
-    
     void simplify();
     
-    static z3::expr same_addr(const Node& a, const Node& b);
-    
-    z3::expr same_addr(const Node& other) const {
-        return same_addr(*this, other);
-    }
-
     static z3::expr same_xstate(const Node& a, const Node& b);
     
     z3::expr same_xstate(const Node& other) const {
@@ -115,7 +106,7 @@ public:
     
     std::pair<const llvm::Value *, Address> get_memory_address_pair() const;
     
-    z3::expr get_memory_address() const { return get_memory_address_pair().second; }
+    Address get_memory_address() const;
     
     bool is_special() const;
     

@@ -6,27 +6,23 @@
 
 namespace aeg {
 
+#if 0
 
 using Address = z3::expr;
 
-#if 0
+#else
+
 // TODO: inline this
 struct Address {
-    z3::expr addr;
+    z3::expr arch;
+    z3::expr trans;
     
-    operator const z3::expr& () const { return addr; }
-
     Address(Context& ctx);
-    Address(const z3::expr& addr): addr(addr) {}
-    
-    z3::expr operator==(const Address& other) const {
-        return addr == other.addr;
-    }
+    Address(Context& ctx, const z3::expr& arch);
 };
 
-inline std::ostream& operator<<(std::ostream& os, const Address& x) {
-    return os << "addr(" << x.addr << ")";
-}
+std::ostream& operator<<(std::ostream& os, const Address& x);
+
 #endif
 
 

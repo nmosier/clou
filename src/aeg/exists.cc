@@ -83,7 +83,7 @@ z3::expr AEG::com_exists_precond(NodeRef src, NodeRef dst, Access src_kind, Acce
         return context.FALSE;
     }
     
-    return src_node.arch && dst_node.arch && src_node.same_addr(dst_node);
+    return src_node.arch && dst_node.arch && same_addr(src, dst);
 }
 
 z3::expr AEG::rf_exists(NodeRef src, NodeRef dst) {
@@ -102,12 +102,12 @@ z3::expr AEG::rf_exists(NodeRef src, NodeRef dst) {
     
     const z3::expr seed = get_val(entry);
     z3::expr mem = z3::const_array(context.context.int_sort(), seed);
-    const z3::expr addr = src == entry ? dst_node.get_memory_address() : src_node.get_memory_address();
+    const z3::expr addr = src == entry ? get_memory_address(dst) : get_memory_address(src);
     for (NodeRef ref : po.reverse_postorder()) {
         if (ref == dst) { break; }
         const Node& node = lookup(ref);
         if (node.may_write() && node.inst->is_memory()) {
-            mem = z3::conditional_store(mem, node.get_memory_address(), get_val(ref), node.arch && node.write);
+            mem = z3::conditional_store(mem, get_memory_address(ref), get_val(ref), node.arch && node.write);
         }
     }
 

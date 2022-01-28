@@ -88,8 +88,6 @@ private:
     void construct_nodes();
     void construct_arch();
     void construct_tfo();
-    void construct_addr_defs();
-    void construct_addr_refs();
     void construct_addrs();
     void construct_aliases(llvm::AliasAnalysis& AA);
     void construct_com();
@@ -127,6 +125,8 @@ private:
         return it->inst->get_inst()->getParent()->getParent()->getParent();
     }
     
+    bool use_arch_address(NodeRef ref) const;
+    z3::expr get_memory_address(NodeRef ref) const;
 
 private:
     z3::solver make_solver();
@@ -168,8 +168,10 @@ private:
     void leakage(z3::solver& solver, TransmitterOutputIt out);
     
     using EdgeVec = std::vector<std::tuple<NodeRef, NodeRef, aeg::Edge::Kind>>;
-    
+        
 public:
+    z3::expr same_addr(NodeRef a, NodeRef b) const;
+    
     using NodeRange = util::RangeContainer<NodeRef>;
     NodeRange node_range() const {
         return NodeRange {NodeRef {entry}, NodeRef {static_cast<unsigned>(nodes.size())}};
@@ -186,10 +188,10 @@ private:
     z3::expr add_optional_edge(NodeRef src, NodeRef dst, const Edge& e, const std::string& name);
     
     template <typename OutputIt>
-    OutputIt get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind);
+    OutputIt get_edges(Direction dir, NodeRef ref, OutputIt out, Edge::Kind kind) const;
     
     using EdgePtrVec = std::vector<Edge *>;
-    EdgePtrVec get_edges(Direction dir, NodeRef ref, Edge::Kind kind);
+    EdgePtrVec get_edges(Direction dir, NodeRef ref, Edge::Kind kind) const;
     
 public:
     template <typename OutputIt>

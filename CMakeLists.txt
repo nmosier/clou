@@ -42,5 +42,5 @@ add_compile_options(-Wno-c++20-designator -Wno-format-security -Wno-c99-designat
 enable_testing()
 
 add_subdirectory(src)
-add_subdirectory(docs)
+# add_subdirectory(docs)
 add_subdirectory(test)
