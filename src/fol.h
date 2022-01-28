@@ -672,6 +672,7 @@ Bool for_none(const relation<Bool, Ts...>& rel, const for_func<Bool, Ts...>& f) 
     }, L.T, L.F);
 }
 
+#if 0
 template <typename Bool, typename Eval>
 relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::same_addr() const {
     return binary_rel_if([&] (NodeRef ref1, NodeRef ref2) -> z3::expr {
@@ -680,6 +681,7 @@ relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::same_addr() const {
         return node1.arch && node2.arch && node1.same_addr(node2); // TODO: is the arch check redundant?
     });
 }
+#endif
 
 template <typename Bool, typename Eval>
 relation<Bool, NodeRef, NodeRef> Context<Bool, Eval>::same_xstate() const {
