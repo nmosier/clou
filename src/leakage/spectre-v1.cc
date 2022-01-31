@@ -110,7 +110,7 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     
 #if 1
     // find branch misspeculation
-    
+# if 0
     {
         z3_eval;
         
@@ -140,6 +140,7 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
         std::cerr << "branch predicate is tainted: " << eval(translate(branch_node.attacker_taint.value)) << "\n";
 
     }
+# endif
     
     {
         z3::expr_vector taints {ctx()};
