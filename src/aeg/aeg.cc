@@ -21,7 +21,7 @@ bool AEG::may_source_stb(NodeRef load, NodeRef store) const {
 }
 
 z3::solver AEG::make_solver() {
-    z3::context& c = context.context;
+    z3::context& c = context;
     
     if (std::getenv("VERBOSE")) {
         z3::set_param("verbose", 10);

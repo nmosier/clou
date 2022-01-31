@@ -163,6 +163,7 @@ private:
 #if 0
     void construct_control_equivalents();
 #endif
+    void construct_attacker_taint();
     
     /** Check for leakage in the AEG. Outputs set of transmitter gadgets. */
     void leakage(z3::solver& solver, TransmitterOutputIt out);

@@ -6,11 +6,13 @@
 
 #include <z3++.h>
 #include <llvm/IR/Value.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include "aeg/fwd.h"
 #include "aeg/address.h"
 #include "aeg/constraints.h"
 #include "noderef.h"
+#include "aeg/taint.h"
 
 
 struct Inst;
@@ -33,9 +35,12 @@ T from_string(const std::string_view& s) {
 enum ExecMode: unsigned {ARCH, TRANS, EXEC};
 const char *to_string(ExecMode mode);
 
-template <class OS>
-OS& operator<<(OS& os, ExecMode mode) {
-   return os << to_string(mode);
+inline std::ostream& operator<<(std::ostream& os, ExecMode mode) {
+    return os << to_string(mode);
+}
+
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ExecMode mode) {
+    return os << to_string(mode);
 }
 
 template <> ExecMode from_string<ExecMode>(const std::string_view& s);
@@ -52,6 +57,9 @@ struct Node {
     z3::expr xsread;
     z3::expr xswrite;
     std::optional<z3::expr> xsaccess_order; // int (atomic xread and/or xswrite)
+    Taint attacker_taint;
+    // Taint constant_taint;
+    
     Constraints constraints;
     
     int stores_in;

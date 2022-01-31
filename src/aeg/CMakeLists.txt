@@ -13,6 +13,7 @@ add_library(aeg_objs OBJECT
   node.h node.cc
   edge.h edge.cc
   inst.h inst.cc
+  taint.h taint.cc
   $<TARGET_OBJECTS:proto>
   )
 target_link_libraries(aeg_objs PRIVATE proto)

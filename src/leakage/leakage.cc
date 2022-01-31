@@ -73,9 +73,9 @@ namespace lkg {
 
 DetectorMain::DetectorMain(aeg::AEG& aeg, z3::solver& solver): aeg(aeg), solver(solver) {}
 
-z3::context& DetectorJob::ctx() { return aeg.context.context; }
+z3::context& DetectorJob::ctx() { return aeg.context; }
 
-z3::context& DetectorMain::ctx() const { return aeg.context.context; }
+z3::context& DetectorMain::ctx() const { return aeg.context; }
 std::mutex& DetectorMain::mutex() const { return aeg.context.mutex; }
 
 template <class Job>
@@ -226,6 +226,10 @@ void DetectorJob::run() {
 void DetectorJob::output_execution(const Leakage& leak) {
     assert(lookahead_tmp);
     
+    assert(solver.check() == z3::sat);
+    z3::model model = solver.get_model();
+    const z3::eval eval {z3::model(model, ctx(), z3::model::translate())};
+    
     // get actions description
     std::stringstream actions_ss;
     for (const Action& action : actions) {
@@ -269,7 +273,6 @@ void DetectorJob::output_execution(const Leakage& leak) {
             os << "\n";
         };
         
-#if 1
         std::optional<NodeRef> src;
         for (auto it = actions.rbegin(); it != actions.rend(); ++it) {
             const Action& action = *it;
@@ -290,27 +293,17 @@ void DetectorJob::output_execution(const Leakage& leak) {
         }
         
         ofs << s;
-
-#else
+        
+        ofs << "\n";
+        z3::expr_vector taints {local_ctx};
         for (NodeRef ref : leak.vec) {
-            std::string s;
-            llvm::raw_string_ostream os {s};
-            const aeg::Node& node = aeg.lookup(ref);
-            os << ref << ": ";
-            if (const llvm::Instruction *I = node.inst->get_inst()) {
-                os << *I << ": ";
-                const llvm::DebugLoc& DL = I->getDebugLoc();
-                if (DL) {
-                    llvm::print_full_debug_info(os, DL);
-                } else {
-                    os << "(no debug info)\n";
-                }
-            } else {
-                os << "(not an instruction): (no debug info)\n";
-            }
-            ofs << s;
+            const auto& node = aeg.lookup(ref);
+            const z3::expr taint = node.attacker_taint.value;
+            ofs << ref << " " << eval(taint) << "\n";
+            taints.push_back(z3::translate(taint, local_ctx));
         }
-#endif
+        ofs << "Taints:\n" << taints << "\n";
+        ofs << "all attacker taints: " << solver.check(taints) << "\n";
     }
     
     std::stringstream ss;
@@ -320,9 +313,6 @@ void DetectorJob::output_execution(const Leakage& leak) {
     }
     ss << ".dot";
     const std::string path = ss.str();
-    assert(solver.check() == z3::sat);
-    z3::model model = solver.get_model();
-    const z3::eval eval {z3::model(model, ctx(), z3::model::translate())};
     const auto edge = push_edge(EdgeRef {
         .src = leak.transmitter,
         .dst = aeg.exit_con(eval),

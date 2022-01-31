@@ -6,7 +6,7 @@
 
 namespace aeg {
 
-Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arch(c), trans(c), read(c), write(c), xsread(c), xswrite(c), constraints() {}
+Node::Node(std::unique_ptr<Inst>&& inst, Context& c): inst(std::move(inst)), arch(c), trans(c), read(c), write(c), xsread(c), xswrite(c), attacker_taint(c), constraints() {}
 
 bool Node::may_read() const {
     return inst->may_read() != Option::NO;

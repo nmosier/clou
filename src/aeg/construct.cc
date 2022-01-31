@@ -85,6 +85,8 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     logv(2, "Constructing ctrl\n");
     construct_ctrl();
     logv(2, "Constructing fences\n");
+    construct_attacker_taint();
+    logv(2, "Construct attacker taint\n");
     
     if (partial_executions || stb_size) {
         compute_min_store_paths();
@@ -210,7 +212,7 @@ void AEG::construct_addrs() {
                 if (defs_it == po_node.refs.end()) {
                     if (const llvm::ConstantData *CD = llvm::dyn_cast<llvm::ConstantData>(V)) {
                         if (CD->isNullValue()) {
-                            e = Address {context, context.context.int_val(0)};
+                            e = Address {context, context->int_val(0)};
                         } else {
                             llvm::errs() << "unhandled constant data: " << *CD << "\n";
                             std::abort();
@@ -231,7 +233,7 @@ void AEG::construct_addrs() {
                                 const auto bits = DL.getTypeSizeInBits(G->getValueType());
                                 if (bits != 0) {
                                     global_counter -= bits / 8;
-                                    globals_it = globals.emplace(G, Address(context, context.context.int_val(global_counter))).first;
+                                    globals_it = globals.emplace(G, Address(context, context->int_val(global_counter))).first;
                                     done = true;
                                 }
                             }
@@ -298,7 +300,7 @@ void AEG::construct_addrs() {
                 
                 if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(RI->get_inst())) {
                     // TODO: lift out datalayout
-                    node.addr_def = Address(context, context.context.int_val(stack_counter));
+                    node.addr_def = Address(context, context->int_val(stack_counter));
                     const auto bits = AI->getAllocationSizeInBits(DL);
                     if (!bits) {
                         std::cerr << __FUNCTION__ << ": could not determine size of allocation\n";
@@ -318,7 +320,7 @@ void AEG::construct_addrs() {
                         const auto max_offset = llvm::getelementptr_max_offset(GEP);
                         if (min_offset && max_offset) {
                             Address addr {context};
-                            addr.arch = z3::max(z3::min(addr.arch, context.context.int_val(*max_offset)), context.context.int_val(*min_offset)) + base;
+                            addr.arch = z3::max(z3::min(addr.arch, context->int_val(*max_offset)), context->int_val(*min_offset)) + base;
                             node.addr_def = addr;
                             continue;
                         }
@@ -361,7 +363,7 @@ void AEG::construct_tfo() {
         for (const NodeRef dst : po.po.fwd.at(src)) {
             // add optional edge
             const Node& dst_node = lookup(dst);
-            z3::expr_vector cond {context.context};
+            z3::expr_vector cond {context};
             cond.push_back(src_node.arch && dst_node.arch);
             if (po.may_introduce_speculation(src)) {
                 cond.push_back(src_node.arch && dst_node.trans);
@@ -419,7 +421,7 @@ void AEG::construct_xsaccess_order(const NodeRefSet& xsaccesses) {
 
 
 std::vector<std::pair<z3::expr, std::string>> AEG::assert_xsaccess_order(const NodeRefSet& window) {
-    z3::context& ctx = context.context;
+    z3::context& ctx = context;
     std::vector<std::pair<z3::expr, std::string>> assertions;
     const z3::expr xsaccess_order_init = ctx.int_val(0);
     

@@ -12,11 +12,6 @@ void AEG::dump_graph(const std::string& path) const {
 
 AEG::Execution AEG::analyze_execution(const z3::eval& eval) const {
     Execution exec;
-#if 0
-    z3::context& ctx = eval.ctx();
-#else
-    z3::context& ctx = const_cast<z3::context&>(context.context);
-#endif
     
     for (const NodeRef ref : po.reverse_postorder()) {
         const Node& node = lookup(ref);
@@ -34,7 +29,7 @@ AEG::Execution AEG::analyze_execution(const z3::eval& eval) const {
         // spec gadget
         if (eval(node.arch)) {
             const auto tfos = get_nodes(Direction::OUT, ref, Edge::TFO);
-            const z3::expr_vector tfo_exists = z3::transform(ctx, tfos, [&] (const auto& tfo) -> z3::expr {
+            const z3::expr_vector tfo_exists = z3::transform(context, tfos, [&] (const auto& tfo) -> z3::expr {
                 return tfo.second;
             });
             if (eval(z3::mk_or(tfo_exists))) {

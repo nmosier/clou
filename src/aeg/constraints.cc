@@ -93,7 +93,7 @@ void AEG::constrain_trans() {
         Node& node = lookup(ref);
         const auto tfos = get_edges(Direction::IN, ref, Edge::TFO);
         // TODO: experiment with using z3::{atleast,exactly}(vec, 1) instead.
-        const auto tfo_vec = z3::transform(context.context, tfos, [] (const auto& edge) -> z3::expr {
+        const auto tfo_vec = z3::transform(*context, tfos, [] (const auto& edge) -> z3::expr {
             return edge->exists;
         });
         const auto f = z3::exactly(tfo_vec, 1);
@@ -102,7 +102,7 @@ void AEG::constrain_trans() {
     
     // ensure that the number of transiently executed nodes doesn't exceed trans limit
     {
-        z3::expr_vector trans {context.context};
+        z3::expr_vector trans {context};
         for (NodeRef ref : node_range()) {
             trans.push_back(lookup(ref).trans);
         }
@@ -118,7 +118,7 @@ void AEG::constrain_trans(const NodeRefSet& window, AssertFunc solver_add) {
         std::erase_if(tfos, [&window] (const auto& x) -> bool {
             return !window.contains(x.first);
         });
-        const auto tfo_vec = z3::transform(context.context, tfos, [] (const auto& edge) -> z3::expr {
+        const auto tfo_vec = z3::transform(context, tfos, [] (const auto& edge) -> z3::expr {
             return edge.second;
         });
         const auto f = z3::exactly(tfo_vec, 1);
@@ -153,7 +153,7 @@ void AEG::constrain_tfo() {
     }
     
     // assert only one tfo window
-    z3::expr_vector tfos {context.context};
+    z3::expr_vector tfos {context};
     for_each_edge(Edge::TFO, [&] (const NodeRef src, const NodeRef dst, const Edge& edge) {
         const Node& src_node = lookup(src);
         const Node& dst_node = lookup(dst);
@@ -162,12 +162,12 @@ void AEG::constrain_tfo() {
     constraints(z3::atmost2(tfos, 1), "at-most-one-spec-intro");
     
     // only one cold arch start
-    z3::expr_vector cold_start {context.context};
+    z3::expr_vector cold_start {context};
     for (NodeRef ref : po.reverse_postorder()) {
         if (ref == entry || exits.contains(ref)) { continue; }
         const Node& node = lookup(ref);
         const auto tfo_ins = get_edges(Direction::IN, ref, Edge::TFO);
-        const auto tfo_ins_v = z3::transform(context.context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });
+        const auto tfo_ins_v = z3::transform(context, tfo_ins, [] (const auto& e) -> z3::expr { return e->exists; });
         cold_start.push_back(node.arch && !z3::mk_or(tfo_ins_v));
     }
     constraints(z3::exactly(cold_start, 1), "one-cold-start");

@@ -15,7 +15,9 @@ public:
     
     Context();
     
+private:
     z3::context context;
+public:
     const z3::expr TRUE;
     const z3::expr FALSE;
     
@@ -35,9 +37,18 @@ public:
         return b ? TRUE : FALSE;
     }
     
-    operator z3::context& () {
+    operator z3::context&() {
         return context;
     }
+    
+    operator z3::context&() const {
+        return TRUE.ctx();
+    }
+    
+    const z3::context& operator*() const { return context; }
+    z3::context& operator*() { return context; }
+    const z3::context *operator->() const { return &context; }
+    z3::context *operator->() { return &context; }
     
 private:
     std::unordered_map<std::string, unsigned> next;

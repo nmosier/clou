@@ -1,6 +1,7 @@
 #include "spectre-v1.h"
 #include "util/timer.h"
 #include "aeg/node.h"
+#include "aeg/aeg.h"
 
 namespace lkg {
 
@@ -93,6 +94,17 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     const NodeRef universal_transmitter = vec.front();
     
     std::reverse(vec.begin(), vec.end());
+    
+    // ensure attacker taints
+#if 0
+    z3_scope;
+    for (NodeRef ref : vec) {
+        solver.add(translate(aeg.lookup(ref).attacker_taint.value));
+    }
+#else
+    solver.add(translate(aeg.lookup(vec.front()).attacker_taint.value), "universal-leakage-attacker-taint");
+    std::cerr << "checking universal leakage: " << solver.check() << "\n";
+#endif
     
     output_execution(Leakage {
         .vec = vec,

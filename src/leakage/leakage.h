@@ -161,7 +161,8 @@ private:
     
     void traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
                             std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode);
-    
+
+protected:
     z3::expr translate(const z3::expr& global_e) {
         Z3_ast local_e = Z3_translate(global_e.ctx(), global_e, local_ctx);
         return z3::expr(local_ctx, local_e);

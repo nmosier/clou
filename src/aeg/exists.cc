@@ -97,11 +97,11 @@ z3::expr AEG::rf_exists(NodeRef src, NodeRef dst) {
     }
     
     const auto get_val = [&] (NodeRef ref) -> z3::expr {
-        return context.context.bool_val(src == ref);
+        return context->bool_val(src == ref);
     };
     
     const z3::expr seed = get_val(entry);
-    z3::expr mem = z3::const_array(context.context.int_sort(), seed);
+    z3::expr mem = z3::const_array(context->int_sort(), seed);
     const z3::expr addr = src == entry ? get_memory_address(dst) : get_memory_address(src);
     for (NodeRef ref : po.reverse_postorder()) {
         if (ref == dst) { break; }

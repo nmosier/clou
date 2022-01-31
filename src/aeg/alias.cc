@@ -390,8 +390,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         if (cond) {
             bool bad = false;
 #ifndef NDEBUG
-            z3::solver solver(context.context);
-            z3::expr_vector vec(context.context);
+            z3::solver solver(context);
+            z3::expr_vector vec(context);
             vec.push_back(*cond);
             bad = (solver.check(vec) != z3::sat);
 #else
@@ -656,8 +656,8 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         
         /* Alloca isn't struct, GEP is struct */
         {
-            z3::expr_vector allocas(context.context);
-            z3::expr_vector geps(context.context);
+            z3::expr_vector allocas {context};
+            z3::expr_vector geps {context};
             for (const AddrInfo& addr : addrs) {
                 if (llvm::isa<llvm::AllocaInst>(addr.V) && !addr.V->getType()->getPointerElementType()->isStructTy()) {
                     allocas.push_back(addr.e);
