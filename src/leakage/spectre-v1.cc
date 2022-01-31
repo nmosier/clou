@@ -162,10 +162,13 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
         solver_add(translate(z3::mk_or(taints)), "branch-tainted");
     }
     
-    if (solver_check() == z3::unsat) {
-        return;
+    switch (solver_check(false)) {
+        case z3::sat: break;
+        case z3::unsat: return;
+        case z3::unknown:
+            std::cerr << "error: unknown result\n";
+            std::abort();
     }
-    
     
 #endif
     
