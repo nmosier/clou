@@ -16,27 +16,29 @@ void AEG::construct_attacker_taint() {
         z3::expr& value_taint = node.attacker_taint.value;
         value_taint = context->bool_val(false);
         
-        const auto get_taint = [&] (const llvm::Value *V, z3::expr& value_taint) {
+        const auto get_taint = [&] (const llvm::Value *V) {
             const auto it = refs.find(V);
             if (it == refs.end()) {
                 if (llvm::isa<llvm::Argument>(V)) {
                     // is tainted
-                    value_taint = context->bool_val(true);
+                    return context->bool_val(true);
                 } else if (llvm::isa<llvm::GlobalValue, llvm::ConstantData, llvm::ConstantExpr, llvm::BlockAddress, llvm::MetadataAsValue, llvm::BasicBlock>(V)) {
                     // all constant pointers
-                    value_taint = context->bool_val(false);
+                    return context->bool_val(false);
                 } else if (llvm::isa<llvm::Operator>(V)) {
                     llvm::errs() << "stub: treating llvm::Operator as attacker-tainted: " << *V << "\n";
-                    value_taint = context->bool_val(true);
+                    return context->bool_val(true);
                 } else {
                     llvm::errs() << "unhandled src operand type " << *V << "\n";
                     std::abort();
                 }
             } else {
                 
+                z3::expr_vector v {context};
                 for (NodeRef src : it->second) {
-                    value_taint = value_taint || lookup(src).attacker_taint.value;
+                    v.push_back(lookup(src).attacker_taint.value);
                 }
+                return z3::mk_or(v);
 
             }
         };
@@ -54,7 +56,11 @@ void AEG::construct_attacker_taint() {
                 
                 {
                     const Address& addr = node.get_memory_address();
+#if 0
                     const z3::expr addr_ = z3::ite(node.arch, addr.arch, addr.trans);
+#else
+                    const z3::expr addr_ = addr.arch;
+#endif
                     value_taint = mem[addr_];
                 }
                 
@@ -66,17 +72,20 @@ void AEG::construct_attacker_taint() {
                 // get operand taint
                 const StoreInst& SI_ = dynamic_cast<const StoreInst&>(*node.inst);
                 const llvm::Value *V = SI_.get_value_operand();
-                z3::expr value_taint = context->bool_val(false);
-                get_taint(V, value_taint);
+                z3::expr value_taint = get_taint(V);
                 
                 const Address& addr = node.get_memory_address();
-                const z3::expr addr_ = z3::ite(node.arch, addr.arch, addr.trans);
+#if 0
+                    const z3::expr addr_ = z3::ite(node.arch, addr.arch, addr.trans);
+#else
+                    const z3::expr addr_ = addr.arch;
+#endif
                 mem = z3::store(mem, addr_, value_taint);
                 
             } else {
                 
                 for (const llvm::Value *V : I->operands()) {
-                    get_taint(V, value_taint);
+                    value_taint = value_taint || get_taint(V);
                 }
                 
             }

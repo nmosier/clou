@@ -54,14 +54,27 @@ void AEG::constrain_arch() {
 }
 
 void AEG::constrain_arch(const NodeRefSet& window, AssertFunc solver_add) {
-    z3::expr_vector v {context};
-    for (NodeRef exit : exits) {
-        if (window.contains(exit)) {
-            v.push_back(lookup(exit).arch);
+    {
+        z3::expr_vector v {context};
+        for (NodeRef exit : exits) {
+            if (window.contains(exit)) {
+                v.push_back(lookup(exit).arch);
+            }
         }
+        solver_add(z3::exactly(v, 1), "one-exit-arch");
     }
     
-    solver_add(z3::exactly(v, 1), "one-exit-arch");
+    {
+    // at least one non-special arch
+        z3::expr_vector v {context};
+        for (NodeRef ref : window) {
+            const auto& node = lookup(ref);
+            if (!node.is_special()) {
+                v.push_back(lookup(ref).arch);
+            }
+        }
+        solver_add(z3::mk_or(v), "one-regular-arch");
+    }
 }
 
 void AEG::constrain_exec() {
@@ -188,6 +201,19 @@ void AEG::constrain_tfo(const NodeRefSet &window, AssertFunc solver_add) {
             std::stringstream ss;
             ss << "tfo-succ:" << src;
             solver_add(z3::implies(src_node.exec(), z3::atmost2(tfos, 1)), ss.str());
+        }
+        
+        z3::expr_vector tfo_preds {context};
+        for (const auto& edge : get_nodes(Direction::IN, src, Edge::TFO)) {
+            if (window.contains(edge.first)) {
+                tfo_preds.push_back(edge.second);
+            }
+        }
+        
+        if (src != entry) {
+            std::stringstream ss;
+            ss << "tfo-pred:" << src;
+            solver_add(z3::implies(src_node.trans, z3::exactly(tfo_preds, 1)), ss.str());
         }
     }
     

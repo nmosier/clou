@@ -24,6 +24,7 @@
 #include "util/protobuf.h"
 #include "leakage/proto.h"
 #include "util/sem.h"
+#include "aeg/node.h"
 
 extern Transmitters transmitters;
 
@@ -304,6 +305,7 @@ void DetectorJob::output_execution(const Leakage& leak) {
         }
         ofs << "Taints:\n" << taints << "\n";
         ofs << "all attacker taints: " << solver.check(taints) << "\n";
+        
     }
     
     std::stringstream ss;

@@ -2,6 +2,7 @@
 #include "util/timer.h"
 #include "aeg/node.h"
 #include "aeg/aeg.h"
+#include "cfg/expanded.h"
 
 namespace lkg {
 
@@ -104,6 +105,67 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
 #else
     solver.add(translate(aeg.lookup(vec.front()).attacker_taint.value), "universal-leakage-attacker-taint");
     std::cerr << "checking universal leakage: " << solver.check() << "\n";
+#endif
+    
+    
+#if 1
+    // find branch misspeculation
+    
+    {
+        z3_eval;
+        
+        NodeRef branch;
+        for (const NodeRef ref : aeg.po.reverse_postorder()) {
+            if (eval(translate(aeg.lookup(ref).arch))) {
+                std::cerr << "arch: " << *aeg.lookup(ref).inst << "\n";
+                branch = ref;
+            }
+            if (eval(translate(aeg.lookup(ref).trans))) {
+                llvm::errs() << "trans: " << *aeg.lookup(ref).inst->get_inst() << "\n";
+                
+                for (const auto& edge : aeg.graph.fwd.at(branch).at(ref)) {
+                    if (edge->kind == aeg::Edge::Kind::TFO) {
+                        std::cerr << "tfo exists: " << eval(translate(edge->exists)) << "\n";
+                    }
+                }
+
+                break;
+            }
+        }
+        
+        const aeg::Node& branch_node = aeg.lookup(branch);
+        llvm::errs() << *branch_node.inst->get_inst() << "\n";
+        const llvm::BranchInst *BI = llvm::cast<llvm::BranchInst>(branch_node.inst->get_inst());
+
+        std::cerr << "branch predicate is tainted: " << eval(translate(branch_node.attacker_taint.value)) << "\n";
+
+    }
+    
+    {
+        z3::expr_vector taints {ctx()};
+        for (const NodeRef ref : exec_window) {
+            const auto& node = aeg.lookup(ref);
+            if (const llvm::BranchInst *BI = llvm::dyn_cast_or_null<llvm::BranchInst>(node.inst->get_inst())) {
+                auto tfos = aeg.get_nodes(Direction::OUT, ref, aeg::Edge::Kind::TFO);
+                std::erase_if(tfos, [&] (const auto& p) {
+                    return !exec_window.contains(p.first);
+                });
+                z3::expr_vector tfos_exist = z3::transform(ctx(), tfos.begin(), tfos.end(), [&] (const auto& p) {
+                    return p.second && aeg.lookup(p.first).trans;
+                });
+                z3::expr pred = node.arch && node.attacker_taint.value && z3::mk_or(tfos_exist);
+                taints.push_back(pred);
+            }
+        }
+        
+        solver_add(translate(z3::mk_or(taints)), "branch-tainted");
+    }
+    
+    if (solver_check() == z3::unsat) {
+        return;
+    }
+    
+    
 #endif
     
     output_execution(Leakage {
