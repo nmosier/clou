@@ -7,11 +7,15 @@
 #include <llvm/Analysis/MemoryDependenceAnalysis.h>
 #include <llvm/IR/CFG.h>
 #include <llvm/Analysis/AliasAnalysis.h>
+#include <llvm/Support/raw_os_ostream.h>
+#include <llvm/IR/IntrinsicInst.h>
 
 #include <set>
 #include <unordered_map>
+#include <fstream>
 
 #include "attacker-taint.h"
+#include "config.h"
 
 struct Value {
     /** Attacker-controlled instructions. */
@@ -113,6 +117,20 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
             out.insts.insert(LI);
         }
         
+    } else if (llvm::isa<llvm::DbgInfoIntrinsic>(I)) {
+        
+        // do nothing
+        
+    } else if (const llvm::CallBase *CI = llvm::dyn_cast<llvm::CallBase>(I)) {
+        
+        // if the call writes to memory, mark everything as controlled
+        if (!CI->onlyReadsMemory()) {
+            out.stores = std::set<const llvm::Value *>();
+        }
+        
+        // always mark call as attacker-tainted
+        out.insts.insert(CI);
+        
     } else {
         
         // taint is OR of input operands
@@ -136,6 +154,7 @@ void AttackerTaintPass::getAnalysisUsage(llvm::AnalysisUsage& AU) const {
 
 bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     results = AttackerTaintResults();
+    results.F = &F;
     
     llvm::AliasAnalysis AA = std::move(getAnalysis<llvm::AAResultsWrapperPass>().getAAResults());
     
@@ -143,43 +162,46 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     Map ins, outs;
     ins[&F.getEntryBlock().front()] = {.stores = std::set<const llvm::Value *>()};
     
-    do {
-        changed = false;
-        
-#if 0
-        /* transfer ins -> outs */
+    std::ofstream ofs;
+    llvm::raw_os_ostream os {ofs};
+    {
+        std::stringstream ss;
+        ss << output_dir << "/logs/" << F.getName().str() << ".controlled.log";
+        ofs.open(ss.str());
+    }
+    
+    const auto print = [&] () {
+        // print results
+        os << F << "\n";
         for (const llvm::BasicBlock& B : F) {
             for (const llvm::Instruction& I : B) {
-                auto& out = outs[&I];
-                auto new_out = transfer(&I, ins[&I], AA);
-                if (out != new_out) { changed = true; }
-                out = new_out;
-            }
-        }
-        
-        /* meet operator */
-        for (const llvm::BasicBlock& B : F) {
-            {
-                auto& in = ins[&B.front()];
-                Value new_in;
-                for (const llvm::BasicBlock *B_pred : llvm::predecessors(&B)) {
-                    const llvm::Instruction *I = B_pred->getTerminator();
-                    new_in = meet(new_in, outs[I], AA);
+                const auto desc = [&I] (const Map& map) {
+                    if (map.at(&I).insts.contains(&I)) {
+                        return "high";
+                    } else {
+                        return "low";
+                    }
+                };
+                
+                os << I << "\n";
+                os << "store: ";
+                const auto& out = outs.at(&I);
+                if (out.stores) {
+                    for (const llvm::Value *V : *out.stores) {
+                        os << *V << "; ";
+                    }
+                } else {
+                    os << "(universal)";
                 }
-                if (in != new_in) { changed = true; }
-                in = new_in;
-            }
-            
-            for (auto it = std::next(B.begin()); it != B.end(); ++it) {
-                const llvm::Instruction *I_prev = it->getPrevNode();
-                const llvm::Instruction *I = &*it;
-                const auto& out = outs[I_prev];
-                auto& in = ins[I];
-                if (in != out) { changed = true; }
-                ins[I] = outs[I_prev];
+                os << "\n";
+                os << "OUT: " << desc(outs) << "\n";
             }
         }
-#else
+        os << "\n\n\n";
+    };
+    
+    do {
+        changed = false;
         
         for (const llvm::BasicBlock& B : F) {
             for (const llvm::Instruction& I : B) {
@@ -208,27 +230,6 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                         
                     }
                     
-#if 0
-                    {
-                        auto& in = ins[&B.front()];
-                        Value new_in;
-                        for (const llvm::BasicBlock *B_pred : llvm::predecessors(&B)) {
-                            const llvm::Instruction *I = B_pred->getTerminator();
-                            new_in = meet(new_in, outs[I], AA);
-                        }
-                        if (in != new_in) { changed = true; }
-                        in = new_in;
-                    }
-                    
-                    for (auto it = std::next(B.begin()); it != B.end(); ++it) {
-                        const llvm::Instruction *I_prev = it->getPrevNode();
-                        const llvm::Instruction *I = &*it;
-                        const auto& out = outs[I_prev];
-                        auto& in = ins[I];
-                        if (in != out) { changed = true; }
-                        ins[I] = outs[I_prev];
-                    }
-#endif
                 }
                 
                 /* transfer ins -> outs */
@@ -241,37 +242,9 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
             }
         }
         
-#endif
-        // print results
-        llvm::errs() << F << "\n";
-        for (const llvm::BasicBlock& B : F) {
-            for (const llvm::Instruction& I : B) {
-                const auto desc = [&I] (const Map& map) {
-                    if (map.at(&I).insts.contains(&I)) {
-                        return "high";
-                    } else {
-                        return "low";
-                    }
-                };
-                
-                llvm::errs() << I << "\n";
-                llvm::errs() << "store: ";
-                const auto& out = outs.at(&I);
-                if (out.stores) {
-                    for (const llvm::Value *V : *out.stores) {
-                        llvm::errs() << *V << "; ";
-                    }
-                } else {
-                    llvm::errs() << "(universal)";
-                }
-                llvm::errs() << "\n";
-                llvm::errs() << "OUT: " << desc(outs) << "\n";
-            }
-        }
-        llvm::errs() << "\n\n\n";
-        
     } while (changed);
 
+    print();
     
     // initialize results
     for (const llvm::BasicBlock& B : F) {

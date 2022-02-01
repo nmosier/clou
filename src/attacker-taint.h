@@ -1,10 +1,20 @@
 #pragma once
 
+#include <llvm/IR/Value.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Function.h>
+
+#include <cstdlib>
+
 class AttackerTaintResults {
 public:
     bool get(const llvm::Value *V) const {
         if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
-            return insts.contains(I);
+            if (I->getFunction() == F) {
+                return insts.contains(I);
+            } else {
+                return true;
+            }
         } else if (llvm::isa<llvm::Argument>(V)) {
             return true;
         } else if (llvm::isa<llvm::Constant, llvm::BasicBlock>(V)) {
@@ -16,6 +26,9 @@ public:
     }
 
 private:
+    /** Function that this analysis applies to. */
+    const llvm::Function *F;
+    
     /** Tainted instructions .*/
     std::set<const llvm::Instruction *> insts;
     

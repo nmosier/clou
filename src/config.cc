@@ -146,12 +146,17 @@ bool parse_bool_opt(const char *s) {
 
 void initialize_post() {
     /* initialize output directory */
-    if ((::mkdir(output_dir.c_str(), 0777) < 0 && errno != EEXIST)            ||
-        (::mkdir((output_dir + "/logs").c_str(), 0777) < 0 && errno != EEXIST)||
-        (::mkdir((output_dir + "/tmp").c_str(), 0777) < 0 && errno != EEXIST) ||
-        (::mkdir((output_dir + "/lkg").c_str(), 0777) < 0 && errno != EEXIST)) {
-        throw std::system_error(errno, std::generic_category(), "mkdir");
-    }
+    const auto make_dir = [] (const std::string& path) {
+        if (::mkdir(path.c_str(), 0777) < 0 && errno != EEXIST) {
+            throw std::system_error(errno, std::generic_category(), util::to_string("mkdir(", path, ")"));
+        }
+    };
+    
+    make_dir(output_dir);
+    make_dir(output_dir + "/logs");
+    make_dir(output_dir + "/tmp");
+    make_dir(output_dir + "/lkg");
+    make_dir(output_dir + "/logs");
     
     {
         std::stringstream ss;
