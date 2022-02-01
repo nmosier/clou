@@ -16,6 +16,7 @@ add_library(clou MODULE
   graph.h
   noderef.cc       noderef.h
   db.cc db.h
+  attacker-taint.cc attacker-taint.h
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>

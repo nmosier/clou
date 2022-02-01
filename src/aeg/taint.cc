@@ -3,8 +3,11 @@
 #include "taint.h"
 #include "aeg.h"
 #include "cfg/expanded.h"
+#include "attacker-taint.h"
 
 namespace aeg {
+
+#if 0
 
 void AEG::construct_attacker_taint() {
     z3::expr mem = z3::const_array(context->int_sort(), context->bool_val(true));
@@ -92,5 +95,21 @@ void AEG::construct_attacker_taint() {
         }
     }
 }
+
+#else
+
+void AEG::construct_attacker_taint() {
+    for (NodeRef ref : node_range()) {
+        Node& node = lookup(ref);
+        
+        if (const llvm::Instruction *I = node.inst->get_inst()) {
+            node.attacker_taint.value = context->bool_val(attacker_taint.get(I));
+        } else {
+            node.attacker_taint.value = context->bool_val(false);
+        }
+    }
+}
+
+#endif
 
 }

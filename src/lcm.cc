@@ -34,6 +34,7 @@
 #include "util/scope.h"
 #include "util/timer.h"
 #include "util/algorithm.h"
+#include "attacker-taint.h"
 
 Timer timer {nullptr};
 std::string get_time() {
@@ -57,8 +58,9 @@ struct LCMPass: public llvm::ModulePass {
     LCMPass(): llvm::ModulePass(ID) {}
     
     virtual void getAnalysisUsage(llvm::AnalysisUsage& AU) const override {
-        AU.addRequiredTransitive<llvm::AAResultsWrapperPass>();
+        AU.addRequired<llvm::AAResultsWrapperPass>();
         AU.addRequired<llvm::CallGraphWrapperPass>();
+        AU.addRequired<AttackerTaintPass>();
     }
     
     virtual bool runOnModule(llvm::Module& M) override {
@@ -99,7 +101,7 @@ struct LCMPass: public llvm::ModulePass {
         for (llvm::CallGraphNode *scc_node : scc) {
             if (llvm::Function *F = scc_node->getFunction()) {
                 if (!F->isDeclaration()) {
-                    llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults();
+                    llvm::AliasAnalysis AA = std::move(getAnalysis<llvm::AAResultsWrapperPass>(*F).getAAResults());
                     open_log(F->getName().str());
                     timer = Timer(nullptr); // reset timer
                     runOnFunction(*F, AA, TransmitterOutputIt(transmitters, transmitters.end()));
@@ -112,6 +114,8 @@ struct LCMPass: public llvm::ModulePass {
     template <typename OutputIt>
     void runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA, OutputIt out) {
         const std::string func = F.getName().str();
+        
+        AttackerTaintResults attacker_taint = getAnalysis<AttackerTaintPass>(F).getResults();
         
         llvm::errs() << "processing function '" << F.getName() << "'\n";
         
@@ -224,7 +228,7 @@ struct LCMPass: public llvm::ModulePass {
             
             logv(1, "Constructing AEG for " << F.getName() << "\n");
             client.send_step("aeg", F.getName().str());
-            aeg::AEG aeg {cfg_expanded, AA};
+            aeg::AEG aeg {cfg_expanded, AA, attacker_taint};
             aeg.construct(AA, rob_size);
             
             // DEBUG INFO
