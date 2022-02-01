@@ -18,37 +18,38 @@
 #include "config.h"
 
 struct Value {
-    /** Attacker-controlled instructions. */
-    std::set<const llvm::Instruction *> insts;
+    using Insts = std::set<const llvm::Instruction *>;
+    using Stores = std::set<const llvm::Value *>;
     
+    /** Attacker-controlled instructions. */
+    Insts insts;
+
     /** Non-attacker-controlled stores. Nullopt indicates universal set. */
-    std::optional<std::set<const llvm::Value *>> stores;
+    Stores stores;
     
     bool operator==(const Value& other) const = default;
+    
+    Value() = delete;
+    Value(const Insts& insts, const Stores& stores): insts(insts), stores(stores) {}
 };
 using Map = std::unordered_map<const llvm::Instruction *, Value>;
 
 Value meet(const Value& a, const Value& b, llvm::AliasAnalysis& AA) {
-    Value out;
+    Value out {Value::Insts(), Value::Stores()};
+    
+    // union controlled instructions
     std::set_union(a.insts.begin(), a.insts.end(), b.insts.begin(), b.insts.end(), std::inserter(out.insts, out.insts.end()));
     
-    if (!a.stores) {
-        out.stores = b.stores;
-    } else if (!b.stores) {
-        out.stores = a.stores;
-    } else {
-        
-        out.stores.emplace();
-        for (const llvm::Value *VA : *a.stores) {
-            const auto VB_it = std::find_if(b.stores->begin(), b.stores->end(), [&AA, VA] (const llvm::Value *VB) -> bool {
-                return AA.alias(VA, VB) == llvm::AliasResult::MustAlias;
-            });
-            if (VB_it != b.stores->end()) {
-                out.stores->insert(VA);
-                out.stores->insert(*VB_it);
-            }
+    // only include pairs that must alias
+    
+    for (const llvm::Value *VA : a.stores) {
+        const auto VB_it = std::find_if(b.stores.begin(), b.stores.end(), [&AA, VA] (const llvm::Value *VB) -> bool {
+            return AA.alias(VA, VB) == llvm::AliasResult::MustAlias;
+        });
+        if (VB_it != b.stores.end()) {
+            out.stores.insert(VA);
+            out.stores.insert(*VB_it);
         }
-        
     }
 
     return out;
@@ -78,26 +79,46 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
         const bool taint = in_taint(V, in);
         if (taint) {
             // erase 'may alias' stores
-            if (out.stores) {
-                std::erase_if(*out.stores, [P, &AA] (const llvm::Value *V) -> bool {
-                    return AA.alias(P, V) != llvm::NoAlias;
-                });
-            } else {
-                out.stores.emplace();
-            }
+            std::erase_if(out.stores, [P, &AA] (const llvm::Value *V) -> bool {
+                llvm::AliasResult alias_result = AA.alias(P, V);
+                switch (alias_result) {
+                    case llvm::NoAlias: return false;
+                    case llvm::MustAlias: return true;
+                    case llvm::MayAlias: {
+                        const auto is_integral = [] (const llvm::Value *V) -> bool {
+                            if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(V)) {
+                                const llvm::PointerType *PT = AI->getType();
+                                if (PT->getPointerElementType()->isIntegerTy()) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        };
+                        
+                        const auto is_gep = [] (const llvm::Value *V) -> bool {
+                            return llvm::isa<llvm::GetElementPtrInst>(V);
+                        };
+                        
+                        if ((is_integral(V) && is_gep(P)) || (is_integral(P) && is_gep(V))) {
+                            return false;
+                        }
+                        
+                        return true;
+                    }
+                        
+                    default: std::abort();
+                }
+                
+                return AA.alias(P, V) != llvm::NoAlias;
+            });
         } else {
             // erase 'must alias' stores
-            if (out.stores) {
-                std::erase_if(*out.stores, [P, &AA] (const llvm::Value *V) -> bool {
-                    return AA.alias(P, V) == llvm::MustAlias;
-                });
-            } else {
-                out.stores.emplace();
-            }
-
+            std::erase_if(out.stores, [P, &AA] (const llvm::Value *V) -> bool {
+                return AA.alias(P, V) == llvm::MustAlias;
+            });
             
             // add new store
-            out.stores->insert(P);
+            out.stores.insert(P);
         }
     } else if (const llvm::LoadInst *LI = llvm::dyn_cast<llvm::LoadInst>(I)) {
         // check if loaded value is ok
@@ -106,7 +127,7 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
         const llvm::Value *L = LI->getPointerOperand();
         
         bool taint = true;
-        for (const llvm::Value *S : in.stores.value_or(std::set<const llvm::Value *>())) {
+        for (const llvm::Value *S : in.stores) {
             if (AA.alias(L, S) == llvm::MustAlias) {
                 taint = false;
                 break;
@@ -152,6 +173,15 @@ void AttackerTaintPass::getAnalysisUsage(llvm::AnalysisUsage& AU) const {
     AU.setPreservesAll();
 }
 
+template <class Func>
+void AttackerTaintPass::for_each_instruction(const llvm::Function& F, Func func) {
+    for (const llvm::BasicBlock& B : F) {
+        for (const llvm::Instruction& I : B) {
+            func(&I);
+        }
+    }
+}
+
 bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     results = AttackerTaintResults();
     results.F = &F;
@@ -160,7 +190,28 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     
     bool changed;
     Map ins, outs;
-    ins[&F.getEntryBlock().front()] = {.stores = std::set<const llvm::Value *>()};
+    
+    // TOP
+    Value top {
+        Value::Insts(),
+        Value::Stores(),
+    };
+    for_each_instruction(F, [&top] (const llvm::Instruction *I) {
+        if (const llvm::StoreInst *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
+            const llvm::Value *V = SI->getPointerOperand();
+            top.stores.insert(V);
+        }
+    });
+    for_each_instruction(F, [&top, &ins, &outs] (const llvm::Instruction *I) {
+        ins.insert_or_assign(I, top);
+        outs.insert_or_assign(I, top);
+    });
+    
+    // initialize IN[ENTRY]
+    ins.insert_or_assign(&F.getEntryBlock().front(), Value {
+        Value::Insts(),
+        Value::Stores(),
+    });
     
     std::ofstream ofs;
     llvm::raw_os_ostream os {ofs};
@@ -186,12 +237,8 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                 os << I << "\n";
                 os << "store: ";
                 const auto& out = outs.at(&I);
-                if (out.stores) {
-                    for (const llvm::Value *V : *out.stores) {
-                        os << *V << "; ";
-                    }
-                } else {
-                    os << "(universal)";
+                for (const llvm::Value *V : out.stores) {
+                    os << *V << "; ";
                 }
                 os << "\n";
                 os << "OUT: " << desc(outs) << "\n";
@@ -211,11 +258,11 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                     // if block entry
                     if (&I == &B.front()) {
                         
-                        auto& in = ins[&I];
-                        Value new_in;
+                        auto& in = ins.at(&I);
+                        Value new_in = top;
                         for (const llvm::BasicBlock *B_pred : llvm::predecessors(&B)) {
                             const llvm::Instruction *I = B_pred->getTerminator();
-                            new_in = meet(new_in, outs[I], AA);
+                            new_in = meet(new_in, outs.at(I), AA);
                         }
                         if (in != new_in) { changed = true; }
                         in = new_in;
@@ -223,10 +270,10 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                     } else {
                         
                         const llvm::Instruction *I_prev = I.getPrevNode();
-                        const auto& out = outs[I_prev];
-                        auto& in = ins[&I];
+                        const auto& out = outs.at(I_prev);
+                        auto& in = ins.at(&I);
                         if (in != out) { changed = true; }
-                        ins[&I] = outs[I_prev];
+                        ins.at(&I) = outs.at(I_prev);
                         
                     }
                     
@@ -234,8 +281,8 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                 
                 /* transfer ins -> outs */
                 {
-                    auto& out = outs[&I];
-                    auto new_out = transfer(&I, ins[&I], AA);
+                    auto& out = outs.at(&I);
+                    auto new_out = transfer(&I, ins.at(&I), AA);
                     if (out != new_out) { changed = true; }
                     out = new_out;
                 }

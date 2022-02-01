@@ -46,4 +46,8 @@ struct AttackerTaintPass final: public llvm::FunctionPass {
     virtual void getAnalysisUsage(llvm::AnalysisUsage& AU) const override;
     
     virtual bool runOnFunction(llvm::Function& F) override;
+    
+private:
+    template <class Func>
+    static void for_each_instruction(const llvm::Function& F, Func func);
 };
