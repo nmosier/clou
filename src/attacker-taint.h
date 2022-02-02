@@ -8,22 +8,7 @@
 
 class AttackerTaintResults {
 public:
-    bool get(const llvm::Value *V) const {
-        if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
-            if (I->getFunction() == F) {
-                return insts.contains(I);
-            } else {
-                return true;
-            }
-        } else if (llvm::isa<llvm::Argument>(V)) {
-            return true;
-        } else if (llvm::isa<llvm::Constant, llvm::BasicBlock>(V)) {
-            return false;
-        } else {
-            llvm::errs() << "unhandled value: " << *V << "\n";
-            std::abort();
-        }
-    }
+    bool get(const llvm::Value *V) const;
 
 private:
     /** Function that this analysis applies to. */

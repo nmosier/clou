@@ -182,6 +182,20 @@ void AttackerTaintPass::for_each_instruction(const llvm::Function& F, Func func)
     }
 }
 
+bool AttackerTaintResults::get(const llvm::Value *V) const {
+    if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
+        assert(I->getFunction() == F);
+        return insts.contains(I);
+    } else if (llvm::isa<llvm::Argument>(V)) {
+        return true;
+    } else if (llvm::isa<llvm::Constant, llvm::BasicBlock>(V)) {
+        return false;
+    } else {
+        llvm::errs() << "unhandled value: " << *V << "\n";
+        std::abort();
+    }
+}
+
 bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     results = AttackerTaintResults();
     results.F = &F;
