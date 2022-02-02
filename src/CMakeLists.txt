@@ -7,6 +7,7 @@ add_subdirectory(aeg)
 add_subdirectory(leakage)
 add_subdirectory(util)
 add_subdirectory(mon)
+add_subdirectory(passes)
 
 add_library(clou MODULE
   lcm.cc           lcm.h
@@ -16,7 +17,6 @@ add_library(clou MODULE
   graph.h
   noderef.cc       noderef.h
   db.cc db.h
-  attacker-taint.cc attacker-taint.h
   $<TARGET_OBJECTS:cfg_objs>
   $<TARGET_OBJECTS:util_objs>
   $<TARGET_OBJECTS:aeg_objs>
@@ -24,10 +24,9 @@ add_library(clou MODULE
   $<TARGET_OBJECTS:proto>
   )
 target_compile_options(clou PRIVATE -Wno-format-security -Wno-gnu-zero-variadic-macro-arguments -g -Wthread-safety-analysis)
-target_link_libraries(clou PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES})
+target_link_libraries(clou PRIVATE proto ${Z3_LIBRARIES} ${LIBPROFILER_LIBRARIES} attacker_taint)
 target_compile_definitions(clou PRIVATE CLOU=1)
 if(APPLE)
   target_link_options(clou PRIVATE -undefined dynamic_lookup)
 endif()
 
-add_subdirectory(passes)

@@ -14,11 +14,11 @@ add_pass(print_debug)
 # add_pass(attacker_taint)
 add_pass(print_alias)
 
-add_library(attacker_taint MODULE
-  ../attacker-taint.cc
-  ../attacker-taint.h
+add_library(attacker_taint SHARED
+  attacker-taint.cc
+  attacker-taint.h
   )
 if(APPLE)
   target_link_options(attacker_taint PRIVATE -undefined dynamic_lookup)
 endif()
-
+target_include_directories(attacker_taint INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
