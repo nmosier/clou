@@ -15,7 +15,9 @@
 #include <fstream>
 
 #include "attacker-taint.h"
-#include "config.h"
+#if CLOU
+# include "config.h"
+#endif
 
 struct Value {
     using Insts = std::set<const llvm::Instruction *>;
@@ -258,6 +260,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
         Value::Stores(),
     });
     
+#if CLOU
     std::ofstream ofs;
     llvm::raw_os_ostream os {ofs};
     {
@@ -301,6 +304,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
             }
         }
     };
+#endif
     
     do {
         changed = false;
@@ -346,7 +350,9 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
         
     } while (changed);
 
+#if CLOU
     print();
+#endif
     
     // initialize results
     for (const llvm::BasicBlock& B : F) {
