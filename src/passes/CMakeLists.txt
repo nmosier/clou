@@ -22,3 +22,12 @@ if(APPLE)
   target_link_options(attacker_taint PRIVATE -undefined dynamic_lookup)
 endif()
 target_include_directories(attacker_taint INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(ssb_control SHARED
+  ssb-control.cc
+  ssb-control.h
+  )
+if(APPLE)
+  target_link_options(ssb_control PRIVATE -undefined dynamic_lookup)
+endif()
+target_include_directories(ssb_control INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
