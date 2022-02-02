@@ -5,6 +5,7 @@
 #include <llvm/IR/Function.h>
 
 #include <cstdlib>
+#include <set>
 
 class AttackerTaintResults {
 public:
