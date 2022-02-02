@@ -308,6 +308,43 @@ void DetectorJob::output_execution(const Leakage& leak) {
         
     }
     
+    // print short debug locations
+    {
+        std::stringstream ss;
+        ss << output_dir << "/test.out";
+        std::ofstream ofs {ss.str(), std::ofstream::app};
+        for (auto it = actions.rbegin(); it != actions.rend(); ++it) {
+            const Action& action = *it;
+            const auto print_node = [&] (NodeRef ref) {
+                const aeg::Node& node = aeg.lookup(ref);
+                if (node.is_special()) {
+                    if (ref == aeg.entry) {
+                        ofs << "ENTRY";
+                    } else if (aeg.exits.contains(ref)) {
+                        ofs << "EXIT";
+                    } else {
+                        std::abort();
+                    }
+                } else {
+                    const llvm::Instruction *I = node.inst->get_inst();
+                    const llvm::DebugLoc& DL = I->getDebugLoc();
+                    if (DL) {
+                        ofs << DL.getLine() << ":" << DL.getCol();
+                    } else {
+                        ofs << "(none)";
+                    }
+                }
+                ofs << ";";
+            };
+            if (it == actions.rbegin()) {
+                print_node(action.src);
+            }
+            ofs << action.edge << ";";
+            print_node(action.dst);
+        }
+        ofs << "\n";
+    }
+    
     std::stringstream ss;
     ss << output_dir << "/" << name();
     for (const NodeRef ref : leak.vec) {

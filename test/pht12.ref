@@ -1,2 +1,2 @@
-LOAD   %11 = load i64, i64* %3, align 8; LOAD   %15 = load i8, i8* %14, align 1; LOAD   %20 = load i8, i8* %19, align 1
-LOAD   %12 = load i64, i64* %4, align 8; LOAD   %15 = load i8, i8* %14, align 1; LOAD   %20 = load i8, i8* %19, align 1
+10:37;ADDR_GEP;10:26;ADDR;10:19;
+10:33;ADDR_GEP;10:26;ADDR;10:19;
