@@ -22,9 +22,9 @@
 #include "aeg/node.h"
 #include "inst.h"
 #include "util/timer.h"
+#include "lcm.h"
 
 class CFG_Expanded;
-class AttackerTaintResults;
 
 namespace lkg {
 class DetectorJob;
@@ -36,7 +36,7 @@ class AEG {
 public:
     const CFG_Expanded& po; /*!<  The input CFG. The AEG constructs nodes in a 1:1 correspondence and heavily uses the preds/succs relations of this CFG. */
     llvm::AliasAnalysis& AA;
-    const AttackerTaintResults& attacker_taint;
+    const AttackerTaintResultMap& attacker_taint;
     Context context; /*!<  The context for AEG construction. */
 
   using Node = aeg::Node;
@@ -59,7 +59,7 @@ public:
     const Node& lookup(NodeRef ref) const { return nodes.at(static_cast<unsigned>(ref)); }
     Node& lookup(NodeRef ref) { return nodes.at(static_cast<unsigned>(ref)); }
     
-    explicit AEG(const CFG_Expanded& po, llvm::AliasAnalysis& aa, const AttackerTaintResults& attacker_taint): po(po), AA(aa), attacker_taint(attacker_taint), context(), constraints() {}
+    explicit AEG(const CFG_Expanded& po, llvm::AliasAnalysis& aa, const AttackerTaintResultMap& attacker_taint): po(po), AA(aa), attacker_taint(attacker_taint) {}
     
     void dump_graph(std::ostream& os) const;
     void dump_graph(const std::string& path) const;

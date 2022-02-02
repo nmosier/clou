@@ -53,3 +53,6 @@ namespace std {
 
 using Transmitters = std::unordered_set<const llvm::Instruction *>;
 using TransmitterOutputIt = std::insert_iterator<Transmitters>;
+
+class AttackerTaintResults;
+using AttackerTaintResultMap = std::unordered_map<const llvm::Function *, AttackerTaintResults>;

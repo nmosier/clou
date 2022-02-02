@@ -103,7 +103,7 @@ void AEG::construct_attacker_taint() {
         Node& node = lookup(ref);
         
         if (const llvm::Instruction *I = node.inst->get_inst()) {
-            node.attacker_taint.value = context->bool_val(attacker_taint.get(I));
+            node.attacker_taint.value = context->bool_val(attacker_taint.at(I->getFunction()).get(I));
         } else {
             node.attacker_taint.value = context->bool_val(false);
         }

@@ -63,24 +63,32 @@ struct LCMPass: public llvm::ModulePass {
         AU.addRequired<AttackerTaintPass>();
     }
     
+    AttackerTaintResultMap attacker_taint;
+    
     virtual bool runOnModule(llvm::Module& M) override {
-      /* check if filename matches regex */
-      bool match = false;
-      if (file_regex.empty()) {
-	match = true;
-      } else {
-	if (std::regex_match(M.getSourceFileName(), std::regex {file_regex})) {
-	  match = true;
-	}
-      }
-      if (!match) {
-	std::cerr << "skipping file " << M.getSourceFileName() << "\n";
-	return false;
-      }
+        /* check if filename matches regex */
+        bool match = false;
+        if (file_regex.empty()) {
+            match = true;
+        } else {
+            if (std::regex_match(M.getSourceFileName(), std::regex {file_regex})) {
+                match = true;
+            }
+        }
+        if (!match) {
+            std::cerr << "skipping file " << M.getSourceFileName() << "\n";
+            return false;
+        }
 
       
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
+        
+        for (llvm::Function& F : M) {
+            if (!F.isDeclaration()) {
+                attacker_taint.emplace(&F, getAnalysis<AttackerTaintPass>(F).getResults());
+            }
+        }
         
         llvm::CallGraph& CG = getAnalysis<llvm::CallGraphWrapperPass>().getCallGraph();
         for (llvm::scc_iterator<llvm::CallGraph *> scc_it = llvm::scc_begin(&CG);
@@ -114,8 +122,6 @@ struct LCMPass: public llvm::ModulePass {
     template <typename OutputIt>
     void runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA, OutputIt out) {
         const std::string func = F.getName().str();
-        
-        AttackerTaintResults attacker_taint = getAnalysis<AttackerTaintPass>(F).getResults();
         
         llvm::errs() << "processing function '" << F.getName() << "'\n";
         
