@@ -73,6 +73,42 @@ bool in_taint(const llvm::Value *V, const Value& in) {
     }
 }
 
+llvm::AliasResult alias(const llvm::Value *P, const llvm::Value *V, llvm::AliasAnalysis& AA) {
+    llvm::AliasResult alias_result = AA.alias(P, V);
+    switch (alias_result) {
+        case llvm::NoAlias:
+        case llvm::MustAlias:
+            return alias_result;
+            
+        case llvm::MayAlias: {
+            
+            // This is nasty. Should simplify this later.
+            
+            const auto is_integral = [] (const llvm::Value *V) -> bool {
+                if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(V)) {
+                    const llvm::PointerType *PT = AI->getType();
+                    if (PT->getPointerElementType()->isIntegerTy()) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            
+            const auto is_gep = [] (const llvm::Value *V) -> bool {
+                return llvm::isa<llvm::GetElementPtrInst>(V);
+            };
+            
+            if ((is_integral(V) && is_gep(P)) || (is_integral(P) && is_gep(V))) {
+                return llvm::NoAlias;
+            }
+            
+            return alias_result;
+        }
+            
+        default: std::abort();
+    }
+}
+
 Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis& AA) {
     Value out = in;
     
@@ -85,39 +121,7 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
         if (taint) {
             // erase 'may alias' stores
             std::erase_if(out.stores, [P, &AA] (const llvm::Value *V) -> bool {
-                llvm::AliasResult alias_result = AA.alias(P, V);
-                switch (alias_result) {
-                    case llvm::NoAlias: return false;
-                    case llvm::MustAlias: return true;
-                    case llvm::MayAlias: {
-                        
-                        // This is nasty. Should simplify this later.
-                        
-                        const auto is_integral = [] (const llvm::Value *V) -> bool {
-                            if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(V)) {
-                                const llvm::PointerType *PT = AI->getType();
-                                if (PT->getPointerElementType()->isIntegerTy()) {
-                                    return true;
-                                }
-                            }
-                            return false;
-                        };
-                        
-                        const auto is_gep = [] (const llvm::Value *V) -> bool {
-                            return llvm::isa<llvm::GetElementPtrInst>(V);
-                        };
-                        
-                        if ((is_integral(V) && is_gep(P)) || (is_integral(P) && is_gep(V))) {
-                            return false;
-                        }
-                        
-                        return true;
-                    }
-                        
-                    default: std::abort();
-                }
-                
-                return AA.alias(P, V) != llvm::NoAlias;
+                return alias(P, V, AA) != llvm::NoAlias;
             });
         } else {
             // erase 'must alias' stores
@@ -151,10 +155,29 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
         // do nothing
         
     } else if (const llvm::CallBase *CI = llvm::dyn_cast<llvm::CallBase>(I)) {
+        bool only_local_stores = false;
         
-        // if the call writes to memory, mark everything as controlled
-        if (!CI->onlyReadsMemory()) {
-            out.stores = std::set<const llvm::Value *>();
+        if (CI->onlyReadsMemory()) {
+            only_local_stores = true;
+        } else {
+            const llvm::Function *callee = CI->getCalledFunction();
+            if (callee && !callee->isDeclaration()) {
+                only_local_stores = true;
+                for (const llvm::BasicBlock& callee_B : *callee) {
+                    for (const llvm::Instruction& callee_I : callee_B) {
+                        if (const llvm::StoreInst *callee_SI = llvm::dyn_cast<llvm::StoreInst>(&callee_I)) {
+                            if (!llvm::isa<llvm::AllocaInst>(callee_SI->getPointerOperand())) {
+                                only_local_stores = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (!only_local_stores) {
+            out.stores.clear();
         }
         
         // always mark call as attacker-tainted
@@ -267,6 +290,16 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
             }
         }
         os << "\n\n\n";
+        
+        // DEBUG: print which stores may alias
+        for (auto it1 = top.stores.begin(); it1 != top.stores.end(); ++it1) {
+            for (auto it2 = std::next(it1); it2 != top.stores.end(); ++it2) {
+                const auto result = alias(*it1, *it2, AA);
+                if (result != llvm::NoAlias) {
+                    os << **it1 << " - " << **it2 << " : " << result << "\n";
+                }
+            }
+        }
     };
     
     do {
