@@ -59,7 +59,12 @@ bool in_taint(const llvm::Value *V, const Value& in) {
     if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(V)) {
         return in.insts.contains(I);
     } else if (llvm::isa<llvm::Argument>(V)) {
-        return true;
+        // If pointer, assume that it's not controlled.
+        if (V->getType()->isPointerTy()) {
+            return false;
+        } else {
+            return true;
+        }
     } else if (llvm::isa<llvm::Constant, llvm::BasicBlock, llvm::MetadataAsValue>(V)) {
         return false;
     } else {
@@ -85,6 +90,9 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
                     case llvm::NoAlias: return false;
                     case llvm::MustAlias: return true;
                     case llvm::MayAlias: {
+                        
+                        // This is nasty. Should simplify this later.
+                        
                         const auto is_integral = [] (const llvm::Value *V) -> bool {
                             if (const llvm::AllocaInst *AI = llvm::dyn_cast<llvm::AllocaInst>(V)) {
                                 const llvm::PointerType *PT = AI->getType();
