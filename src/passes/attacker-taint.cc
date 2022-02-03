@@ -233,7 +233,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     results = AttackerTaintResults();
     results.F = &F;
     
-    llvm::AliasAnalysis AA = std::move(getAnalysis<llvm::AAResultsWrapperPass>().getAAResults());
+    llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
     
     bool changed;
     Map ins, outs;
@@ -254,11 +254,13 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
         outs.insert_or_assign(I, top);
     });
     
+    const llvm::Instruction *entry = &F.getEntryBlock().front();
+    
     // initialize IN[ENTRY]
-    ins.insert_or_assign(&F.getEntryBlock().front(), Value {
+    ins.at(entry) = Value {
         Value::Insts(),
         Value::Stores(),
-    });
+    };
     
 #if CLOU
     std::ofstream ofs;
@@ -313,7 +315,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
             for (const llvm::Instruction& I : B) {
                 
                 /* meet operator */
-                {
+                if (&I != entry) {
                     // if block entry
                     if (&I == &B.front()) {
                         
