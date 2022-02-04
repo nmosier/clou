@@ -296,16 +296,11 @@ void DetectorJob::output_execution(const Leakage& leak) {
         ofs << s;
         
         ofs << "\n";
-        z3::expr_vector taints {local_ctx};
         for (NodeRef ref : leak.vec) {
             const auto& node = aeg.lookup(ref);
-            const z3::expr taint = node.attacker_taint.value;
-            ofs << ref << " " << eval(taint) << "\n";
-            taints.push_back(z3::translate(taint, local_ctx));
+            const bool taint = node.attacker_taint;
+            ofs << ref << " " << taint << "\n";
         }
-        ofs << "Taints:\n" << taints << "\n";
-        ofs << "all attacker taints: " << solver.check(taints) << "\n";
-        
     }
     
     // print short debug locations

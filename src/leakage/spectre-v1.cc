@@ -82,10 +82,14 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
         }
     }
     
+    // ensure attacker taints
+    if (!aeg.lookup(vec.back()).attacker_taint) {
+        return;
+    }
+    
     if (mode == CheckMode::FAST) {
         throw lookahead_found();
     }
-    
     
     const z3::eval eval = solver_eval();
     
@@ -93,20 +97,8 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     logv(1, "spectre-v1 leak found: " << vec << "\n");
     
     const NodeRef universal_transmitter = vec.front();
-    
+            
     std::reverse(vec.begin(), vec.end());
-    
-    // ensure attacker taints
-#if 0
-    z3_scope;
-    for (NodeRef ref : vec) {
-        solver.add(translate(aeg.lookup(ref).attacker_taint.value));
-    }
-#else
-    solver.add(translate(aeg.lookup(vec.front()).attacker_taint.value), "universal-leakage-attacker-taint");
-    std::cerr << "checking universal leakage: " << solver.check() << "\n";
-#endif
-    
     
 #if 1
     // find branch misspeculation
@@ -154,7 +146,7 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
                 z3::expr_vector tfos_exist = z3::transform(ctx(), tfos.begin(), tfos.end(), [&] (const auto& p) {
                     return p.second && aeg.lookup(p.first).trans;
                 });
-                z3::expr pred = node.arch && node.attacker_taint.value && z3::mk_or(tfos_exist);
+                z3::expr pred = node.arch && node.attacker_taint && z3::mk_or(tfos_exist);
                 taints.push_back(pred);
             }
         }
