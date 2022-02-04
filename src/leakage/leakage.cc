@@ -464,6 +464,8 @@ void DetectorJob::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::funct
             default: std::abort();
         }
         
+        std::cerr << "here: " << store_pair.first << "\n";
+        
         if (mode == CheckMode::SLOW && use_lookahead && !lookahead([&] () {
             func(store, CheckMode::FAST);
         })) {
@@ -975,7 +977,10 @@ void DetectorJob::precompute_rf(NodeRef load) {
         
         if (aeg.lookup(ref).may_write()) {
             switch (aeg.compute_alias(load, ref)) {
-                case llvm::NoAlias: break;
+                case llvm::NoAlias:
+#if 0
+                    break;
+#endif
                     
                 case llvm::MayAlias:
                 case llvm::MustAlias:
@@ -1016,7 +1021,13 @@ void DetectorJob::precompute_rf(NodeRef load) {
             ++filtered;
         }
     }
-    logv(1, __FUNCTION__ << ": filtered " << filtered << "\n");
+    {
+        std::stringstream ss;
+        for (const auto& pair : out) {
+            ss << " " << pair.first;
+        }
+        logv(1, __FUNCTION__ << ": filtered " << filtered << " {" << ss.str() << "}\n");
+    }
 }
 
 const DetectorJob::Sources& DetectorJob::rf_sources(NodeRef load) {
@@ -1069,8 +1080,7 @@ void DetectorJob::traceback_deps(NodeRef from_ref, std::function<void (const Nod
     traceback_deps_rec(deps.rbegin(), deps.rend(), vec, from_ref, func, mode);
 }
 
-void DetectorJob::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref,
-                                  std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
+void DetectorJob::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     const auto push_ref = util::push(vec, from_ref);
     
     if (mode == CheckMode::SLOW) {
@@ -1096,7 +1106,7 @@ void DetectorJob::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeR
             }
         }
         func(vec, mode);
-        return;
+        goto label;
     }
     
     // try committing load
@@ -1159,6 +1169,7 @@ label:
      */
     assert(!vec.empty());
     if (from_ref != vec.front()) {
+        std::cerr << "checking TB " << from_ref << "\n";
         traceback(from_ref, aeg::ExecMode::TRANS, [&] (NodeRef to_ref, CheckMode mode) {
             if (mode == CheckMode::SLOW) {
                 logv(1, "traceback " << to_ref << "-TB->" << from_ref << "\n");
