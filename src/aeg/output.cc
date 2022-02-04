@@ -141,7 +141,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
                 ss << "(" << eval(*node.xsaccess_order) << ") ";
             }
             
-            ss << "taint(" << eval(node.attacker_taint.value) << ")";
+            ss << "taint(" << (node.attacker_taint ? "c" : "uc") << ")";
             
             std::string color;
             if (eval(node.arch)) {

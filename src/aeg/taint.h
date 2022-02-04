@@ -4,11 +4,13 @@
 
 namespace aeg {
 
-struct Taint {
-    z3::expr value;
-    // z3::expr memory;
-    
-    Taint(z3::context& ctx): value(ctx) {}
+class Taint {
+public:
+    bool get() const { return value; }
+    void set(bool value) { this->value = value; }
+    operator bool() const { return get(); }
+private:
+    bool value = true;
 };
 
 }
