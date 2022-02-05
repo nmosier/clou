@@ -1,8 +1,10 @@
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Operator.h>
+#include <llvm/IR/IntrinsicInst.h>
 
 #include "llvm.h"
 
@@ -257,5 +259,40 @@ llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::Debu
     return os;
 }
 
+
+unsigned get_min_loop_iterations(const llvm::Loop *L) {
+    std::unordered_set<const llvm::BasicBlock *> blocks;
+    std::copy(L->block_begin(), L->block_end(), std::inserter(blocks, blocks.end()));
+    for (const llvm::Loop *subloop : *L) {
+        for (const llvm::BasicBlock *subblock : subloop->blocks()) {
+            blocks.erase(subblock);
+        }
+    }
+    
+    for (const llvm::BasicBlock *B : blocks) {
+        for (const llvm::Instruction& I : *B) {
+            if (const llvm::IntrinsicInst *II = llvm::dyn_cast<llvm::IntrinsicInst>(&I)) {
+                if (II->getIntrinsicID() == llvm::Intrinsic::var_annotation) {
+                    const llvm::Value *V = llvm::cast<llvm::GEPOperator>(II->getArgOperand(1));
+                    const llvm::GlobalVariable *GV = llvm::cast<llvm::GlobalVariable>(V);
+                    const llvm::ConstantDataArray *CDA = llvm::cast<llvm::ConstantDataArray>(GV->getInitializer());
+                    const std::string s = CDA->getAsCString().str();
+                    
+                    std::string_view sv = s;
+                    const auto pos = sv.find('=');
+                    if (pos != std::string_view::npos) {
+                        std::string_view key = sv.substr(0, pos);
+                        std::string_view value = sv.substr(pos + 1);
+                        if (key == "loop.min") {
+                            return std::stoul(std::string(value));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
 
 }

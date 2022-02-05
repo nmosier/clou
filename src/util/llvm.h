@@ -7,6 +7,7 @@
 
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/Analysis/LoopInfo.h>
 
 namespace llvm {
 
@@ -50,3 +51,9 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Instruction& I) {
    return llvm_to_cxx_os(os, I);
 }
 
+
+namespace llvm {
+
+unsigned get_min_loop_iterations(const llvm::Loop *L);
+
+}
