@@ -14,10 +14,13 @@
 #include <unordered_map>
 #include <fstream>
 
+
 #include "attacker-taint.h"
 #if CLOU
 # include "config.h"
 #endif
+
+#include "dataflow.h"
 
 struct Value {
     using Insts = std::set<const llvm::Instruction *>;
@@ -35,6 +38,18 @@ struct Value {
     Value(const Insts& insts, const Stores& stores): insts(insts), stores(stores) {}
 };
 using Map = std::unordered_map<const llvm::Instruction *, Value>;
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Value& value) {
+    os << "Insts:\n";
+    for (const llvm::Instruction *I : value.insts) {
+        os << "  " << *I << "\n";
+    }
+    os << "Stores:\n";
+    for (const llvm::Value *V : value.stores) {
+        os << "  " << *V << "\n";
+    }
+    return os;
+}
 
 Value meet(const Value& a, const Value& b, llvm::AliasAnalysis& AA) {
     Value out {Value::Insts(), Value::Stores()};
@@ -203,6 +218,7 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
 
 void AttackerTaintPass::getAnalysisUsage(llvm::AnalysisUsage& AU) const {
     AU.addRequired<llvm::AAResultsWrapperPass>();
+    AU.addRequired<llvm::LoopInfoWrapperPass>();
     AU.setPreservesAll();
 }
 
@@ -234,6 +250,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     results.F = &F;
     
     llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
+    llvm::LoopInfo& LI = getAnalysis<llvm::LoopInfoWrapperPass>().getLoopInfo();
     
     bool changed;
     Map ins, outs;
@@ -363,6 +380,58 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                 results.insts.insert(&I);
             }
         }
+    }
+    
+    
+    if (true) {
+        
+        // test using dataflow
+        using Dataflow = dataflow::Dataflow<Value>;
+        Dataflow::Context context = {
+            .top = top,
+            .transfer = [&AA] (const llvm::Instruction *I, const Value& in) -> Value {
+                return transfer(I, in, AA);
+            },
+                .meet = [&AA] (const Value& a, const Value& b) -> Value {
+                    return meet(a, b, AA);
+                },
+        };
+        Map ins2;
+        Map outs2;
+        Map exit_values;
+#if 0
+        Dataflow::Graph graph = Dataflow::Graph::from_function_block(F, context);
+        graph.transfer(Value {Value::Insts(), Value::Stores()}, ins2, outs2, exit_values);
+#else
+        Dataflow::Function function {context, &F, &LI, Dataflow::Function::Mode::LOOP};
+        function.transfer(Value {Value::Insts(), Value::Stores()}, ins2, outs2, exit_values);
+#endif
+        
+        // DEBUG
+        
+        // check if keys same at least
+        const auto keys_subset = [] (const auto& a, const auto& b) -> bool {
+            return std::all_of(a.begin(), a.end(), [&] (const auto& p) -> bool {
+                return b.contains(p.first);
+            });
+        };
+        assert(keys_subset(ins, ins2));
+        assert(keys_subset(ins2, ins));
+        
+        const auto print_diffs = [] (const Map& a, const Map& b) {
+            llvm::errs() << "Differences:\n\n";
+            for (const auto& p : a) {
+                const auto& key = p.first;
+                if (a.at(key) != b.at(key)) {
+                    llvm::errs() << *key << ":\n" << a.at(key) << "\n" << b.at(key) << "\n\n";
+                }
+            }
+        };
+        
+        print_diffs(ins, ins2);
+        
+        assert(ins == ins2);
+        assert(outs == outs2);
     }
     
     return false;

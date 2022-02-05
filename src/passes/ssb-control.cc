@@ -7,10 +7,15 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/IR/IntrinsicInst.h>
+#include <llvm/Analysis/LoopInfo.h>
+#include <llvm/IR/Operator.h>
 
 #include <set>
 #include <compare>
 #include <unordered_map>
+#include <unordered_set>
+#include <string>
+#include <string_view>
 
 #include "attacker-taint.h"
 
@@ -175,7 +180,43 @@ struct SSBControlPass final: public llvm::FunctionPass {
         }
     }
     
-    using Map = std::unordered_map<const llvm::Instruction *, Value>;
+    using IMap = std::unordered_map<const llvm::Instruction *, Value>;
+    using LMap = std::unordered_map<const llvm::Loop *, Value>;
+    
+    static unsigned get_min_loop_iterations(const llvm::Loop *L) {
+        std::unordered_set<const llvm::BasicBlock *> blocks;
+        std::copy(L->block_begin(), L->block_end(), std::inserter(blocks, blocks.end()));
+        for (const llvm::Loop *subloop : *L) {
+            for (const llvm::BasicBlock *subblock : subloop->blocks()) {
+                blocks.erase(subblock);
+            }
+        }
+        
+        for (const llvm::BasicBlock *B : blocks) {
+            for (const llvm::Instruction& I : *B) {
+                if (const llvm::IntrinsicInst *II = llvm::dyn_cast<llvm::IntrinsicInst>(&I)) {
+                    if (II->getIntrinsicID() == llvm::Intrinsic::var_annotation) {
+                        const llvm::Value *V = llvm::cast<llvm::GEPOperator>(II->getArgOperand(1));
+                        const llvm::GlobalVariable *GV = llvm::cast<llvm::GlobalVariable>(V);
+                        const llvm::ConstantDataArray *CDA = llvm::cast<llvm::ConstantDataArray>(GV->getInitializer());
+                        const std::string s = CDA->getAsCString().str();
+                        
+                        std::string_view sv = s;
+                        const auto pos = sv.find('=');
+                        if (pos != std::string_view::npos) {
+                            std::string_view key = sv.substr(0, pos);
+                            std::string_view value = sv.substr(pos + 1);
+                            if (key == "loop.min") {
+                                return std::stoul(std::string(value));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return 0;
+    }
     
     virtual bool runOnFunction(llvm::Function& F) override {
         llvm::errs() << "\n\nFunction " << F.getName() << "\n\n";
@@ -213,16 +254,17 @@ struct SSBControlPass final: public llvm::FunctionPass {
             };
         });
         
-        Map ins, outs;
+        IMap i_ins, i_outs;
+        LMap l_ins, l_outs;
         
-        for_each_instruction(F, [&ins, &outs, &top] (const llvm::Instruction *I) {
-            ins.insert_or_assign(I, top);
-            outs.insert_or_assign(I, top);
+        for_each_instruction(F, [&i_ins, &i_outs, &top] (const llvm::Instruction *I) {
+            i_ins.insert_or_assign(I, top);
+            i_outs.insert_or_assign(I, top);
         });
         
         const llvm::Instruction *entry = &F.getEntryBlock().front();
         
-        ins.at(entry) = Value();
+        i_ins.at(entry) = Value();
 
         // Dataflow Algorithm
         
@@ -242,11 +284,11 @@ struct SSBControlPass final: public llvm::FunctionPass {
                         // if block entry
                         if (&I == &B.front()) {
                             
-                            auto& in = ins.at(&I);
+                            auto& in = i_ins.at(&I);
                             Value new_in = top;
                             for (const llvm::BasicBlock *B_pred : llvm::predecessors(&B)) {
                                 const llvm::Instruction *I = B_pred->getTerminator();
-                                new_in = Value::meet(new_in, outs.at(I), AA);
+                                new_in = Value::meet(new_in, i_outs.at(I), AA);
                             }
                             if (in != new_in) { changed = true; }
                             in = new_in;
@@ -254,26 +296,26 @@ struct SSBControlPass final: public llvm::FunctionPass {
                         } else {
                             
                             const llvm::Instruction *I_prev = I.getPrevNode();
-                            const auto& out = outs.at(I_prev);
-                            auto& in = ins.at(&I);
+                            const auto& out = i_outs.at(I_prev);
+                            auto& in = i_ins.at(&I);
                             if (in != out) { changed = true; }
-                            ins.at(&I) = outs.at(I_prev);
+                            i_ins.at(&I) = i_outs.at(I_prev);
                             
                         }
                         
                     }
                     
-                    llvm::errs() << "IN:\n" << ins.at(&I);
+                    llvm::errs() << "IN:\n" << i_ins.at(&I);
                     
                     /* transfer ins -> outs */
                     {
-                        auto& out = outs.at(&I);
-                        auto new_out = Value::transfer(ins.at(&I), &I, AA, attacker_taint);
+                        auto& out = i_outs.at(&I);
+                        auto new_out = Value::transfer(i_ins.at(&I), &I, AA, attacker_taint);
                         if (out != new_out) { changed = true; }
                         out = new_out;
                     }
                     
-                    llvm::errs() << "OUT:\n" << outs.at(&I);
+                    llvm::errs() << "OUT:\n" << i_outs.at(&I);
                     
                     llvm::errs() << "\n";
                 }
@@ -288,7 +330,7 @@ struct SSBControlPass final: public llvm::FunctionPass {
                 for_each_instruction(F, [&] (const llvm::Instruction *I) {
                     llvm::errs() << "Instruction: " << *I << "\n";
                     
-                    const Value& in = ins.at(I);
+                    const Value& in = i_ins.at(I);
                     llvm::errs() << "Store Buffer:\n";
                     for (const STBEntry& stb_ent : in.stb) {
                         llvm::errs() << stb_ent.staleness << " ";
@@ -314,7 +356,7 @@ struct SSBControlPass final: public llvm::FunctionPass {
         for_each_instruction(F, [&] (const llvm::Instruction *I) {
             if (const llvm::LoadInst *LI = llvm::dyn_cast<llvm::LoadInst>(I)) {
                 const llvm::Value *pointer = LI->getPointerOperand();
-                const auto& in = ins.at(LI);
+                const auto& in = i_ins.at(LI);
                 const auto stb_it = std::find_if(in.stb.begin(), in.stb.end(), [&] (const STBEntry& stb_entry) -> bool {
                     return AA.alias(pointer, stb_entry.pointer) != llvm::NoAlias && stb_entry.arch_controlled;
                 });
