@@ -92,8 +92,6 @@ struct Dataflow {
             }
             
             ins.insert_or_assign(entry(), entry_value);
-            llvm::errs() << "Assigned entry value:\n" << entry_value << "\n";
-            llvm::errs() << "Entry: " << *entry() << "\n";
             
             // Repeat until no changes
             Map old_ins, old_outs, old_local_exit_values;
@@ -170,10 +168,6 @@ struct Dataflow {
                 
                 auto& in = ins.at(I);
                 
-                llvm::errs() << "Succ: " << *I << "\nPreds:\n";
-                
-                llvm::errs() << "Old IN: " << in << "\n";
-                
                 if (I == &B->front()) {
                     // TODO: might not be necessary
                     if (I != entry()) {
@@ -183,7 +177,6 @@ struct Dataflow {
                         const llvm::Instruction *I_pred = B_pred->getTerminator();
                         if (check_edge(I_pred, I)) {
                             in = this->context.meet(in, outs.at(I_pred));
-                            llvm::errs() << *I_pred << "\n";
                         }
                     }
                 } else {
@@ -191,13 +184,9 @@ struct Dataflow {
                     const llvm::Instruction *I_pred = I->getPrevNode();
                     assert(check_edge(I_pred, I));
                     in = outs.at(I_pred);
-                    llvm::errs() << *I_pred << "\n";
-
+                    
                 }
                 
-                llvm::errs() << "New IN: " << in << "\n";
-
-                llvm::errs() << "\n";
             }
         }
         
@@ -258,7 +247,7 @@ struct Dataflow {
             outs.insert_or_assign(I, out);
             exit_values.insert_or_assign(I, out);
             
-#if 1
+#if 0
             llvm::errs() << "Transfer for " << *I << ":\n";
             llvm::errs() << "IN:\n" << entry_value;
             llvm::errs() << "OUT:\n" << exit_values.at(I) << "\n";
@@ -350,7 +339,6 @@ struct Dataflow {
         
         virtual void transfer(Value entry_value, Map& ins, Map& outs, Map& exit_values) const override {
             
-            llvm::errs() << "Loop entry:\n" << entry_value << "\n";
             const Value old_entry_value = entry_value;
             
             Graph graph = unconstrained_graph();
