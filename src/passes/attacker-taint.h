@@ -19,7 +19,12 @@ private:
     std::set<const llvm::Instruction *> insts;
     
     friend struct AttackerTaintPass;
+    friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AttackerTaintResults&);
 };
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AttackerTaintResults&);
+
+
 
 struct AttackerTaintPass final: public llvm::FunctionPass {
     static inline char ID = 0;

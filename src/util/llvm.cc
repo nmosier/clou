@@ -273,8 +273,8 @@ unsigned get_min_loop_iterations(const llvm::Loop *L) {
         for (const llvm::Instruction& I : *B) {
             if (const llvm::IntrinsicInst *II = llvm::dyn_cast<llvm::IntrinsicInst>(&I)) {
                 if (II->getIntrinsicID() == llvm::Intrinsic::var_annotation) {
-                    const llvm::Value *V = llvm::cast<llvm::GEPOperator>(II->getArgOperand(1));
-                    const llvm::GlobalVariable *GV = llvm::cast<llvm::GlobalVariable>(V);
+                    const llvm::GEPOperator *GEPO = llvm::cast<llvm::GEPOperator>(II->getArgOperand(1));
+                    const llvm::GlobalVariable *GV = llvm::cast<llvm::GlobalVariable>(GEPO->getPointerOperand());
                     const llvm::ConstantDataArray *CDA = llvm::cast<llvm::ConstantDataArray>(GV->getInitializer());
                     const std::string s = CDA->getAsCString().str();
                     

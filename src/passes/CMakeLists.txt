@@ -38,7 +38,7 @@ if(APPLE)
   target_link_options(ssb_control PRIVATE -undefined dynamic_lookup)
 endif()
 target_include_directories(ssb_control INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ssb_control PRIVATE attacker_taint)
-
+target_include_directories(ssb_control PRIVATE ${LIBPROFILER_INCLUDE_DIRS})
+target_link_libraries(ssb_control PRIVATE attacker_taint ${LIBPROFILER_LIBRARIES})
 
 add_pass(print_loops)

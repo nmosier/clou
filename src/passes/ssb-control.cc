@@ -10,27 +10,37 @@
 #include <llvm/Analysis/LoopInfo.h>
 #include <llvm/IR/Operator.h>
 
+#include <gperftools/profiler.h>
+
 #include <set>
-#include <compare>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include "attacker-taint.h"
+#include "dataflow.h"
 
-constexpr unsigned stb_size = 10;
+constexpr unsigned stb_size = 1;
 
 struct STBEntry {
     const llvm::Value *pointer;
-    bool arch_controlled;
     unsigned staleness;
     
-    auto operator<=>(const STBEntry&) const = default;
+    bool operator==(const STBEntry&) const = default;
+    
+    auto tuple() const {
+        return std::make_tuple(pointer, staleness);
+    }
+
+    bool operator<(const STBEntry& e) const {
+        return tuple() < e.tuple();
+    }
 };
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const STBEntry& stb_ent) {
-    os << stb_ent.staleness << " " << (stb_ent.arch_controlled ? "controlled" : "uncontrolled") << " " << *stb_ent.pointer;
+    os << stb_ent.staleness << " uncontrolled " << *stb_ent.pointer;
     return os;
 }
 
@@ -53,33 +63,41 @@ struct Value {
             out.mem = in.mem;
             
             // transfer stb
-            std::set<const llvm::Value *> commit_controlled, commit_uncontrolled;
+            std::set<const llvm::Value *> commit;
             for (STBEntry stb_ent : in.stb) {
                 if (++stb_ent.staleness >= stb_size) {
-                    (stb_ent.arch_controlled ? commit_controlled : commit_uncontrolled).insert(stb_ent.pointer);
+                    // commit to memory
+                    out.mem.insert(stb_ent.pointer);
                 } else {
+                    // update in STB
                     out.stb.insert(stb_ent);
                 }
             }
             
-            // commit uncontrolled
-            std::copy(commit_uncontrolled.begin(), commit_uncontrolled.end(), std::inserter(out.mem, out.mem.end()));
-            
-            // commit controlled
-            for (const llvm::Value *controlled : commit_controlled) {
-                std::erase_if(out.mem, [&] (const llvm::Value *uncontrolled) -> bool {
-                    return AA.alias(controlled, uncontrolled) != llvm::NoAlias;
-                });
-            }
-            
             // add stored value
             const llvm::Value *pointer = SI->getPointerOperand();
-            STBEntry new_ent = {
-                .pointer = pointer,
-                .arch_controlled = attacker_taint.get(pointer),
-                .staleness = 0,
-            };
-            out.stb.insert(new_ent);
+            
+            if (attacker_taint.get(pointer)) {
+                
+                // remove all aliasing entries in STB and MEM
+                const auto invalidate = [&AA, pointer] (const llvm::Value *V) {
+                    return AA.alias(V, pointer) != llvm::NoAlias;
+                };
+                
+                std::erase_if(out.stb, [&] (const STBEntry& stb_ent) -> bool {
+                    return invalidate(stb_ent.pointer);
+                });
+                std::erase_if(out.mem, invalidate);
+                
+            } else {
+                
+                STBEntry new_ent = {
+                    .pointer = pointer,
+                    .staleness = 0,
+                };
+                out.stb.insert(new_ent);
+                
+            }
             
             return out;
             
@@ -102,28 +120,22 @@ struct Value {
         Value out;
         
         // Meet STB
-        const auto copy_uncontrolled_stb = [&out] (const STB& stb) {
-            std::copy_if(stb.begin(), stb.end(), std::inserter(out.stb, out.stb.end()), [] (const STBEntry& stb_ent) -> bool {
-                return stb_ent.arch_controlled;
-            });
+        const auto copy_stb = [&out] (const STB& stb) {
+            std::copy(stb.begin(), stb.end(), std::inserter(out.stb, out.stb.end()));
         };
-        copy_uncontrolled_stb(a.stb);
-        copy_uncontrolled_stb(b.stb);
+        copy_stb(a.stb);
+        copy_stb(b.stb);
         
         for (const STBEntry& ent_a : a.stb) {
-            if (ent_a.arch_controlled) { continue; }
             for (const STBEntry& ent_b : b.stb) {
-                if (ent_b.arch_controlled) { continue; }
                 if (AA.alias(ent_a.pointer, ent_b.pointer) == llvm::MustAlias) {
                     const unsigned staleness = std::min(ent_a.staleness, ent_b.staleness);
                     STBEntry ent_out1 = {
                         .pointer = ent_a.pointer,
-                        .arch_controlled = false,
                         .staleness = staleness,
                     };
                     STBEntry ent_out2 = {
                         .pointer = ent_b.pointer,
-                        .arch_controlled = false,
                         .staleness = staleness,
                     };
                     out.stb.insert(ent_out1);
@@ -168,6 +180,7 @@ struct SSBControlPass final: public llvm::FunctionPass {
         AU.addRequired<AttackerTaintPass>();
 #endif
         AU.addRequired<llvm::AAResultsWrapperPass>();
+        AU.addRequired<llvm::LoopInfoWrapperPass>();
         AU.setPreservesAll();
     }
     
@@ -222,10 +235,8 @@ struct SSBControlPass final: public llvm::FunctionPass {
         llvm::errs() << "\n\nFunction " << F.getName() << "\n\n";
         
         llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
-        
-#if 1
         AttackerTaintResults attacker_taint = getAnalysis<AttackerTaintPass>().getResults();
-#endif
+        llvm::LoopInfo& LI = getAnalysis<llvm::LoopInfoWrapperPass>().getLoopInfo();
         
         std::set<const llvm::Value *> stores;
         for_each_instruction(F, [&stores] (const llvm::Instruction *I) {
@@ -246,6 +257,7 @@ struct SSBControlPass final: public llvm::FunctionPass {
             .stb = Value::STB(),
             .mem = stores,
         };
+#if 0
         std::transform(stores.begin(), stores.end(), std::inserter(top.stb, top.stb.end()), [] (const llvm::Value *pointer) -> STBEntry {
             return {
                 .pointer = pointer,
@@ -253,101 +265,35 @@ struct SSBControlPass final: public llvm::FunctionPass {
                 .arch_controlled = false,
             };
         });
+#else
+        for (const llvm::Value *pointer : stores) {
+            for (unsigned i = 0; i < stb_size; ++i) {
+                top.stb.insert({
+                    .pointer = pointer,
+                    .staleness = i,
+                });
+            }
+        }
+#endif
         
         IMap i_ins, i_outs;
-        LMap l_ins, l_outs;
         
-        for_each_instruction(F, [&i_ins, &i_outs, &top] (const llvm::Instruction *I) {
-            i_ins.insert_or_assign(I, top);
-            i_outs.insert_or_assign(I, top);
-        });
-        
-        const llvm::Instruction *entry = &F.getEntryBlock().front();
-        
-        i_ins.at(entry) = Value();
-
         // Dataflow Algorithm
         
-#if 1
-        bool changed;
+        using Dataflow = dataflow::Dataflow<Value>;
+        Dataflow::Context context = {
+            .top = top,
+            .transfer = [&AA, &attacker_taint] (const llvm::Instruction *I, const Value& in) -> Value {
+                return Value::transfer(in, I, AA, attacker_taint);
+            },
+                .meet = [&AA] (const Value& a, const Value& b) -> Value {
+                    return Value::meet(a, b, AA);
+                },
+        };
         
-        do {
-            changed = false;
-            
-            for (const llvm::BasicBlock& B : F) {
-                for (const llvm::Instruction& I : B) {
-                    
-                    llvm::errs() << "Instruction: " << I << "\n";
-                    
-                    /* meet operator */
-                    if (&I != entry) {
-                        // if block entry
-                        if (&I == &B.front()) {
-                            
-                            auto& in = i_ins.at(&I);
-                            Value new_in = top;
-                            for (const llvm::BasicBlock *B_pred : llvm::predecessors(&B)) {
-                                const llvm::Instruction *I = B_pred->getTerminator();
-                                new_in = Value::meet(new_in, i_outs.at(I), AA);
-                            }
-                            if (in != new_in) { changed = true; }
-                            in = new_in;
-                            
-                        } else {
-                            
-                            const llvm::Instruction *I_prev = I.getPrevNode();
-                            const auto& out = i_outs.at(I_prev);
-                            auto& in = i_ins.at(&I);
-                            if (in != out) { changed = true; }
-                            i_ins.at(&I) = i_outs.at(I_prev);
-                            
-                        }
-                        
-                    }
-                    
-                    llvm::errs() << "IN:\n" << i_ins.at(&I);
-                    
-                    /* transfer ins -> outs */
-                    {
-                        auto& out = i_outs.at(&I);
-                        auto new_out = Value::transfer(i_ins.at(&I), &I, AA, attacker_taint);
-                        if (out != new_out) { changed = true; }
-                        out = new_out;
-                    }
-                    
-                    llvm::errs() << "OUT:\n" << i_outs.at(&I);
-                    
-                    llvm::errs() << "\n";
-                }
-            }
-            
-
-            if (!changed) {
-                // print out results
-                
-                llvm::errs() << "Updated Results:\n";
-                
-                for_each_instruction(F, [&] (const llvm::Instruction *I) {
-                    llvm::errs() << "Instruction: " << *I << "\n";
-                    
-                    const Value& in = i_ins.at(I);
-                    llvm::errs() << "Store Buffer:\n";
-                    for (const STBEntry& stb_ent : in.stb) {
-                        llvm::errs() << stb_ent.staleness << " ";
-                        llvm::errs() << (stb_ent.arch_controlled ? "controlled" : "uncontrolled") << " " << *stb_ent.pointer << "\n";
-                    }
-                    
-                    llvm::errs() << "Memory:\n";
-                    for (const llvm::Value *pointer : in.mem) {
-                        llvm::errs() << *pointer << "\n";
-                    }
-                    
-                });
-                
-                llvm::errs() << "\n\n\n\n\n\n\n";
-            }
-            
-        } while (changed);
+        Dataflow::Map exit_values;
+        Dataflow::Function function {context, &F, &LI, Dataflow::Function::Mode::LOOP};
+        function.transfer(Value(), i_ins, i_outs, exit_values);
         
         // Pretty-print results:
         // For each load, print whether it can speculatively load controlled data.
@@ -357,14 +303,10 @@ struct SSBControlPass final: public llvm::FunctionPass {
             if (const llvm::LoadInst *LI = llvm::dyn_cast<llvm::LoadInst>(I)) {
                 const llvm::Value *pointer = LI->getPointerOperand();
                 const auto& in = i_ins.at(LI);
-                const auto stb_it = std::find_if(in.stb.begin(), in.stb.end(), [&] (const STBEntry& stb_entry) -> bool {
-                    return AA.alias(pointer, stb_entry.pointer) != llvm::NoAlias && stb_entry.arch_controlled;
-                });
                 const auto mem_it = std::find_if(in.mem.begin(), in.mem.end(), [&] (const llvm::Value *mem_pointer) -> bool {
                     return AA.alias(pointer, mem_pointer) == llvm::MustAlias;
                 });
-                
-                const bool controlled = (stb_it != in.stb.end() || mem_it == in.mem.end());
+                const bool controlled = (mem_it == in.mem.end());
                 llvm::errs() << *LI << " - ";
                 if (controlled) {
                     llvm::errs() << "controlled";
@@ -375,7 +317,9 @@ struct SSBControlPass final: public llvm::FunctionPass {
             }
         });
 
-#endif
+        llvm::errs() << "\n\n\n Arch Control Results:\n" << attacker_taint << "\n";
+        
+        llvm::errs() << "Function " << F.getName() << " done\n";
         
         return false;
     }
@@ -400,3 +344,20 @@ llvm::RegisterPass<SSBControlPass> X {
 
 }
 
+
+
+namespace {
+
+struct Profiler {
+    Profiler(const std::string& name) {
+        ProfilerStart(name.c_str());
+    }
+    
+    ~Profiler() {
+        ProfilerStop();
+    }
+};
+
+Profiler profiler {"prof"};
+
+}

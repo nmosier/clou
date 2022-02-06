@@ -350,6 +350,16 @@ struct Dataflow {
 #else
             graph.transfer(entry_value, ins, outs, exit_values);
 #endif
+            
+#if 0
+            // DEBUG: print exit values
+            llvm::errs() << "LOOP EXIT VALUES:\n";
+            for (const auto& p : exit_values) {
+                llvm::errs() << *p.first << "\n";
+                llvm::errs() << p.second << "\n";
+            }
+#endif
+            
         }
         
     private:

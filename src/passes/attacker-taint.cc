@@ -373,16 +373,6 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     print();
 #endif
     
-    // initialize results
-    for (const llvm::BasicBlock& B : F) {
-        for (const llvm::Instruction& I : B) {
-            if (outs.at(&I).insts.contains(&I)) {
-                results.insts.insert(&I);
-            }
-        }
-    }
-    
-    
     if (true) {
         
         // test using dataflow
@@ -430,9 +420,31 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
         
         print_diffs(ins, ins2);
         
+#if 0
         assert(ins == ins2);
         assert(outs == outs2);
+#else
+        if (ins != ins2) {
+            llvm::errs() << "WARNING: ins != ins2: " << __FILE__ << ":" << __LINE__ << "\n";
+        }
+        if (outs != outs2) {
+            llvm::errs() << "WARNING: outs != outs2: " << __FILE__ << ":" << __LINE__ << "\n";
+        }
+        ins = ins2;
+        outs = outs2;
+#endif
     }
+    
+    
+    // initialize results
+    for (const llvm::BasicBlock& B : F) {
+        for (const llvm::Instruction& I : B) {
+            if (outs.at(&I).insts.contains(&I)) {
+                results.insts.insert(&I);
+            }
+        }
+    }
+    
     
     return false;
 }
@@ -454,3 +466,11 @@ llvm::RegisterPass<AttackerTaintPass> X {
 
 }
 
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AttackerTaintResults& results) {
+    os << "Controlled Instructions:\n";
+    for (const llvm::Instruction *I : results.insts) {
+        os << "  " << *I << "\n";
+    }
+    return os;
+}
