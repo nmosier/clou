@@ -99,11 +99,10 @@ struct Dataflow {
             while (ins != old_ins || outs != old_outs || local_exit_values != old_local_exit_values) {
                 old_ins = ins;
                 old_outs = outs;
-                old_local_exit_values = local_exit_values;
                 assert(local_exit_values.size() == local_exit_values_size);
                 meet_once(ins, local_exit_values);
                 assert(local_exit_values.size() == local_exit_values_size);
-                local_exit_values.clear();
+                old_local_exit_values = std::move(local_exit_values);
                 transfer_once(ins, outs, local_exit_values);
                 assert(local_exit_values.size() == local_exit_values_size);
             }
@@ -242,10 +241,12 @@ struct Dataflow {
         virtual InstSet insts() const override { return {I}; }
         
         virtual void transfer(Value entry_value, Map& ins, Map& outs, Map& exit_values) const override {
-            ins.insert_or_assign(I, entry_value);
-            const Value out = this->context.transfer(entry(), entry_value);
-            outs.insert_or_assign(I, out);
-            exit_values.insert_or_assign(I, out);
+            ins.at(I) = entry_value;
+            // ins.insert_or_assign(I, entry_value);
+            Value out = this->context.transfer(entry(), entry_value);
+            outs.at(I) = out;
+            // outs.insert_or_assign(I, out);
+            exit_values.insert_or_assign(I, std::move(out));
             
 #if 0
             llvm::errs() << "Transfer for " << *I << ":\n";
@@ -343,23 +344,9 @@ struct Dataflow {
             
             Graph graph = unconstrained_graph();
             graph.entry(entry());
-#if 1
             transfer_internal(graph, entry_value, ins, outs);
             assert(entry_value == old_entry_value);
             transfer_external(graph, entry_value, exit_values);
-#else
-            graph.transfer(entry_value, ins, outs, exit_values);
-#endif
-            
-#if 0
-            // DEBUG: print exit values
-            llvm::errs() << "LOOP EXIT VALUES:\n";
-            for (const auto& p : exit_values) {
-                llvm::errs() << *p.first << "\n";
-                llvm::errs() << p.second << "\n";
-            }
-#endif
-            
         }
         
     private:
@@ -430,10 +417,18 @@ struct Dataflow {
             });
             graph.exits(backinsts);
             Value in = entry_value;
+            std::optional<Value> old_in;
             for (unsigned i = 0; i < min_loop_iterations; ++i) {
+                if (in == old_in) {
+                    // We've already reached a steady-state
+                    break;
+                }
+                
                 // transfer
                 Map ins, outs, exit_values;
                 graph.transfer(in, ins, outs, exit_values);
+                
+                old_in = std::move(in);
                 
                 // meet exit values
                 in = this->context.top;
