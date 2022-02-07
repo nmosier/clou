@@ -1,4 +1,5 @@
 #include <set>
+#include <llvm/IR/IntrinsicInst.h>
 
 #include "cfg/cfg.h"
 #include "util/algorithm.h"
@@ -294,8 +295,9 @@ bool CFG::may_introduce_speculation(NodeRef ref) const {
                 bool res = false;
                 if (const auto *Ip = std::get_if<const llvm::Instruction *>(&node.v)) {
                     const llvm::Instruction *I = *Ip;
-                    res = (**Ip).mayReadFromMemory();
-                    if (llvm::isa<llvm::CallBase>(I) || llvm::isa<llvm::LoadInst>(I)) {
+                    res = I->mayReadFromMemory();
+                    if (llvm::isa<llvm::DbgInfoIntrinsic>(I)) {
+                    } else if (llvm::isa<llvm::CallBase>(I) || llvm::isa<llvm::LoadInst>(I)) {
                         assert(res);
                     } else if (const llvm::StoreInst *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
                         if (SI->isVolatile()) {
