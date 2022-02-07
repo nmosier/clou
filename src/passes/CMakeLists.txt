@@ -28,6 +28,7 @@ if(APPLE)
   target_link_options(attacker_taint PRIVATE -undefined dynamic_lookup)
 endif()
 target_include_directories(attacker_taint INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(attacker_taint PRIVATE ${LIBPROFILER_LIBRARIES})
 
 add_library(ssb_control SHARED
   ssb-control.cc
