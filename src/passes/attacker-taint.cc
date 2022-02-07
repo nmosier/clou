@@ -12,7 +12,9 @@
 
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <fstream>
+#include <gperftools/profiler.h>
 
 
 #include "attacker-taint.h"
@@ -23,8 +25,8 @@
 #include "dataflow.h"
 
 struct Value {
-    using Insts = std::set<const llvm::Instruction *>;
-    using Stores = std::set<const llvm::Value *>;
+    using Insts = std::unordered_set<const llvm::Instruction *>;
+    using Stores = std::unordered_set<const llvm::Value *>;
     
     /** Attacker-controlled instructions. */
     Insts insts;
@@ -55,7 +57,11 @@ Value meet(const Value& a, const Value& b, llvm::AliasAnalysis& AA) {
     Value out {Value::Insts(), Value::Stores()};
     
     // union controlled instructions
-    std::set_union(a.insts.begin(), a.insts.end(), b.insts.begin(), b.insts.end(), std::inserter(out.insts, out.insts.end()));
+    std::copy(a.insts.begin(), a.insts.end(), std::inserter(out.insts, out.insts.end()));
+    std::copy(b.insts.begin(), b.insts.end(), std::inserter(out.insts, out.insts.end()));
+    
+    // NOTE: This could be replaced by a bitwise OR of std::vector<bool>.
+    // Could map stores to group of stores that must alias? 
     
     // only include pairs that must alias
     
@@ -473,4 +479,21 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AttackerTaintResults&
         os << "  " << *I << "\n";
     }
     return os;
+}
+
+
+namespace {
+
+struct Profiler {
+    Profiler(const std::string& name) {
+        ProfilerStart(name.c_str());
+    }
+    
+    ~Profiler() {
+        ProfilerStop();
+    }
+};
+
+Profiler profiler {"prof"};
+
 }
