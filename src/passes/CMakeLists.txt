@@ -18,10 +18,22 @@ add_pass(print_debug)
 # add_pass(attacker_taint)
 add_pass(print_alias)
 
+add_library(annotations SHARED
+  annotations.cc
+  annotations.h
+  )
+if(APPLE)
+  target_link_options(annotations PRIVATE -undefined dynamic_lookup)
+endif()
+target_include_directories(annotations INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+
+
 add_library(attacker_taint SHARED
   attacker-taint.cc
   attacker-taint.h
   $<TARGET_OBJECTS:dataflow_objs>
+  $<TARGET_OBJECTS:annotations>
   ../util/llvm.cc ../util/llvm.h
   )
 if(APPLE)

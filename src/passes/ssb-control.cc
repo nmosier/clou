@@ -348,6 +348,7 @@ llvm::RegisterPass<SSBControlPass> X {
 
 namespace {
 
+#if 0
 struct Profiler {
     Profiler(const std::string& name) {
         ProfilerStart(name.c_str());
@@ -359,5 +360,6 @@ struct Profiler {
 };
 
 Profiler profiler {"prof"};
+#endif
 
 }

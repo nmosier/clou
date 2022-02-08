@@ -8,6 +8,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Analysis/LoopInfo.h>
+#include <llvm/IR/Module.h>
 
 namespace llvm {
 
@@ -55,5 +56,28 @@ inline std::ostream& operator<<(std::ostream& os, const llvm::Instruction& I) {
 namespace llvm {
 
 unsigned get_min_loop_iterations(const llvm::Loop *L);
+
+/** Parse clang annotations. Output iterator must accept pairs of llvm::Value and std::string. */
+template <class OutputIt>
+OutputIt parse_annotations(const llvm::Module& M, OutputIt out) {
+
+    // Global Annotations
+    if (const llvm::GlobalVariable *G = M.getNamedGlobal("llvm.global.annotations")) {
+        assert(G->getNumOperands() == 1);
+        const llvm::Value *V = G->getOperand(0);
+        const llvm::ConstantArray *CA = llvm::cast<llvm::ConstantArray>(V);
+        for (const llvm::Value *V : CA->operands()) {
+            const llvm::ConstantStruct *CS = llvm::cast<llvm::ConstantStruct>(V);
+            assert(CS->getNumOperands() == 5);
+            const llvm::Value *annotated = CS->getOperand(0)->getOperand(0);
+            const llvm::GlobalVariable *GV_str = llvm::cast<llvm::GlobalVariable>(CS->getOperand(1)->getOperand(0));
+            const llvm::ConstantDataArray *A_str = llvm::cast<llvm::ConstantDataArray>(GV_str->getOperand(0));
+            const std::string str = A_str->getAsCString().str();
+            *out++ = std::make_pair(annotated, str);
+        }
+    }
+    
+    return out;
+}
 
 }

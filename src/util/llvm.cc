@@ -259,7 +259,6 @@ llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::Debu
     return os;
 }
 
-
 unsigned get_min_loop_iterations(const llvm::Loop *L) {
     std::unordered_set<const llvm::BasicBlock *> blocks;
     std::copy(L->block_begin(), L->block_end(), std::inserter(blocks, blocks.end()));

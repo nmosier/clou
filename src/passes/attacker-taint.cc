@@ -18,6 +18,7 @@
 
 
 #include "attacker-taint.h"
+#include "annotations.h"
 #if CLOU
 # include "config.h"
 #endif
@@ -31,7 +32,7 @@ struct Value {
     /** Attacker-controlled instructions. */
     Insts insts;
 
-    /** Non-attacker-controlled stores. Nullopt indicates universal set. */
+    /** Non-attacker-controlled stores. */
     Stores stores;
     
     bool operator==(const Value& other) const = default;
@@ -61,7 +62,7 @@ Value meet(const Value& a, const Value& b, llvm::AliasAnalysis& AA) {
     std::copy(b.insts.begin(), b.insts.end(), std::inserter(out.insts, out.insts.end()));
     
     // NOTE: This could be replaced by a bitwise OR of std::vector<bool>.
-    // Could map stores to group of stores that must alias? 
+    // Could map stores to group of stores that must alias?
     
     // only include pairs that must alias
     
@@ -132,7 +133,7 @@ llvm::AliasResult alias(const llvm::Value *P, const llvm::Value *V, llvm::AliasA
     }
 }
 
-Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis& AA) {
+Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis& AA, const std::unordered_set<const llvm::Value *>& annotated_uncontrolled) {
     Value out = in;
     
     if (const llvm::StoreInst *SI = llvm::dyn_cast<llvm::StoreInst>(I)) {
@@ -158,6 +159,7 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
     } else if (const llvm::LoadInst *LI = llvm::dyn_cast<llvm::LoadInst>(I)) {
         // check if loaded value is ok
         // should find must-alias store
+        /* NOTE: It doesn't matter if the pointer operand is arch-controlled, since we are assuming there are no architectural OOB accesses (i.e. no bugs). */
         
         const llvm::Value *L = LI->getPointerOperand();
         
@@ -219,12 +221,15 @@ Value transfer(const llvm::Instruction *I, const Value& in, llvm::AliasAnalysis&
         
     }
     
+    std::copy(annotated_uncontrolled.begin(), annotated_uncontrolled.end(), std::inserter(out.stores, out.stores.end()));
+    
     return out;
 }
 
 void AttackerTaintPass::getAnalysisUsage(llvm::AnalysisUsage& AU) const {
     AU.addRequired<llvm::AAResultsWrapperPass>();
     AU.addRequired<llvm::LoopInfoWrapperPass>();
+    // AU.addRequired<AnnotationPass>();
     AU.setPreservesAll();
 }
 
@@ -257,6 +262,17 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     
     llvm::AliasAnalysis& AA = getAnalysis<llvm::AAResultsWrapperPass>().getAAResults();
     llvm::LoopInfo& LI = getAnalysis<llvm::LoopInfoWrapperPass>().getLoopInfo();
+    // const Annotations& annotations = getAnalysis<AnnotationPass>().getResults();
+    Annotations annotations;
+    llvm::parse_annotations(*F.getParent(), std::inserter(annotations, annotations.end()));
+    
+    // get clou.arch-uncontrolled annotations
+    std::unordered_set<const llvm::Value *> annotated_uncontrolled;
+    for (const auto& p : annotations) {
+        if (p.second == "clou.arch_uncontrolled") {
+            annotated_uncontrolled.insert(p.first);
+        }
+    }
     
     bool changed;
     Map ins, outs;
@@ -366,7 +382,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
                 /* transfer ins -> outs */
                 {
                     auto& out = outs.at(&I);
-                    auto new_out = transfer(&I, ins.at(&I), AA);
+                    auto new_out = transfer(&I, ins.at(&I), AA, annotated_uncontrolled);
                     if (out != new_out) { changed = true; }
                     out = new_out;
                 }
@@ -385,8 +401,8 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
         using Dataflow = dataflow::Dataflow<Value>;
         Dataflow::Context context = {
             .top = top,
-            .transfer = [&AA] (const llvm::Instruction *I, const Value& in) -> Value {
-                return transfer(I, in, AA);
+            .transfer = [&AA, &annotated_uncontrolled] (const llvm::Instruction *I, const Value& in) -> Value {
+                return transfer(I, in, AA, annotated_uncontrolled);
             },
                 .meet = [&AA] (const Value& a, const Value& b) -> Value {
                     return meet(a, b, AA);
@@ -455,6 +471,10 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     return false;
 }
 
+void AttackerTaintPass::print(llvm::raw_ostream& os, const llvm::Module *M) const {
+    os << results << "\n";
+}
+
 namespace {
 
 void registerPass(const llvm::PassManagerBuilder&, llvm::legacy::PassManagerBase& PM) {
@@ -484,6 +504,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AttackerTaintResults&
 
 namespace {
 
+#if 0
 struct Profiler {
     Profiler(const std::string& name) {
         ProfilerStart(name.c_str());
@@ -495,5 +516,6 @@ struct Profiler {
 };
 
 Profiler profiler {"prof"};
+#endif
 
 }

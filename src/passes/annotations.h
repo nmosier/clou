@@ -15,10 +15,24 @@
 #include <llvm/IR/Operator.h>
 #include <llvm/IR/Intrinsics.h>
 
+#include <string>
+#include <unordered_map>
+
+using Annotations = std::unordered_map<const llvm::Value *, std::string>;
+
 struct AnnotationPass final: public llvm::ModulePass {
     static inline char ID = 0;
     
     AnnotationPass(): llvm::ModulePass(ID) {}
     
     virtual bool runOnModule(llvm::Module& M) override;
+    
+    virtual void getAnalysisUsage(llvm::AnalysisUsage& AU) const override {
+        AU.setPreservesAll();
+    }
+    
+    Annotations results;
+    const Annotations& getResults() const { return results; }
+    
+    virtual void print(llvm::raw_ostream& os, const llvm::Module *M) const override;
 };

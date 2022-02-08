@@ -5,20 +5,20 @@
 #include "annotations.h"
 
 bool AnnotationPass::runOnModule(llvm::Module& M) {
-    std::unordered_map<const llvm::Value *, std::string> map;
-    llvm::parse_annotations(M, std::inserter(map, map.end()));
-    
-    for (const auto& p : map) {
-        llvm::errs() << *p.first << " - " << p.second << "\n";
-    }
-    
+    llvm::parse_annotations(M, std::inserter(results, results.end()));
     return false;
+}
+
+void AnnotationPass::print(llvm::raw_ostream& os, const llvm::Module *M) const {
+    for (const auto& p : results) {
+        os << *p.first << "  -  " << p.second << "\n";
+    }
 }
 
 namespace {
 
 llvm::RegisterPass<AnnotationPass> X {
-    "print_annotations", "Print Annotations Pass"
+    "annotations", "Annotations Pass"
 };
 
 }

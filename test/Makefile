@@ -1,6 +1,6 @@
 .SUFFIXES:
 
-CLANG ?= clang
+CLANG ?= clang-12
 LLVM_DIS ?= llvm-dis
 CFLAGS += -fdeclspec
 

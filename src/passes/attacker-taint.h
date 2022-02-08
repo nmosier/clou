@@ -38,6 +38,8 @@ struct AttackerTaintPass final: public llvm::FunctionPass {
     
     virtual bool runOnFunction(llvm::Function& F) override;
     
+    virtual void print(llvm::raw_ostream& os, const llvm::Module *M) const override;
+    
 private:
     template <class Func>
     static void for_each_instruction(const llvm::Function& F, Func func);

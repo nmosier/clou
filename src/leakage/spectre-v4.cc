@@ -22,11 +22,11 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
 
         // make sure all traceback_deps are trans
         if (mode == CheckMode::SLOW) {
-            z3::expr_vector vec_trans(ctx());
+            z3::expr_vector vec_trans {ctx()};
             for (NodeRef ref : vec) {
                 vec_trans.push_back(aeg.lookup(ref).trans);
             }
-            solver_add(z3::mk_and(vec_trans), "traceback_deps.trans");
+            solver_add(translate(z3::mk_and(vec_trans)), "traceback_deps.trans");
         }
         
         /* add <ENTRY> -RFX-> load */
@@ -76,7 +76,7 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
         const auto& node = aeg.lookup(bypassed_store);
         
         if (mode == CheckMode::SLOW) {
-            solver_add(node.arch, "bypassed_store.arch");
+            solver_add(translate(node.arch), "bypassed_store.arch");
             
             // check if sat
             if (solver_check() == z3::unsat) {
@@ -84,7 +84,7 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
                 return;
             }
         }
-
+        
         if (spectre_v4_mode.concrete_sourced_stores) {
             run_sourced_store(load, bypassed_store, vec, mode);
         } else {
@@ -100,7 +100,7 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
             NodeRefVec vec_ = vec;
             vec_.push_back(load);
             if (mode == CheckMode::SLOW) {
-                solver_add(aeg.lookup(load).trans, util::to_string(load, ".trans").c_str());
+                solver_add(translate(aeg.lookup(load).trans), util::to_string(load, ".trans").c_str());
             }
             run_bypassed_store(load, vec_, mode);
         }, mode);
@@ -203,14 +203,17 @@ void SpectreV4_Detector::run_sourced_store(NodeRef load, NodeRef bypassed_store,
         
         if (mode == CheckMode::SLOW) {
             const z3::expr same_addr = aeg.same_addr(sourced_store, load);
-            solver_add(same_addr, "load.addr == sourced_store.addr");
-            solver_add(aeg.rfx_exists(sourced_store, load), "load -RFX-> sourced_store");
+            solver_add(translate(same_addr), "load.addr == sourced_store.addr");
+            solver_add(translate(aeg.rfx_exists(sourced_store, load)), "load -RFX-> sourced_store");
         }
         
 #if 0
         const auto action = util::push(actions, util::to_string("sourced ", sourced_store));
 #else
+#if 0
         const auto action = util::push(actions, {.src = sourced_store, .edge = aeg::Edge::Kind::RFX, .dst = load});
+        std::abort();
+#endif
 #endif
         
         check_solution(load, bypassed_store, sourced_store, vec, mode);
