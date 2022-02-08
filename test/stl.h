@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdatomic.h>
 
-#define CLOU_ARCH_UNCONTROLLED __attribute__((annotate("clou.arch_uncontrolled")))
+#include "clou.h"
 
 #define SIZE 16                 /* Size of secretarray and publicarray */
 CLOU_ARCH_UNCONTROLLED uint32_t array_size = 16;
