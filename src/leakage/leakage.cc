@@ -464,8 +464,6 @@ void DetectorJob::traceback_rf(NodeRef load, aeg::ExecMode exec_mode, std::funct
             default: std::abort();
         }
         
-        std::cerr << "here: " << store_pair.first << "\n";
-        
         if (mode == CheckMode::SLOW && use_lookahead && !lookahead([&] () {
             func(store, CheckMode::FAST);
         })) {
