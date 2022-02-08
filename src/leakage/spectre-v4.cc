@@ -32,7 +32,7 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
         /* add <ENTRY> -RFX-> load */
         if (!spectre_v4_mode.concrete_sourced_stores) {
             if (mode == CheckMode::SLOW) {
-                solver_add(aeg.rfx_exists(aeg.entry, load), "entry -RFX-> load");
+                solver_add(translate(aeg.rfx_exists(aeg.entry, load)), "entry -RFX-> load");
             }
         }
         
