@@ -96,7 +96,7 @@ foreach(FWD_SRC ${FWD_SRCS})
     -O ${CMAKE_CURRENT_BINARY_DIR}/${FWD_NAME}f
     -T ${FWD_SRC}
     -L $<TARGET_FILE:clou>
-    -A "${FWD_ARGS}"
+    -A "${FWD_ARGS} --fence"
     )
   set_tests_properties(${FWD_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
   
