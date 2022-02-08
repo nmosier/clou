@@ -136,7 +136,7 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
 
     if (mode == CheckMode::SLOW) {
         // TODO: make it so that bypassed store is optoinal
-        solver_add(z3::mk_or(exprs), "bypassed_store");
+        solver_add(translate(z3::mk_or(exprs)), "bypassed_store");
         check_solution(load, aeg.entry, aeg.entry, vec, mode);
     }
 }
