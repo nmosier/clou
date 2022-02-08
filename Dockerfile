@@ -54,7 +54,7 @@ RUN mkdir lcm
 WORKDIR "$LCM_BUILD"
 RUN git clone --depth=1 https://github.com/openssl/openssl.git openssl
 WORKDIR openssl
-RUN ./Configure CC="$LCM_SCRIPTS/cloucc.sh" CFLAGS="-Xclang -load -Xclang $LCM_BUILD/src/libclou.so"
+RUN ./Configure CC="$LCM_SCRIPTS/cloucc.sh" CFLAGS="-g -Xclang -load -Xclang $LCM_BUILD/src/libclou.so"
 RUN mkdir lcm
 
 
