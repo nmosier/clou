@@ -28,6 +28,8 @@ private:
     void check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode);
     virtual std::string name() const override final { return "SpectreV4"; }
     virtual void entry(NodeRef, CheckMode) override;
+    
+    bool different_names(NodeRef load, NodeRef source) const;
 };
 
 }

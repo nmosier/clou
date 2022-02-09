@@ -73,6 +73,11 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
             return;
         }
         
+        if (spectre_v4_mode.diff_names && !different_names(load, bypassed_store)) {
+            llvm::errs() << "Skipping due to same name\n";
+            return;
+        }
+        
         const auto& node = aeg.lookup(bypassed_store);
         
         if (mode == CheckMode::SLOW) {
@@ -109,6 +114,38 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
     
 }
 
+bool SpectreV4_Detector::different_names(NodeRef load, NodeRef store) const {
+    const aeg::Node& load_node = aeg.lookup(load);
+    const aeg::Node& store_node = aeg.lookup(store);
+    const llvm::Value *load_addr = load_node.get_memory_address_pair().first;
+    const llvm::Value *store_addr = store_node.get_memory_address_pair().first;
+    const auto& load_id = aeg.po.lookup(load).id;
+    const auto& store_id = aeg.po.lookup(store).id;
+    
+#if 0
+    if (llvm::isa<llvm::Argument>(load_addr) && llvm::isa<llvm::Argument>(store_addr)) {
+        // same inlining context
+        if (load_id && store_id && load_id->func == store_id->func) {
+            return load_addr != store_addr;
+        } else {
+            return true;
+        }
+    } else if (llvm::isa<llvm::Constant>(load_addr) && llvm::isa<llvm::Constant>(store_addr)) {
+        return load_addr == store_addr;
+    }
+#endif
+    
+    if (llvm::isa<llvm::AllocaInst>(load_addr) && llvm::isa<llvm::AllocaInst>(store_addr)) {
+        if (load_id && store_id && load_id->func == store_id->func) {
+            return load_addr != store_addr;
+        } else {
+            return true;
+        }
+    }
+        
+    return true;
+}
+
 void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
     NodeRefVec todo = {load};
     NodeRefSet seen;
@@ -123,11 +160,13 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
         
         // if it is a write, then check whether it can be bypassed
         if (node.may_write() && aeg.may_source_stb(load, bypassed_store)) {
-            if (mode == CheckMode::SLOW) {
-                exprs.push_back(node.arch && node.write && aeg.same_addr(bypassed_store, load));
-            }
-            if (mode == CheckMode::FAST) {
-                throw lookahead_found();
+            if (!spectre_v4_mode.diff_names || different_names(load, bypassed_store)) {
+                if (mode == CheckMode::SLOW) {
+                    exprs.push_back(node.arch && node.write && aeg.same_addr(bypassed_store, load));
+                }
+                if (mode == CheckMode::FAST) {
+                    throw lookahead_found();
+                }
             }
         }
                 
