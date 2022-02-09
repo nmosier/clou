@@ -81,8 +81,8 @@ struct SpectreV1Mode {
 extern SpectreV1Mode spectre_v1_mode;
 
 struct SpectreV4Mode {
-    bool psf = false; /// whether to allow psf
-    bool concrete_sourced_stores = true; /// if enabled, we will include all possible sourced stores in the search, not just program entry.
+    bool diff_names = false; /// require different names for mispredicted load & bypassed store.
+    bool concrete_sourced_stores = true; /// whether we should also find concrete
 };
 extern SpectreV4Mode spectre_v4_mode;
 
@@ -101,10 +101,6 @@ struct SyntacticDependencies {
     }
 };
 extern SyntacticDependencies respect_syntactic_dependencies;
-
-inline bool g_psf() {
-    return leakage_class == LeakageClass::SPECTRE_V4 && spectre_v4_mode.psf;
-}
 
 constexpr unsigned default_num_specs = 2;
 constexpr unsigned default_num_unrolls = 2;

@@ -91,7 +91,8 @@ Options:
     mode={classic|branch-predicate}
 --spectre-v4 <subopts>
                      set Spectre-v4 options. Suboptions:
-    stb-size=<uint>       store buffer size
+    diff-names[=<bool>]   require different names
+    concrete-sourced-stores[=<bool>]
 --traceback <uint>   set max traceback via rf * (addr + data) edges.
 --witnesses <bool>   enable/disable generation of witness executions (default: on)
 --partial[=<bool>]   model partial executions in AEG (default: false)
@@ -218,6 +219,7 @@ int parse_args() {
         DEPS,
         SKIP_FUNC,
         FILE_REGEX,
+        FUNCTIONS_FILE,
     };
     
     struct option opts[] = {
@@ -249,7 +251,8 @@ int parse_args() {
         {"fence", optional_argument, nullptr, FENCE},
         {"deps", optional_argument, nullptr, DEPS},
         {"skip-func", required_argument, nullptr, 'F'},
-	{"file", required_argument, nullptr, FILE_REGEX},
+        {"file", required_argument, nullptr, FILE_REGEX},
+        {"functions", required_argument, nullptr, FUNCTIONS_FILE},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -270,6 +273,15 @@ int parse_args() {
             case 'f':
                 function_names.insert(optarg);
                 break;
+                
+            case FUNCTIONS_FILE: {
+                std::ifstream ifs {optarg};
+                std::string s;
+                while (ifs >> s) {
+                    function_names.insert(s);
+                }
+                break;
+            }
                 
             case 'F':
                 skip_function_names.insert(optarg);
@@ -371,35 +383,30 @@ int parse_args() {
                 leakage_class = LeakageClass::SPECTRE_V4;
                 
                 enum Key {
-                    PSF,
-                    CONCRETE_SRC,
+                    DIFF_NAMES,
+                    CONCRETE_SOURCED_STORES,
                     COUNT
                 };
 
                 const char *keylist[COUNT + 1] = {
-                    [PSF] = "psf",
-                    [CONCRETE_SRC] = "concrete-src",
+                    [DIFF_NAMES] = "diff-names",
+                    [CONCRETE_SOURCED_STORES] = "concrete-sourced-stores",
                     [COUNT] = nullptr
-                };
-                
-                bool args[COUNT] = {
-                    [PSF] = false,
-                    [CONCRETE_SRC] = true,
                 };
                 
                 char *value;
                 int idx;
-                while (optarg && (idx = getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
+                while (optarg && (idx = ::getsubopt(&optarg, (char **) keylist, &value)) >= 0) {
                     if (args[idx] && value == nullptr) {
                         error("spectre-v4: suboption missing value");
                     }
                     switch (idx) {
-                        case PSF:
-                            spectre_v4_mode.psf = true;
+                        case DIFF_NAMES:
+                            spectre_v4_mode.diff_names = parse_bool_opt(value);
                             break;
                             
-                        case CONCRETE_SRC:
-                            spectre_v4_mode.concrete_sourced_stores = parse_bool(value);
+                        case CONCRETE_SOURCED_STORES:
+                            spectre_v4_mode.concrete_sourced_stores = parse_bool_opt(value);
                             break;
                             
                         default: std::abort();
