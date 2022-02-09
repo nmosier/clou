@@ -304,7 +304,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             const AddrInfo addr = {
                 .id = id,
                 .V = V,
-                .e = node.addr_def->arch,
+                .e = *node.addr_def,
                 .ref = i
             };
             addrs.push_back(addr);
@@ -336,7 +336,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                             return p.first == V;
                         });
                         assert(it != node.addr_refs.end());
-                        addrs.push_back({.id = id, .V = V, .e = it->second.arch, .ref = std::nullopt});
+                        addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
                     }
                 } else if (llvm::isa<llvm::Constant>(V)) {
                     assert(V->getType()->isPointerTy());
@@ -347,7 +347,7 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                             return p.first == V;
                         });
                         assert(it != node.addr_refs.end());
-                        addrs.push_back({.id = id, .V = V, .e = it->second.arch, .ref = std::nullopt});
+                        addrs.push_back({.id = id, .V = V, .e = it->second, .ref = std::nullopt});
                     }
                 }
             }

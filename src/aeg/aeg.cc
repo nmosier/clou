@@ -136,7 +136,7 @@ z3::expr AEG::get_memory_address(NodeRef ref) const {
         default: std::abort();
     }
     
-    return z3::ite(trans, addr.trans, addr.arch).simplify();
+    return addr;
 }
 
 namespace {
