@@ -23,7 +23,7 @@
 # include "config.h"
 #endif
 
-#include "dataflow.h"
+#include "dataflow/dataflow.h"
 
 struct Value {
     using Insts = std::unordered_set<const llvm::Instruction *>;

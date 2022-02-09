@@ -1,7 +1,3 @@
-add_library(dataflow_objs OBJECT
-  dataflow.h dataflow.cc
-  )
-
 function(add_pass name)
   add_library(${name} MODULE
     ${name}.cc
@@ -55,3 +51,14 @@ target_include_directories(ssb_control PRIVATE ${LIBPROFILER_INCLUDE_DIRS})
 target_link_libraries(ssb_control PRIVATE attacker_taint ${LIBPROFILER_LIBRARIES})
 
 add_pass(print_loops)
+
+
+add_library(print_transaa MODULE
+  print_transaa.cc
+  $<TARGET_OBJECTS:dataflow_objs>
+  ../util/llvm.cc ../util/llvm.h
+  )
+if(APPLE)
+  target_link_options(print_transaa PRIVATE -undefined dynamic_lookup)
+endif()
+

@@ -20,7 +20,7 @@
 #include <tuple>
 
 #include "attacker-taint.h"
-#include "dataflow.h"
+#include "dataflow/dataflow.h"
 
 constexpr unsigned stb_size = 1;
 
