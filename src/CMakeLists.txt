@@ -7,6 +7,7 @@ add_subdirectory(aeg)
 add_subdirectory(leakage)
 add_subdirectory(util)
 add_subdirectory(mon)
+add_subdirectory(dataflow)
 add_subdirectory(passes)
 
 add_library(clou MODULE
