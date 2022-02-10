@@ -281,8 +281,7 @@ void AEG::construct_addrs() {
                             for (; it != defs.end(); ++it) {
                                 const Node& node = lookup(*it);
                                 const Address& addr = *node.addr_def;
-                                acc.arch = z3::ite(node.arch, addr.arch, acc.arch);
-                                acc.trans = z3::ite(node.trans, addr.trans, acc.trans);
+                                acc.addr = z3::ite(node.exec(), addr, acc);
                             }
                             e = acc;
                         }
@@ -311,7 +310,7 @@ void AEG::construct_addrs() {
                 }
                 
                 if (const llvm::GetElementPtrInst *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(RI->get_inst())) {
-                    const z3::expr base = node.addr_refs.at(GEP->getPointerOperand()).arch;
+                    const z3::expr base = node.addr_refs.at(GEP->getPointerOperand());
                     if (const auto offset = llvm::getelementptr_const_offset(GEP)) {
                         node.addr_def = Address(context, (base + *offset).simplify());
                         continue;
@@ -319,8 +318,10 @@ void AEG::construct_addrs() {
                         const auto min_offset = llvm::getelementptr_min_offset(GEP);
                         const auto max_offset = llvm::getelementptr_max_offset(GEP);
                         if (min_offset && max_offset) {
-                            Address addr {context};
-                            addr.arch = z3::max(z3::min(addr.arch, context->int_val(*max_offset)), context->int_val(*min_offset)) + base;
+                            const z3::expr offset = context.make_int("offset");
+                            const z3::expr offset_trans = offset;
+                            const z3::expr offset_arch = z3::max(z3::min(offset, context->int_val(*max_offset)), context->int_val(*min_offset));
+                            Address addr {context, z3::ite(node.arch, offset_arch, offset_trans)};
                             node.addr_def = addr;
                             continue;
                         }
