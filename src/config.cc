@@ -20,6 +20,7 @@
 #include "util/output.h"
 #include "aeg/edge.h"
 #include "aeg/node.h"
+#include "util/timer.h"
 
 /* TODO
  * [ ] Handle function names
@@ -177,6 +178,18 @@ void initialize_post() {
         }
     }
 }
+
+namespace {
+struct Timer {
+    ~Timer() {
+        std::cerr << "PROCESS_RUNTIME: " << cpu_time() << "\n";
+    }
+};
+
+Timer timer;
+
+}
+
 
 int parse_args() {
     const char *envvars[] = {"LCM_ARGS", "LCM_EXTRA_ARGS"};
