@@ -30,6 +30,8 @@ private:
     virtual void entry(NodeRef, CheckMode) override;
     
     bool different_names(NodeRef load, NodeRef source) const;
+    
+    bool filter() const;
 };
 
 }

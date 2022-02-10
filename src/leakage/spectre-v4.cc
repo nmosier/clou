@@ -41,6 +41,23 @@ void SpectreV4_Detector::run_transmitter(NodeRef transmitter, CheckMode mode) {
     }, mode);
 }
 
+bool SpectreV4_Detector::filter() const {
+    for (const auto& action : actions) {
+        if (action.edge == aeg::Edge::RF) {
+            // if source doesn't have incoming ADDR dependency, then apply LLVM's AA
+            const auto addrs = aeg.get_nodes(Direction::IN, action.src, aeg::Edge::Kind::ADDR);
+            if (addrs.empty()) {
+                if (aeg.check_alias(action.src, action.dst) == llvm::NoAlias) {
+                    llvm::errs() << "SpectreV4_Detector::filter(): filtered\n";
+                    return true;
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
 void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec, CheckMode mode) {
     
     
@@ -181,6 +198,11 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
 }
 
 void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode) {
+    // try to filter
+    if (filter()) {
+        return;
+    }
+    
     if (mode == CheckMode::SLOW) {
         switch (solver_check(false)) {
             case z3::sat: {
