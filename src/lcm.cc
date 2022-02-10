@@ -85,6 +85,7 @@ struct LCMPass: public llvm::ModulePass {
         ::signal(SIGABRT, SIG_DFL);
         
         for (llvm::Function& F : M) {
+            // TODO: Would be nice to parallelize this.
             if (!F.isDeclaration()) {
                 attacker_taint.emplace(&F, getAnalysis<AttackerTaintPass>(F).getResults());
             }
@@ -124,13 +125,12 @@ struct LCMPass: public llvm::ModulePass {
             return true;
         }
         
-        {
+        if (!function_names.empty()) {
             bool matched = false;
-            if (!function_names.empty()) {
-                for (const std::string& function_regex : function_names) {
-                    if (std::regex_match(static_cast<std::string>(F.getName()), std::regex {function_regex})) {
-                        matched = true;
-                    }
+            
+            for (const std::string& function_regex : function_names) {
+                if (std::regex_match(static_cast<std::string>(F.getName()), std::regex {function_regex})) {
+                    matched = true;
                 }
             }
             if (!matched) {
