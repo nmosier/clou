@@ -119,6 +119,35 @@ struct LCMPass: public llvm::ModulePass {
         }
     }
     
+    bool should_skip(const llvm::Function& F) const {
+        if (analyzed_functions.contains(F.getName().str())) {
+            return true;
+        }
+        
+        {
+            bool matched = false;
+            if (!function_names.empty()) {
+                for (const std::string& function_regex : function_names) {
+                    if (std::regex_match(static_cast<std::string>(F.getName()), std::regex {function_regex})) {
+                        matched = true;
+                    }
+                }
+            }
+            if (!matched) {
+                return true;
+            }
+        }
+        
+        /* check if should skip */
+        for (const std::string& skip_function_name : skip_function_names) {
+            if (std::regex_match(static_cast<std::string>(F.getName()), std::regex {skip_function_name})) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
     template <typename OutputIt>
     void runOnFunction(llvm::Function& F, llvm::AliasAnalysis& AA, OutputIt out) {
         const std::string func = F.getName().str();
@@ -154,7 +183,18 @@ struct LCMPass: public llvm::ModulePass {
         
         try {
             check_config();
-
+            
+            if (should_skip(F)) {
+                if (client) {
+                    mon::Message msg;
+                    msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
+                    client.send(msg);
+                }
+                
+                return;
+            }
+            
+#if 0
             if (analyzed_functions.contains(F.getName().str())) {
                 
                 std::cerr << "skipping analyzed function " << F.getName().str() << "\n";
@@ -184,6 +224,7 @@ struct LCMPass: public llvm::ModulePass {
                     return;
                 }
             }
+#endif
             
             const unsigned num_unrolls = 2;
             
