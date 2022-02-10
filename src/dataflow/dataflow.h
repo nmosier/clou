@@ -48,6 +48,13 @@ struct Dataflow {
         /** Edges to ignore. */
         std::set<std::pair<const llvm::Instruction *, const llvm::Instruction *>> ignore;
         
+        /** Cache */
+        struct CacheEntry {
+            Value entry;
+            Map exits;
+        };
+        mutable std::unordered_map<const llvm::Instruction *, CacheEntry> cache;
+        
         Graph(const Context& context): Component(context) {}
         
         virtual const llvm::Instruction *entry() const override {
@@ -192,8 +199,29 @@ struct Dataflow {
         void transfer_once(Map& ins, Map& outs, Map& exit_values) const {
             for (const llvm::Instruction *I : order()) {
                 const Component& component = *map.at(I);
+                const Value& entry_value = ins.at(component.entry());
                 Map component_exit_values;
-                component.transfer(ins.at(component.entry()), ins, outs, component_exit_values);
+
+                // check cache
+                bool should_transfer = true;
+                const auto cache_it = cache.find(I);
+                if (cache_it != cache.end()) {
+                    const CacheEntry& cache_ent = cache_it->second;
+                    if (cache_ent.entry == entry_value) {
+                        component_exit_values = cache_ent.exits;
+                        should_transfer = false;
+                    }
+                }
+                
+                if (should_transfer) {
+                    component.transfer(entry_value, ins, outs, component_exit_values);
+                    CacheEntry cache_ent = {
+                        .entry = entry_value,
+                        .exits = component_exit_values,
+                    };
+                    cache.insert_or_assign(I, std::move(cache_ent));
+                }
+                
                 std::copy(component_exit_values.begin(), component_exit_values.end(), std::inserter(exit_values, exit_values.end()));
             }
         }
