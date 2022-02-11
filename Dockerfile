@@ -26,10 +26,11 @@ WORKDIR "$LCM_SCRIPTS"
 COPY scripts/cloucc.sh .
 
 # Set up custom z3
-ENV Z3_DIR="$LCM_BUILD/z3/install"
+ENV Z3_NAME=z3
+ENV Z3_DIR="$LCM_BUILD/$Z3_NAME/install"
 WORKDIR "$LCM_BUILD"
-RUN git clone --depth=1 https://github.com/nmosier/z3-fix.git
-WORKDIR "$LCM_BUILD/z3/build"
+RUN git clone --depth=1 https://github.com/nmosier/$Z3_NAME.git
+WORKDIR "$LCM_BUILD/$Z3_NAME/build"
 RUN mkdir -p ../install
 RUN cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$Z3_DIR" ..
 RUN make -j$(nproc)
