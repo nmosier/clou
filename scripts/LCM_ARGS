@@ -1,15 +1,18 @@
 LOG="$PWD/lcm/logs"
 mkdir -p "$LOG"
 export FIFO="$PWD/lcm/fifo"
-export LCM_ARGS_SH="--max-transient=50 --aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --window=200 --stb=56 --log $LOG -vv"
-export LCM_ARGS_V1="$LCM_ARGS_SH --spectre-v1=mode=classic"
-export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4"
 
 
 if [[ "$(basename "$PWD")" = libsodium ]]; then
     export SRC="$PWD/src/libsodium"
+    API="$PWD/../../test/libsodium_functions.txt"
 elif [[ "$(basename "$PWD")" = openssl ]]; then
     export SRC="$PWD"
+    API="$PWD/../../test/openssl_functions.txt"
 else
     echo unrecognized directory while setting SRC: "$PWD" >&2
 fi
+
+export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv --functions=$API --max-trans=250 --window=500 --stb=50 -j64"
+export LCM_ARGS_V1="$LCM_ARGS_SH --spectre-v1=mode=classic"
+export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4"
