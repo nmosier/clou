@@ -55,6 +55,8 @@ void AEG::constrain_arch() {
 
 void AEG::constrain_arch(const NodeRefSet& window, AssertFunc solver_add) {
     {
+        assert(exits.size() == 1);
+        assert(window.contains(*exits.begin()));
         z3::expr_vector v {context};
         for (NodeRef exit : exits) {
             if (window.contains(exit)) {
