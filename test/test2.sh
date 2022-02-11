@@ -12,8 +12,9 @@ CLANG="$(which clang-12)"
 DEBUGGER=
 VALGRIND=
 
-
-export SRC="$(dirname "$0")/.."
+if [ -z "$SRC" ]; then
+    export SRC="$(dirname "$0")/.."
+fi
 
 while getopts "hO:T:R:L:A:C:gV" OPTC; do
     case $OPTC in
