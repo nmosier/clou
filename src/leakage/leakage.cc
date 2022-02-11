@@ -690,8 +690,12 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
             solver = new_solver;
             
             const auto solver_add = [&] (const z3::expr& e, const std::string& s) {
+#if 1
                 static unsigned i = 0;
                 solver.add(translate(e), util::to_string(s, "-", i++).c_str());
+#else
+                solver.add(translate(e));
+#endif
             };
             aeg.constrain_arch(exec_window, solver_add);
             aeg.constrain_exec(exec_window, solver_add);
@@ -701,6 +705,8 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
             aeg.for_each_edge([&] (NodeRef src, NodeRef dst, const aeg::Edge& edge) {
                 edge.constraints.add_to(solver_add);
             });
+            
+            aeg.constraints.add_to(solver_add);
 
         }
         
@@ -1210,15 +1216,7 @@ z3::check_result DetectorJob::solver_check(bool allow_unknown) {
             break;
         case z3::unsat:
             ++check_stats.unsat;
-            logv(2, "unsat core: " << util::to_string(solver.unsat_core()) << "\n");
-        if (false) {
-            std::stringstream ss;
-            for (unsigned i = 0; const z3::expr& assertion : solver.assertions()) {
-                ss << "assertion " << i << ": " << assertion << "\n";
-                ++i;
-            }
-            logv(3, ss.str());
-        }
+            // logv(2, "unsat core: " << util::to_string(solver.unsat_core()) << "\n");
             break;
         case z3::unknown:
             ++check_stats.unknown;

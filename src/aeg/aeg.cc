@@ -284,13 +284,13 @@ void AEG::test(TransmitterOutputIt out) {
             });
             progress.done();
         }
-#endif
         
         // add node constraints
         {
             logv(0, __FUNCTION__ << ": adding node constraints...\n");
             Progress progress {size()};
             for (NodeRef ref : node_range()) {
+                assert(lookup(ref).constraints.exprs.empty());
                 lookup(ref).constraints.add_to(solver);
                 lookup(ref).constraints.dump(hist);
                 ++progress;
@@ -301,7 +301,9 @@ void AEG::test(TransmitterOutputIt out) {
         // add main constraints
         logv(0, __FUNCTION__ << ": adding main constraints...");
         constraints.add_to_progress(solver);
+        assert(constraints.exprs.empty());
         constraints.dump(hist);
+#endif
 
 #if 0
         // add extra constraints

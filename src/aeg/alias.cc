@@ -412,7 +412,20 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             if (cond->is_true()) {
                 ++filtered;
             } else {
-                constraints(*cond, util::to_string("AA:", desc));
+                const auto pred_ = [&] (const AddrInfo& addr) {
+                    if (addr.ref) {
+                        if (llvm::isa<llvm::GetElementPtrInst, llvm::BitCastInst, llvm::LoadInst>(addr.V)) {
+                            return lookup(*addr.ref).arch;
+                        } else {
+                            return context->bool_val(true);
+                        }
+                    } else {
+                        return context->bool_val(true);
+                    }
+                };
+                
+                constraints(z3::implies(pred_(a) && pred_(b), *cond), util::to_string("AA:", desc));
+                // constraints(*cond, util::to_string("AA:", desc));
             }
         }
         
