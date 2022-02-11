@@ -96,6 +96,8 @@ void AEG::constrain_exec(const NodeRefSet& window, AssertFunc solver_add) {
         ss << "excl-exec:" << ref;
         solver_add(!(node.arch && node.trans), ss.str());
     }
+    
+    constrain_trans(window, solver_add);
 }
 
 void AEG::constrain_trans() {
@@ -120,6 +122,17 @@ void AEG::constrain_trans() {
             trans.push_back(lookup(ref).trans);
         }
         constraints(z3::atmost(trans, spec_depth), "trans-limit-max");
+    }
+    
+    // limit number of speculative stores
+    if (stb_size) {
+        z3::expr_vector stores {context};
+        for (NodeRef ref : node_range()) {
+            const auto& node = lookup(ref);
+            stores.push_back(node.trans && node.write);
+        }
+        std::abort();
+        constraints(z3::atmost2(stores, stb_size.value()), "stb-limit-max");
     }
 }
 
@@ -147,6 +160,16 @@ void AEG::constrain_trans(const NodeRefSet& window, AssertFunc solver_add) {
             trans.push_back(lookup(ref).trans);
         }
         solver_add(z3::atmost2(trans, spec_depth), "trans-limit-max");
+    }
+    
+    // limit number of speculative stores
+    if (stb_size) {
+        z3::expr_vector stores {context};
+        for (NodeRef ref : window) {
+            const auto& node = lookup(ref);
+            stores.push_back(node.trans && node.write);
+        }
+        solver_add(z3::atmost2(stores, stb_size.value()), "stb-limit-max");
     }
 }
 
