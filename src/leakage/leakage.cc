@@ -1016,7 +1016,6 @@ void DetectorJob::precompute_rf(NodeRef load) {
         if (keep) {
             ++it;
         } else {
-            logv(1, "TRACE: filtered " << it->first << ": " << util::to_string(it->second) << "\n");
             it = out.erase(it);
             ++filtered;
         }
