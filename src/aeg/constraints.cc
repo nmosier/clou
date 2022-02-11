@@ -131,7 +131,6 @@ void AEG::constrain_trans() {
             const auto& node = lookup(ref);
             stores.push_back(node.trans && node.write);
         }
-        std::abort();
         constraints(z3::atmost2(stores, stb_size.value()), "stb-limit-max");
     }
 }
