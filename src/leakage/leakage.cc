@@ -690,7 +690,8 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
             solver = new_solver;
             
             const auto solver_add = [&] (const z3::expr& e, const std::string& s) {
-                solver.add(translate(e));
+                static unsigned i = 0;
+                solver.add(translate(e), util::to_string(s, "-", i++).c_str());
             };
             aeg.constrain_arch(exec_window, solver_add);
             aeg.constrain_exec(exec_window, solver_add);
@@ -1015,6 +1016,7 @@ void DetectorJob::precompute_rf(NodeRef load) {
         if (keep) {
             ++it;
         } else {
+            logv(1, "TRACE: filtered " << it->first << ": " << util::to_string(it->second) << "\n");
             it = out.erase(it);
             ++filtered;
         }
@@ -1209,6 +1211,15 @@ z3::check_result DetectorJob::solver_check(bool allow_unknown) {
             break;
         case z3::unsat:
             ++check_stats.unsat;
+            logv(2, "unsat core: " << util::to_string(solver.unsat_core()) << "\n");
+        if (false) {
+            std::stringstream ss;
+            for (unsigned i = 0; const z3::expr& assertion : solver.assertions()) {
+                ss << "assertion " << i << ": " << assertion << "\n";
+                ++i;
+            }
+            logv(3, ss.str());
+        }
             break;
         case z3::unknown:
             ++check_stats.unknown;
