@@ -126,15 +126,7 @@ void AEG::constrain_trans() {
         constraints(z3::atmost(trans, spec_depth), "trans-limit-max");
     }
     
-    // limit number of speculative stores
-    if (stb_size) {
-        z3::expr_vector stores {context};
-        for (NodeRef ref : node_range()) {
-            const auto& node = lookup(ref);
-            stores.push_back(node.trans && node.write);
-        }
-        constraints(z3::atmost2(stores, stb_size.value()), "stb-limit-max");
-    }
+    std::abort(); // TODO: make consistant with per-window verzion
 }
 
 void AEG::constrain_trans(const NodeRefSet& window, AssertFunc solver_add) {
@@ -163,14 +155,14 @@ void AEG::constrain_trans(const NodeRefSet& window, AssertFunc solver_add) {
         solver_add(z3::atmost2(trans, spec_depth), "trans-limit-max");
     }
     
-    // limit number of speculative stores
-    if (stb_size) {
-        z3::expr_vector stores {context};
+    // STL: limit due to store queue
+    if (lsq_size) {
+        z3::expr_vector lsq {context};
         for (NodeRef ref : window) {
-            const auto& node = lookup(ref);
-            stores.push_back(node.trans && node.write);
+            const Node& node = lookup(ref);
+            lsq.push_back(node.trans && node.access());
         }
-        solver_add(z3::atmost2(stores, stb_size.value()), "stb-limit-max");
+        solver_add(z3::atmost2(lsq, *lsq_size), "lsq-upper-bound");
     }
 }
 
