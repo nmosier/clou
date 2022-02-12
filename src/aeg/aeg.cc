@@ -215,7 +215,8 @@ NodeRef AEG::exit_con(const z3::eval& eval) const {
         }
     }
     
-    error("no arch exit!");
+    llvm::errs() << "warning: no arch exit! returning entry\n";
+    return entry;
 }
 
 AEG::ValueLoc AEG::get_value_loc(NodeRef ref) const {
