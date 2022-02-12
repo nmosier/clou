@@ -31,7 +31,7 @@ struct Leakage {
 
 class DetectorJob {
     friend class DetectorMain;
-private:
+protected:
     std::unique_lock<std::mutex> lock;
 protected:
     enum class CheckMode { FAST, SLOW };
@@ -227,4 +227,6 @@ void append_core(const Solver& solver, const std::string& label) {
 
 
 #define z3_cond_scope \
-const std::optional<z3::scope> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope(solver)) : std::optional<z3::scope>()
+lock.unlock(); \
+const std::optional<z3::scope> scope = (mode == CheckMode::SLOW) ? std::make_optional(z3::scope(solver)) : std::optional<z3::scope>(); \
+lock.lock()
