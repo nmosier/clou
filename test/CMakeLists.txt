@@ -1,3 +1,5 @@
+set(DEFAULT_ARGS "-Epo,tfo,addr,addr_gep,rf,rfx -d250 --window 500 --stb=50 --traceback=2")
+
 set(TEST_SH ${CMAKE_CURRENT_SOURCE_DIR}/test2.sh)
 set(TEST_FENCE_SH ${CMAKE_CURRENT_SOURCE_DIR}/test-fence.sh)
 
@@ -16,7 +18,7 @@ foreach(PHT_SRC ${PHT_SRCS})
     list(JOIN PHT_ARGLIST " " PHT_ARGS)
   endif()
 
-  set(PHT_ARGS "-Epo,tfo,addr,addr_gep,rf,rfx -d20 --max-transient=15 -fvictim_function_.* --spectre-v1=mode=classic --aa=transient --partial ${PHT_ARGS}")
+  set(PHT_ARGS "${DEFAULT_ARGS} -fvictim_function_.* --spectre-v1=mode=classic --aa=transient --partial ${PHT_ARGS}")
   
   add_test(NAME ${PHT_NAME}
     COMMAND ${TEST_SH}
@@ -54,7 +56,7 @@ foreach(STL_SRC ${STL_SRCS})
     list(JOIN STL_ARGLIST " " STL_ARGS)
   endif()
 
-  set(STL_ARGS "-Epo,tfo,addr,addr_gep,rf,rfx -d20 --spectre-v4 --traceback=2 --max-transient=25 --aa=transient -fcase_${STL} --partial ${STL_ARGS}")
+  set(STL_ARGS "${DEFAULT_ARGS} --spectre-v4 --aa=transient -fcase_${STL} --partial ${STL_ARGS}")
   
   add_test(NAME ${STL_NAME}
     COMMAND ${TEST_SH}
@@ -80,7 +82,7 @@ file(GLOB FWD_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/fwd*.c)
 foreach(FWD_SRC ${FWD_SRCS})
 
   get_filename_component(FWD_NAME ${FWD_SRC} NAME_WLE)
-  set(FWD_ARGS "--max-transient=250 --window=500 --spectre-v1=mode=classic --aa=transient --partial")
+  set(FWD_ARGS "${DEFAULT_ARGS} --spectre-v1=mode=classic --aa=transient --partial")
 
   add_test(NAME ${FWD_NAME}
     COMMAND ${TEST_SH}
