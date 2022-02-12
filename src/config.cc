@@ -48,6 +48,7 @@ bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
 std::optional<unsigned> stb_size;
+std::optional<unsigned> lsq_size;
 SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
 unsigned window_size = std::numeric_limits<unsigned>::max();
@@ -111,6 +112,7 @@ Options:
 --fence=[<bool>]     perform automatic fence insertion
 --deps=[<vec>]       set custom dependencies (empty means use default)
 --callees=[<bool>]   whether should analyze calles of selected functions
+--lsq=[<uint>]       set LSQ size
 )=";
     fprintf(f, "%s", s);
 }
@@ -241,6 +243,7 @@ int parse_args() {
         FILE_REGEX,
         FUNCTIONS_FILE,
         CALLEES,
+        LSQ,
     };
     
     struct option opts[] = {
@@ -275,6 +278,7 @@ int parse_args() {
         {"file", required_argument, nullptr, FILE_REGEX},
         {"functions", required_argument, nullptr, FUNCTIONS_FILE},
         {"callees", optional_argument, nullptr, CALLEES},
+        {"lsq", optional_argument, nullptr, LSQ},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -556,6 +560,14 @@ int parse_args() {
                 
             case CALLEES:
                 analyze_callees = parse_bool_opt(optarg);
+                break;
+                
+            case LSQ:
+                if (optarg) {
+                    lsq_size = std::stoul(optarg);
+                } else {
+                    lsq_size = std::nullopt;
+                }
                 break;
                 
             default:

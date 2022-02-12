@@ -38,6 +38,7 @@ extern bool fence_insertion;
 extern int semid;
 extern std::string file_regex;
 extern bool analyze_callees;
+extern std::optional<unsigned> lsq_size;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;
