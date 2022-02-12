@@ -185,6 +185,11 @@ namespace {
 struct Timer {
     ~Timer() {
         std::cerr << "PROCESS_RUNTIME: " << cpu_time() << "\n";
+        
+        std::stringstream ss;
+        ss << output_dir << "/runtimes.txt";
+        std::ofstream ofs {ss.str(), std::ofstream::app};
+        ofs << cpu_time() << "\n";
     }
 };
 
