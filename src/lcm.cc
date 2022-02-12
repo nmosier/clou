@@ -74,12 +74,14 @@ struct LCMPass: public llvm::ModulePass {
             }
         }
         
+        std::cerr << "functions list: " << out.size() << "\n";
+        
         if (analyze_callees) {
             Set cur = out;
             Set next;
             while (!cur.empty()) {
                 for (const llvm::Function *caller : cur) {
-                    for (const auto callee_pair : *CG[caller]) {
+                    for (const auto& callee_pair : *CG[caller]) {
                         const auto callee_node = callee_pair.second;
                         const llvm::Function *callee = callee_node->getFunction();
                         if (out.insert(callee).second) {
