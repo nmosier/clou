@@ -20,12 +20,7 @@ uint8_t temp = 0;  /* Used so compiler won't optimize out victim_function() */
 
 void example_6(size_t x, size_t secret_idx) {
   if (x < array1_size) {
-    array1[x] += secret[secret_idx] * 512;
-    
-    for (unsigned i = 0; i < 4; ++i) {
-      unused1[0] = 0;
-    }
-    
-    *ptr;
+    array1[x] += secret[secret_idx & 0xf] * 512;
   }
+  *ptr;
 }

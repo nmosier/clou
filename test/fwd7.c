@@ -10,7 +10,5 @@ void example_7(int j, int attacker_val) {
      array1[j] = attacker_val;
   }
   
-  for (; i < 16; ++i) {
-    temp &= array2[array1[i]];
-  }
+  temp &= array2[array1[i]];
 }
