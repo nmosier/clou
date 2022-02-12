@@ -57,6 +57,7 @@ int semid = -1;
 int shmid = -1;
 std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
 std::string file_regex;
+bool analyze_callees = false;
 
 namespace {
 std::optional<std::string> logdir;
@@ -109,6 +110,7 @@ Options:
 --profile            enable profiler
 --fence=[<bool>]     perform automatic fence insertion
 --deps=[<vec>]       set custom dependencies (empty means use default)
+--callees=[<bool>]   whether should analyze calles of selected functions
 )=";
     fprintf(f, "%s", s);
 }
@@ -233,6 +235,7 @@ int parse_args() {
         SKIP_FUNC,
         FILE_REGEX,
         FUNCTIONS_FILE,
+        CALLEES,
     };
     
     struct option opts[] = {
@@ -266,6 +269,7 @@ int parse_args() {
         {"skip-func", required_argument, nullptr, 'F'},
         {"file", required_argument, nullptr, FILE_REGEX},
         {"functions", required_argument, nullptr, FUNCTIONS_FILE},
+        {"callees", optional_argument, nullptr, CALLEES},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -536,14 +540,18 @@ int parse_args() {
                     const char *mode = tok;
                     assert(edge != nullptr);
                     custom_deps.emplace_back(aeg::Edge::kind_fromstr(edge),
-                                          mode == nullptr ? aeg::ExecMode::EXEC : aeg::from_string<aeg::ExecMode>(mode));
+                                             mode == nullptr ? aeg::ExecMode::EXEC : aeg::from_string<aeg::ExecMode>(mode));
                 }
                 break;
             }
                 
-	case FILE_REGEX:
-	  file_regex = optarg;
-	  break;
+            case FILE_REGEX:
+                file_regex = optarg;
+                break;
+                
+            case CALLEES:
+                analyze_callees = parse_bool_opt(optarg);
+                break;
                 
             default:
                 usage();

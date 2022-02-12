@@ -64,6 +64,37 @@ struct LCMPass: public llvm::ModulePass {
     }
     
     AttackerTaintResultMap attacker_taint;
+        
+    std::unordered_set<const llvm::Function *> get_functions_list(const llvm::Module& M, llvm::CallGraph& CG) {
+        using Set = std::unordered_set<const llvm::Function *>;
+        Set out;
+        for (const llvm::Function& F : M) {
+            if (!should_skip(F)) {
+                out.insert(&F);
+            }
+        }
+        
+        if (analyze_callees) {
+            Set cur = out;
+            Set next;
+            while (!cur.empty()) {
+                for (const llvm::Function *caller : cur) {
+                    for (const auto callee_pair : *CG[caller]) {
+                        const auto callee_node = callee_pair.second;
+                        const llvm::Function *callee = callee_node->getFunction();
+                        if (out.insert(callee).second) {
+                            next.insert(callee);
+                        }
+                    }
+                }
+                cur = std::move(next);
+            }
+        }
+        
+        return out;
+    }
+    
+    std::unordered_set<const llvm::Function *> functions_list;
     
     virtual bool runOnModule(llvm::Module& M) override {
         /* check if filename matches regex */
@@ -79,7 +110,10 @@ struct LCMPass: public llvm::ModulePass {
             std::cerr << "skipping file " << M.getSourceFileName() << "\n";
             return false;
         }
+        
+        llvm::CallGraph& CG = getAnalysis<llvm::CallGraphWrapperPass>().getCallGraph();
 
+        functions_list = get_functions_list(M, CG);
       
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
@@ -91,7 +125,6 @@ struct LCMPass: public llvm::ModulePass {
             }
         }
         
-        llvm::CallGraph& CG = getAnalysis<llvm::CallGraphWrapperPass>().getCallGraph();
         for (llvm::scc_iterator<llvm::CallGraph *> scc_it = llvm::scc_begin(&CG);
              !scc_it.isAtEnd();
              ++scc_it) {
@@ -133,6 +166,7 @@ struct LCMPass: public llvm::ModulePass {
                     matched = true;
                 }
             }
+            
             if (!matched) {
                 return true;
             }
@@ -184,7 +218,11 @@ struct LCMPass: public llvm::ModulePass {
         try {
             check_config();
             
+#if 0
             if (should_skip(F)) {
+#else
+                if (!functions_list.contains(&F)) {
+#endif
                 if (client) {
                     mon::Message msg;
                     msg.mutable_func_completed()->mutable_func()->set_name(F.getName().str());
