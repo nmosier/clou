@@ -430,8 +430,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 
                 z3::expr constraint = pred_(a) && pred_(b);
                 constraint = constraint.simplify();
-                
-                constraints(z3::implies(constraint, *cond), util::to_string("AA:", desc));
+                z3::expr clause = z3::implies(constraint, *cond);
+                clause = clause.simplify();
+                if (!clause.is_true()) {
+                    constraints(clause, util::to_string("AA:", desc));
+                }
                 // constraints(*cond, util::to_string("AA:", desc));
             }
         }
