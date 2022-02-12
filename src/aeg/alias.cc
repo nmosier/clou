@@ -415,7 +415,11 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 const auto pred_ = [&] (const AddrInfo& addr) {
                     if (addr.ref) {
                         if (llvm::isa<llvm::GetElementPtrInst, llvm::BitCastInst, llvm::LoadInst>(addr.V)) {
+#if 0
                             return lookup(*addr.ref).arch;
+#else
+                            return context->bool_val(false);
+#endif
                         } else {
                             return context->bool_val(true);
                         }
@@ -592,84 +596,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             }
         }
         
-        /* process pairs in allocas x geps_nonzero */
-        logv(1, allocas.size() * geps_nonzero.size() << " pairs (1/2)\n");
-#if 0
-        for (const auto& alloca : allocas) {
-            for (const auto& gep_nonzero : geps_nonzero) {
-                add_aa(*alloca, *gep_nonzero, llvm::AliasResult::NoAlias, "alloca-gep-nonzero");
-            }
-        }
-#elif 0
-        {
-            z3::expr_vector allocas_ = z3::transform(context.context, allocas, [] (const auto& x) { return x->e; });
-            z3::expr_vector geps_nonzero_ = z3::transform(context.context, geps_nonzero, [] (const auto& x) { return x->e; });
-            constraints(z3::no_intersect("alloca-geps-nonzero", context.context.int_sort(), allocas_, geps_nonzero_), "alloca-gep-nonzero");
-        }
-#elif 0
-        {
-            z3::expr_vector allocas_ = z3::transform(context.context, allocas, [] (const auto& x) { return x->e; });
-            for (const auto& gep : geps_nonzero) {
-                allocas_.push_back(gep->e);
-                constraints(z3::distinct(allocas_), "alloca-gep-nonzero");
-                allocas_.pop_back();
-            }
-        }
-#endif
-        
-#if 0
-        /* process different-type alloca, gep pairs */
-        {
-            std::size_t sum = std::transform_reduce(types.begin(), types.end(), static_cast<std::size_t>(0), std::plus<std::size_t>(), [&] (const auto& p) -> std::size_t {
-                return p.second.first.size() * (num_type_geps - p.second.first.size());
-            });
-            logv_(1, sum << " pairs (2/2)\n");
-            
-            /* Well, the only ones that may alias are same-type. So map each GEP type to different integer.
-             * NO.
-             *
-             * Map each Alloca type to different integer. This is OK since we know they never alias.
-             * Then each GEP type
-             *
-             */
-            
-            for (const auto& gep_type : types) {
-                const auto& geps = gep_type.second.second;
-                z3::expr_vector allocas(context.context);
-                for (const auto& alloca_type : types) {
-                    if (alloca_type.first == gep_type.first) { continue; }
-                    for (const auto& alloca : alloca_type.second.first) {
-                        allocas.push_back(alloca->e);
-                    }
-                    for (const auto& gep : geps) {
-                        allocas.push_back(gep->e);
-                        constraints(z3::distinct2(allocas), "alloca-gep-type-mismatch");
-                        allocas.pop_back();
-                    }
-                }
-            }
-            
-        }
-#endif
-        
-        // DEBUG: print out how many GEPs have alloca's as indices
-        {
-            unsigned i = 0;
-            for (const AddrInfo& addr : addrs) {
-                if (const auto *GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(addr.V)) {
-                    if (llvm::isa<llvm::AllocaInst>(GEP->getPointerOperand())) {
-                        if (!llvm::getelementptr_const_offset(GEP)) {
-                            ++i;
-                        }
-                    }
-                }
-            }
-            logv(1, __FUNCTION__ << ": " << i << " nonconstant GEPs have alloca's as indices\n");
-        }
-      
-        
-        
-        
         /* Alloca isn't struct, GEP is struct */
         {
             z3::expr_vector allocas {context};
@@ -686,13 +612,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
             
             logv(1, "alloca struct, gep not struct " << allocas.size() * geps.size() << "\n");
             
-#if 0
-            for (const z3::expr& gep : geps) {
-                allocas.push_back(gep);
-                constraints(z3::distinct2(allocas), "alloca-struct-not-gep");
-                allocas.pop_back();
-            }
-#endif
         }
         
         
@@ -700,70 +619,6 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
         logv(1, __FUNCTION__ << ": filtered " << filtered << " tautological constraints\n");
         
     }
-    
-    
-#if 0
-    // add constraints
-    
-    using ValueLocSet = std::unordered_set<ValueLoc>;
-    ValueLocSet skip_vls; // skip because already saw 'must alias'
-    
-    const auto is_arch = [&] (const AddrInfo& x) -> z3::expr {
-        if (x.ref) {
-            return lookup(*x.ref).arch;
-        } else {
-            return context.TRUE;
-        }
-    };
-    
-    Progress progress {addrs.size()};
-    for (auto it1 = addrs.begin(); it1 != addrs.end(); ++it1) {
-        ++progress;
-        const ValueLoc vl1 = it1->vl();
-        if (skip_vls.contains(vl1)) { continue; }
-        for (auto it2 = std::next(it1); it2 != addrs.end(); ++it2) {
-            const ValueLoc vl2 = it2->vl();
-
-            if (check_alias(vl1, vl2) != llvm::AliasResult::MayAlias) { continue; }
-            
-            if (const auto alias_res = compute_alias(*it1, *it2, AA)) {
-                if (skip_vls.contains(vl2)) { continue; }
-
-                std::optional<z3::expr> cond;
-                switch (*alias_res) {
-                    case llvm::AliasResult::NoAlias: {
-                        cond = it1->e != it2->e;
-                        ++nos;
-                        break;
-                    }
-                        
-                    case llvm::AliasResult::MayAlias: {
-                        ++mays;
-                        break;
-                    }
-                        
-                    case llvm::AliasResult::MustAlias: {
-                        skip_vls.insert(vl2);
-                        cond = it1->e == it2->e;
-                        ++musts;
-                        break;
-                    }
-                        
-                    default: std::abort();
-                }
-                
-                if (cond) {
-                    if (!alias_mode.transient) {
-                        cond = z3::implies(is_arch(*it1) && is_arch(*it2), *cond);
-                    }
-                    constraints(*cond, "alias-analysis");
-                }
-                add_alias_result(vl1, vl2, *alias_res);
-                
-            }
-        }
-    }
-#endif
     
     std::cerr << "NoAlias: " << nos << "\n";
     std::cerr << "MustAlias: " << musts << "\n";
