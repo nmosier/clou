@@ -13,6 +13,6 @@ else
     echo unrecognized directory while setting SRC: "$PWD" >&2
 fi
 
-export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv --functions=$API --max-trans=250 --window=500 --stb=50 -j64 --callees"
+export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv --functions=$API --max-trans=250 --window=500 --stb=50 --lsq=30 -j64 --callees"
 export LCM_ARGS_V1="$LCM_ARGS_SH --spectre-v1=mode=classic"
 export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4"
