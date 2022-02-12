@@ -32,6 +32,8 @@ private:
     bool different_names(NodeRef load, NodeRef source) const;
     
     bool filter() const;
+    
+    void constrain_lsq(NodeRef bypassed_store, NodeRef load);
 };
 
 }

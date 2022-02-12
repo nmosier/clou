@@ -83,8 +83,13 @@ void SpectreV4_Detector::run_bypassed_store(NodeRef load, const NodeRefVec& vec,
     }
     
     traceback_rf(load, aeg::ExecMode::ARCH, [&] (NodeRef bypassed_store, CheckMode mode) {
+        
         // store can't be bypassed if older than stb_size
         if (bypassed_store == aeg.entry) { return; }
+        
+        if (mode == CheckMode::SLOW) {
+            constrain_lsq(bypassed_store, load);
+        }
         
         if (!aeg.may_source_stb(load, bypassed_store)) {
             return;
@@ -197,6 +202,19 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
         solver_add(translate(z3::mk_or(exprs)), "bypassed_store");
         check_solution(load, aeg.entry, aeg.entry, vec, mode);
     }
+}
+
+void SpectreV4_Detector::constrain_lsq(NodeRef bypassed_store, NodeRef load) {
+    if (!lsq_size) { return; }
+    
+    assert(bypassed_store < load);
+    z3::expr_vector vec {ctx()};
+    for (NodeRef ref : exec_window) {
+        if (bypassed_store <= ref && ref <= load) {
+            vec.push_back(aeg.lookup(ref).access());
+        }
+    }
+    solver_add(translate(z3::atmost(vec, *lsq_size)), "lsq-upper-bound");
 }
 
 void SpectreV4_Detector::check_solution(NodeRef load, NodeRef bypassed_store, NodeRef sourced_store, const NodeRefVec& vec, CheckMode mode) {
