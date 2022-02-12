@@ -103,6 +103,13 @@ private:
     void construct_ctrl2();
     void construct_taint();
     
+    struct AliasAssertion {
+        NodeRefSet refs;
+        z3::expr cond;
+        std::string name;
+    };
+    std::vector<AliasAssertion> alias_assertions;
+    
     void constrain_arch();
     void constrain_exec();
     void constrain_trans();
@@ -115,6 +122,7 @@ private:
     void constrain_trans(const NodeRefSet& window, AssertFunc solver_add);
     void constrain_tfo(const NodeRefSet& window,   AssertFunc solver_add);
     void constrain_comx(const NodeRefSet& window,  AssertFunc solver_add);
+    void constrain_aliases(const NodeRefSet& window, AssertFunc solver_add);
     
     template <typename Func>
     void for_each_dependency(NodeRef ref, const llvm::Value *V, Func func);

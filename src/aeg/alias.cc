@@ -433,7 +433,18 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
                 z3::expr clause = z3::implies(constraint, *cond);
                 clause = clause.simplify();
                 if (!clause.is_true()) {
-                    constraints(clause, util::to_string("AA:", desc));
+                    if (a.ref || b.ref) {
+                        AliasAssertion aa = {
+                            .refs = {},
+                            .cond = clause,
+                            .name = util::to_string("AA:", desc),
+                        };
+                        if (a.ref) { aa.refs.insert(*a.ref); }
+                        if (b.ref) { aa.refs.insert(*b.ref); }
+                        alias_assertions.push_back(aa);
+                    } else {
+                        constraints(clause, util::to_string("AA:", desc));
+                    }
                 }
                 // constraints(*cond, util::to_string("AA:", desc));
             }
@@ -626,6 +637,17 @@ void AEG::construct_aliases(llvm::AliasAnalysis& AA) {
     std::cerr << "NoAlias: " << nos << "\n";
     std::cerr << "MustAlias: " << musts << "\n";
     std::cerr << "MayAlias: " << addrs.size() * addrs.size() - nos - musts << "\n";
+}
+
+
+void AEG::constrain_aliases(const NodeRefSet& window, AssertFunc solver_add) {
+    for (const AliasAssertion& aa : alias_assertions) {
+        if (std::all_of(aa.refs.begin(), aa.refs.end(), [&window] (NodeRef ref) {
+            return window.contains(ref);
+        })) {
+            solver_add(aa.cond, aa.name);
+        }
+    }
 }
 
 }
