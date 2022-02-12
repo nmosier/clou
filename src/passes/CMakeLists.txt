@@ -62,3 +62,4 @@ if(APPLE)
   target_link_options(print_transaa PRIVATE -undefined dynamic_lookup)
 endif()
 
+add_pass(loc)
