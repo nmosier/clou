@@ -88,7 +88,7 @@ void AEG::construct(llvm::AliasAnalysis& AA, unsigned rob_size) {
     construct_attacker_taint();
     logv(2, "Construct attacker taint\n");
     
-    if (partial_executions || stb_size) {
+    if (partial_executions) {
         compute_min_store_paths();
     }
     

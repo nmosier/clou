@@ -156,7 +156,7 @@ void AEG::constrain_trans(const NodeRefSet& window, AssertFunc solver_add) {
     }
     
     // STL: limit due to store queue
-    if (lsq_size) {
+    if (leakage_class == LeakageClass::SPECTRE_V4 && lsq_size) {
         z3::expr_vector lsq {context};
         for (NodeRef ref : window) {
             const Node& node = lookup(ref);
