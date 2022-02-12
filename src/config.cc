@@ -47,7 +47,6 @@ bool witness_executions = true;
 bool partial_executions = false;
 bool fast_mode = false;
 bool batch_mode = false;
-std::optional<unsigned> stb_size;
 std::optional<unsigned> lsq_size;
 SyntacticDependencies respect_syntactic_dependencies;
 bool use_lookahead = false;
@@ -231,7 +230,6 @@ int parse_args() {
         BATCH,
         MONITOR,
         CFG,
-        STB,
         SYNTACTIC_DEPS,
         LOOKAHEAD,
         WINDOW,
@@ -265,7 +263,6 @@ int parse_args() {
         {"batch", optional_argument, nullptr, BATCH},
         {"monitor", required_argument, nullptr, MONITOR},
         {"cfg", optional_argument, nullptr, CFG},
-        {"stb", required_argument, nullptr, STB},
         {"respect-syntactic-deps", optional_argument, nullptr, SYNTACTIC_DEPS},
         {"lookahead", optional_argument, nullptr, LOOKAHEAD},
         {"window", required_argument, nullptr, WINDOW},
@@ -505,16 +502,7 @@ int parse_args() {
                 }
                 break;
             }
-                
-            case STB: {
-                if (std::string(optarg) == "unlimited") {
-                    stb_size = std::nullopt;
-                } else {
-                    stb_size = std::stoul(optarg);
-                }
-                break;
-            }
-                
+                                
             case LOOKAHEAD: {
                 use_lookahead = parse_bool_opt(optarg);
                 break;
