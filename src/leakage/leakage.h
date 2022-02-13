@@ -153,7 +153,6 @@ protected:
     
     
 private:
-    CFGOrder partial_order;
     std::vector<std::pair<Leakage, std::string>>& leaks;
     RF rf; // TODO: remove?
     

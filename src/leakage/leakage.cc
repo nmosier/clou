@@ -404,7 +404,6 @@ local_ctx(local_ctx),
 solver(solver),
 alias_solver(ctx()),
 init_mem(z3::const_array(ctx().int_sort(), ctx().int_val(static_cast<unsigned>(aeg.entry)))),
-partial_order(aeg.po),
 leaks(leaks)
 {}
 
