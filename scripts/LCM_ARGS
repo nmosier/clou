@@ -1,6 +1,7 @@
 LOG="$PWD/lcm/logs"
 mkdir -p "$LOG"
 export FIFO="$PWD/lcm/fifo"
+unset API
 
 
 if [[ "$(basename "$PWD")" = libsodium ]]; then
