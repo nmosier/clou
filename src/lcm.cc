@@ -73,9 +73,12 @@ struct LCMPass: public llvm::ModulePass {
                 out.insert(&F);
             }
         }
-        
-        std::cerr << "functions list: " << out.size() << "\n";
-        
+
+	llvm::errs() << "initial functions list:\n";
+	for (const llvm::Function *F : out) {
+	  llvm::errs() << F->getName() << "\n";
+	}
+	
         if (analyze_callees) {
             Set cur = out;
             Set next;
@@ -83,15 +86,21 @@ struct LCMPass: public llvm::ModulePass {
                 for (const llvm::Function *caller : cur) {
                     for (const auto& callee_pair : *CG[caller]) {
                         const auto callee_node = callee_pair.second;
-                        const llvm::Function *callee = callee_node->getFunction();
-                        if (out.insert(callee).second) {
+                        if (const llvm::Function *callee = callee_node->getFunction()) {
+			  if (out.insert(callee).second) {
                             next.insert(callee);
-                        }
+			  }
+			}
                     }
                 }
                 cur = std::move(next);
             }
         }
+
+	llvm::errs() << "final functions list:\n";
+	for (const llvm::Function *F : out) {
+	  llvm::errs() << F->getName() << "\n";
+	}	
         
         return out;
     }
@@ -122,9 +131,9 @@ struct LCMPass: public llvm::ModulePass {
         
         for (llvm::Function& F : M) {
             // TODO: Would be nice to parallelize this.
-            if (!F.isDeclaration()) {
-                attacker_taint.emplace(&F, getAnalysis<AttackerTaintPass>(F).getResults());
-            }
+	  if (!F.isDeclaration() && functions_list.contains(&F)) {
+	    attacker_taint.emplace(&F, getAnalysis<AttackerTaintPass>(F).getResults());
+	  }
         }
         
         for (llvm::scc_iterator<llvm::CallGraph *> scc_it = llvm::scc_begin(&CG);
