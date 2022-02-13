@@ -473,7 +473,9 @@ std::vector<std::pair<z3::expr, std::string>> AEG::assert_xsaccess_order(const N
             vec.push_back(z3::ite(node.xsaccess(), *node.xsaccess_order, xsaccess_order_init));
         }
         
-        assertions.emplace_back(z3::max(before) < z3::min(after), util::to_string("fence order ", fence));
+        if (!before.empty() && !after.empty()) {
+            assertions.emplace_back(z3::max(before) < z3::min(after), util::to_string("fence order ", fence));
+        }
     }
     
     return assertions;
