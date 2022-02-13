@@ -256,9 +256,10 @@ void AEG::construct_addrs() {
                         
                     } else {
                         auto& os = llvm::errs();
-                        os << "Expected argument but got " << *V << "\n";
+                        os << "Warning: expected argument but got " << *V << "\n";
                         os << "when looking at instruction " << *inst->I << "\n";
-                        std::abort();
+                        os << "not aborting\n";
+                        e = Address(context);
                     }
                 } else {
                     const NodeRefSet& defs = defs_it->second;
