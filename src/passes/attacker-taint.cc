@@ -395,7 +395,7 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
     print();
 #endif
     
-    if (true) {
+    if (false) {
         
         // test using dataflow
         using Dataflow = dataflow::Dataflow<Value>;
@@ -415,7 +415,8 @@ bool AttackerTaintPass::runOnFunction(llvm::Function& F) {
         Dataflow::Graph graph = Dataflow::Graph::from_function_block(F, context);
         graph.transfer(Value {Value::Insts(), Value::Stores()}, ins2, outs2, exit_values);
 #else
-        Dataflow::Function function {context, &F, &LI, Dataflow::Function::Mode::LOOP};
+	const auto function_mode = Dataflow::Function::Mode::INST;
+        Dataflow::Function function {context, &F, &LI, function_mode};
         function.transfer(Value {Value::Insts(), Value::Stores()}, ins2, outs2, exit_values);
 #endif
         

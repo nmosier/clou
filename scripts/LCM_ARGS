@@ -10,9 +10,9 @@ elif [[ "$(basename "$PWD")" = openssl ]]; then
     export SRC="$PWD"
     API="$PWD/../../test/openssl_functions.txt"
 else
-    echo unrecognized directory while setting SRC: "$PWD" >&2
+    export SRC=""
 fi
 
-export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv --functions=$API --max-trans=250 --window=500 --lsq=50 -j64 --callees"
+export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv ${API+--functions=$API} --max-trans=250 --window=500 --lsq=50 -j64 --callees"
 export LCM_ARGS_V1="$LCM_ARGS_SH --spectre-v1=mode=classic"
-export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4"
+export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4=concrete-sourced-stores=no"

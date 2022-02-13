@@ -690,7 +690,7 @@ void DetectorJob::for_one_transmitter(NodeRef transmitter, std::function<void (N
             solver = new_solver;
             
             const auto solver_add = [&] (const z3::expr& e, const std::string& s) {
-#if 1
+#if 0
                 static unsigned i = 0;
                 solver.add(translate(e), util::to_string(s, "-", i++).c_str());
 #else
