@@ -179,6 +179,12 @@ void SpectreV4_Detector::run_bypassed_store_fast(NodeRef load, const NodeRefVec&
         todo.pop_back();
         if (!seen.insert(bypassed_store).second) { continue; }
         
+        const auto push = util::push(actions, {
+            .src = bypassed_store,
+            .edge = aeg::Edge::Kind::RF,
+            .dst = load,
+        });
+        
         const auto& node = aeg.lookup(bypassed_store);
         
         // if it is a write, then check whether it can be bypassed
