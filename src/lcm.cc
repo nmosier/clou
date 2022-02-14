@@ -230,6 +230,14 @@ struct LCMPass: public llvm::ModulePass {
                 std::perror("alarm");
                 std::abort();
             }
+            signal(SIGALRM, [] (int sig) {
+                std::stringstream ss;
+                ss << output_dir << "/timeouts.txt";
+                std::ofstream ofs {output_dir};
+                ofs << "1\n";
+                ofs.close();
+                std::exit(1);
+            });
         }
         
         try {
