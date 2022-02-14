@@ -58,6 +58,8 @@ int shmid = -1;
 std::vector<std::pair<aeg::Edge::Kind, aeg::ExecMode>> custom_deps;
 std::string file_regex;
 bool analyze_callees = false;
+bool aggressive_filtering = false;
+unsigned file_timeout = 0;
 
 namespace {
 std::optional<std::string> logdir;
@@ -112,6 +114,8 @@ Options:
 --deps=[<vec>]       set custom dependencies (empty means use default)
 --callees=[<bool>]   whether should analyze calles of selected functions
 --lsq=[<uint>]       set LSQ size
+--filtering          perform extra Spectre v4 filtering
+--file-timeout=<int> set file timeout
 )=";
     fprintf(f, "%s", s);
 }
@@ -242,6 +246,8 @@ int parse_args() {
         FUNCTIONS_FILE,
         CALLEES,
         LSQ,
+        FILTERING,
+        FILE_TIMEOUT,
     };
     
     struct option opts[] = {
@@ -276,6 +282,8 @@ int parse_args() {
         {"functions", required_argument, nullptr, FUNCTIONS_FILE},
         {"callees", optional_argument, nullptr, CALLEES},
         {"lsq", optional_argument, nullptr, LSQ},
+        {"filtering", optional_argument, nullptr, FILTERING},
+        {"file-timeout", required_argument, nullptr, FILE_TIMEOUT},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -400,6 +408,8 @@ int parse_args() {
                 
                 break;
             }
+                
+                
                 
                 
             case SPECTRE_V4: {
@@ -556,6 +566,14 @@ int parse_args() {
                 } else {
                     lsq_size = std::nullopt;
                 }
+                break;
+                
+            case FILTERING:
+                aggressive_filtering = parse_bool_opt(optarg);
+                break;
+                
+            case FILE_TIMEOUT:
+                file_timeout = std::stoul(optarg);
                 break;
                 
             default:

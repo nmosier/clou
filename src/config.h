@@ -38,6 +38,8 @@ extern int semid;
 extern std::string file_regex;
 extern bool analyze_callees;
 extern std::optional<unsigned> lsq_size;
+extern bool aggressive_filtering;
+extern unsigned file_timeout;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

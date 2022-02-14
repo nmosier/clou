@@ -225,6 +225,12 @@ struct LCMPass: public llvm::ModulePass {
             signal(SIGUSR1, handler);
         }
         
+        if (file_timeout) {
+            if (alarm(file_timeout) < 0) {
+                std::perror("alarm");
+                std::abort();
+            }
+        }
         
         try {
             check_config();
