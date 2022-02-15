@@ -2,7 +2,7 @@
 
 CLANG ?= clang-12
 LLVM_DIS ?= llvm-dis
-CFLAGS += -fdeclspec
+CFLAGS += -fdeclspec -g -O0
 
 %.ll: %.c
 	$(CLANG) $(CFLAGS) -c -S -emit-llvm -o $@ $<
