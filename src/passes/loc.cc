@@ -18,7 +18,16 @@ struct LOCPass final: public llvm::FunctionPass {
     std::unordered_map<const llvm::Function *, unsigned> locs;
     
     virtual bool runOnFunction(llvm::Function& F) override {
-        locs.emplace(&F, F.getInstructionCount());
+        const unsigned instruction_count = F.getInstructionCount();
+        
+        // get LOC: find span
+        unsigned max_source = 0;
+        unsigned min_source = std::numeric_limits<unsigned>::max();
+        
+        
+        
+        const auto& p = *locs.emplace(&F, F.getInstructionCount()).first;
+        llvm::errs() << p.first->getName() << " " << p.second << "\n";
         return false;
     }
     
@@ -30,6 +39,15 @@ struct LOCPass final: public llvm::FunctionPass {
 };
 
 namespace {
+
+void registerPass(const llvm::PassManagerBuilder&, llvm::legacy::PassManagerBase& PM) {
+    PM.add(new LOCPass());
+}
+
+llvm::RegisterStandardPasses registerLOC {
+    llvm::PassManagerBuilder::EP_EarlyAsPossible,
+    registerPass,
+};
 
 llvm::RegisterPass<LOCPass> X {
     "loc", "LOC Pass"

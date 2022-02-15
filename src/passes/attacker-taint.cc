@@ -9,6 +9,7 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/IR/IntrinsicInst.h>
+#include <llvm/IR/DebugLoc.h>
 
 #include <set>
 #include <unordered_map>
@@ -497,7 +498,13 @@ llvm::RegisterPass<AttackerTaintPass> X {
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const AttackerTaintResults& results) {
     os << "Controlled Instructions:\n";
     for (const llvm::Instruction *I : results.insts) {
-        os << "  " << *I << "\n";
+        os << "  " << *I;
+        const llvm::DebugLoc& dbg = I->getDebugLoc();
+        if (dbg) {
+            os << " -- ";
+            dbg.print(os);
+        }
+        os << "\n";
     }
     return os;
 }
