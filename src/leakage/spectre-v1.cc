@@ -83,7 +83,7 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     }
     
     // ensure attacker taints
-    if (!aeg.lookup(vec.back()).attacker_taint) {
+    if (use_attacker_control_analysis && !aeg.lookup(vec.back()).attacker_taint) {
         return;
     }
     
@@ -134,7 +134,7 @@ void SpectreV1_Detector::run_postdeps(const NodeRefVec& vec_, CheckMode mode) {
     }
 # endif
     
-    {
+    if (use_attacker_control_analysis) {
         z3::expr_vector taints {ctx()};
         for (const NodeRef ref : exec_window) {
             const auto& node = aeg.lookup(ref);

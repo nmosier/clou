@@ -129,11 +129,13 @@ struct LCMPass: public llvm::ModulePass {
         ::signal(SIGSEGV, SIG_DFL);
         ::signal(SIGABRT, SIG_DFL);
         
-        for (llvm::Function& F : M) {
-            // TODO: Would be nice to parallelize this.
-	  if (!F.isDeclaration() && functions_list.contains(&F)) {
-	    attacker_taint.emplace(&F, getAnalysis<AttackerTaintPass>(F).getResults());
-	  }
+        if (use_attacker_control_analysis) {
+            for (llvm::Function& F : M) {
+                // TODO: Would be nice to parallelize this.
+                if (!F.isDeclaration() && functions_list.contains(&F)) {
+                    attacker_taint.emplace(&F, getAnalysis<AttackerTaintPass>(F).getResults());
+                }
+            }
         }
         
         for (llvm::scc_iterator<llvm::CallGraph *> scc_it = llvm::scc_begin(&CG);

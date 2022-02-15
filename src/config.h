@@ -40,6 +40,7 @@ extern bool analyze_callees;
 extern std::optional<unsigned> lsq_size;
 extern bool aggressive_filtering;
 extern unsigned file_timeout;
+extern bool use_attacker_control_analysis;
 
 struct OutputCFGs {
     bool unrolled, calls, expanded;

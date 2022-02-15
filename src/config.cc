@@ -60,6 +60,7 @@ std::string file_regex;
 bool analyze_callees = false;
 bool aggressive_filtering = false;
 unsigned file_timeout = 0;
+bool use_attacker_control_analysis = true;
 
 namespace {
 std::optional<std::string> logdir;
@@ -116,6 +117,7 @@ Options:
 --lsq=[<uint>]       set LSQ size
 --filtering          perform extra Spectre v4 filtering
 --file-timeout=<int> set file timeout
+--attacker-control=[<bool>] whether to use attacker-control analysis
 )=";
     fprintf(f, "%s", s);
 }
@@ -265,6 +267,7 @@ int parse_args() {
         LSQ,
         FILTERING,
         FILE_TIMEOUT,
+        ATTACKER_CONTROL_ANALYSIS,
     };
     
     struct option opts[] = {
@@ -301,6 +304,7 @@ int parse_args() {
         {"lsq", optional_argument, nullptr, LSQ},
         {"filtering", optional_argument, nullptr, FILTERING},
         {"file-timeout", required_argument, nullptr, FILE_TIMEOUT},
+        {"attacker-control-analysis", optional_argument, nullptr, ATTACKER_CONTROL_ANALYSIS},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -591,6 +595,10 @@ int parse_args() {
                 
             case FILE_TIMEOUT:
                 file_timeout = std::stoul(optarg);
+                break;
+                
+            case ATTACKER_CONTROL_ANALYSIS:
+                use_attacker_control_analysis = parse_bool_opt(optarg);
                 break;
                 
             default:
