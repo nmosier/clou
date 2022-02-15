@@ -1,4 +1,4 @@
-set(DEFAULT_ARGS "-Epo,tfo,addr,addr_gep,rf,rfx -d250 --window 500 --stb=50 --traceback=2")
+set(DEFAULT_ARGS "-Epo,tfo,addr,addr_gep,rf,rfx -d250 --window 500 --lsq=50 --traceback=2")
 
 set(TEST_SH ${CMAKE_CURRENT_SOURCE_DIR}/test2.sh)
 set(TEST_FENCE_SH ${CMAKE_CURRENT_SOURCE_DIR}/test-fence.sh)
