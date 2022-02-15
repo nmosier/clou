@@ -47,7 +47,7 @@ public:
     static DepVec get_deps();
     
 private:
-    virtual DepVec deps() const override { return get_deps(); }
+    virtual DepVec default_deps() const override { return get_deps(); }
     virtual std::string name() const override { return "SpectreV1Classic"; }
 };
 
@@ -58,7 +58,7 @@ public:
     static DepVec get_deps();
     
 private:
-    virtual DepVec deps() const override { return get_deps(); }
+    virtual DepVec default_deps() const override { return get_deps(); }
     virtual std::string name() const override final { return "SpectreV1Control"; }
 };
 

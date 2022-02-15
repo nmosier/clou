@@ -81,11 +81,15 @@ std::mutex& DetectorMain::mutex() const { return aeg.context.mutex; }
 
 template <class Job>
 void DetectorMain::get_candidate_transmitters(NodeRefSet& candidate_transmitters) const {
-    const DetectorJob::DepVec& deps = Job::get_deps();
+    DetectorJob::DepVec deps = Job::get_deps();
+    if (!custom_deps.empty()) {
+        deps = custom_deps;
+    }
     const auto& dep = deps.back();
     const auto kind = dep.first;
     const auto exec_mode = dep.second;
     z3::solver candidate_solver {ctx()};
+    
     aeg.for_each_edge(kind, [&] (NodeRef, NodeRef ref, const aeg::Edge&) {
         const aeg::Node& node = aeg.lookup(ref);
         
@@ -96,7 +100,7 @@ void DetectorMain::get_candidate_transmitters(NodeRefSet& candidate_transmitters
             candidate_transmitters.insert(ref);
         }
     });
-
+    
     // filter out any already-seen transmitters
     {
         std::erase_if(candidate_transmitters, [&] (NodeRef ref) -> bool {
@@ -110,6 +114,8 @@ void DetectorMain::get_candidate_transmitters(NodeRefSet& candidate_transmitters
             return false;
         });
     }
+    
+    logv(2, "Number of candidate transmitters: " << candidate_transmitters.size() << "\n");
 }
 
 template <class Job>
@@ -1078,12 +1084,21 @@ void DetectorJob::traceback_deps(NodeRef from_ref, std::function<void (const Nod
     NodeRefVec vec;
     DepVec deps;
     if (custom_deps.empty()) {
-        deps = this->deps();
+        deps = this->default_deps();
     } else {
         deps = custom_deps;
     }
     traceback_deps_rec(deps.rbegin(), deps.rend(), vec, from_ref, func, mode);
 }
+
+DetectorJob::DepVec DetectorJob::deps() const {
+    if (custom_deps.empty()) {
+        return default_deps();
+    } else {
+        return custom_deps;
+    }
+}
+
 
 void DetectorJob::traceback_deps_rec(DepIt it, DepIt end, NodeRefVec& vec, NodeRef from_ref, std::function<void (const NodeRefVec&, CheckMode)> func, CheckMode mode) {
     const auto push_ref = util::push(vec, from_ref);

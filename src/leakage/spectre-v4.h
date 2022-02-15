@@ -16,7 +16,7 @@ private:
     std::vector<float> unsats;
     static constexpr float scale = 1.5f;
     
-    virtual DepVec deps() const override { return get_deps(); }
+    virtual DepVec default_deps() const override { return get_deps(); }
     virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) override;
     virtual std::optional<float> get_timeout() const override;
     virtual void set_timeout(z3::check_result check_res, float secs) override;

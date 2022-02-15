@@ -99,7 +99,10 @@ protected:
     virtual void set_timeout(z3::check_result check_res, float secs) {} // no timeout by default, so nothing to update
     virtual void run_transmitter(NodeRef transmitter, CheckMode mode) = 0;
     virtual void run_postdeps(const NodeRefVec& vec, CheckMode mode) = 0;
-    virtual DepVec deps() const = 0;
+    virtual DepVec default_deps() const = 0;
+private:
+    DepVec deps() const;
+protected:
     virtual void entry(NodeRef, CheckMode) = 0;
     
     /* UTILITIES FOR SUBCLASSES */
