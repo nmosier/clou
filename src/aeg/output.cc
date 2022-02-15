@@ -105,6 +105,7 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
     digraph G {
     overlap = scale;
     splines = true;
+    node [fontname = "Monaco"];
     
     )=";
     
@@ -124,6 +125,18 @@ void AEG::output_execution(std::ostream& os, const z3::eval& eval, const EdgeVec
             os << name << " ";
             std::stringstream ss;
             ss << ref << " " << *node.inst << "\n";
+            
+            if (const llvm::Instruction *I = node.inst->get_inst()) {
+                if (const llvm::DebugLoc& DL = I->getDebugLoc()) {
+                    std::string s;
+                    {
+                        llvm::raw_string_ostream ss {s};
+                        llvm::print_full_debug_info(ss, DL);
+                    }
+                    ss << s;
+                }
+            }
+            
 
             if (node.inst->is_memory()) {
                 ss << "{" << eval(get_memory_address(ref)) << "} ";
