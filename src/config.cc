@@ -184,6 +184,23 @@ void initialize_post() {
             std::perror("dup");
         }
     }
+    
+    if (file_timeout) {
+        if (alarm(file_timeout) < 0) {
+            throw std::system_error(errno, std::generic_category(), "alarm");
+        }
+        if (::signal(SIGALRM, [] (int) {
+            std::stringstream ss;
+            ss << output_dir << "/timeouts.txt";
+            std::ofstream ofs {output_dir};
+            ofs << "1\n";
+            ofs.close();
+            std::cerr << "FILE TIMEOUT, exiting\n";
+            std::exit(1);
+        }) == SIG_ERR) {
+            throw std::system_error(errno, std::generic_category(), "signal");
+        }
+    }
 }
 
 namespace {
