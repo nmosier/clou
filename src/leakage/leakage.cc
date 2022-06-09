@@ -1190,7 +1190,7 @@ label:
     assert(!vec.empty());
     if (from_ref != vec.front()) {
         std::cerr << "checking TB " << from_ref << "\n";
-        traceback(from_ref, aeg::ExecMode::TRANS, [&] (NodeRef to_ref, CheckMode mode) {
+        traceback(from_ref, aeg::ExecMode::EXEC, [&] (NodeRef to_ref, CheckMode mode) {
             if (mode == CheckMode::SLOW) {
                 logv(1, "traceback " << to_ref << "-TB->" << from_ref << "\n");
             }
