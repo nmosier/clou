@@ -11,7 +11,7 @@ elif [[ "$(basename "$PWD")" = openssl ]]; then
     export SRC="$PWD"
     API="$PWD/../../test/openssl_functions.txt"
 else
-    export SRC=""
+    export SRC="/lcm"
 fi
 
 export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv ${API+--functions=$API} --max-trans=250 --window=500 --lsq=50 -j64 --callees"
