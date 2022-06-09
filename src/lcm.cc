@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <regex>
 #include <unistd.h>
+#include <atomic>
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Function.h>
@@ -52,6 +53,44 @@ void output_(const Graph& graph, const std::string& name, const llvm::Function& 
     }
 }
 
+void timeout_handler(int sig) {
+  {
+    const char *msg = "PROCESS TIMEOUT\n";
+    write(2, msg, strlen(msg));
+  }
+  
+  char path[256];
+  sprintf(path, "%s/runtimes.txt", output_dir.c_str());
+  int fd;
+  if ((fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0664)) < 0) {
+    abort();
+  }
+
+  write(2, "HERE\n", 5);
+
+  char buf[256];
+  sprintf(buf, "%f\n", cpu_time());
+  write(2, buf, strlen(buf));
+  write(fd, buf, strlen(buf));
+  close(fd);
+  _Exit(EXIT_SUCCESS);
+}
+
+namespace {
+  
+  void register_timeout_handler() {
+    static std::atomic<int> here = 0;
+    if (here++ == 0) {
+      if (signal(SIGUSR2, &timeout_handler) == SIG_ERR) {
+	std::perror("signal");
+	std::abort();
+      }
+    }
+  }
+
+  int register_timeout_handler_dummy = (register_timeout_handler(), 0);
+}
+
 struct LCMPass: public llvm::ModulePass {
     static char ID;
     
@@ -84,6 +123,7 @@ struct LCMPass: public llvm::ModulePass {
             Set next;
             while (!cur.empty()) {
                 for (const llvm::Function *caller : cur) {
+		  if (caller && !caller->isDeclaration()) {
                     for (const auto& callee_pair : *CG[caller]) {
                         const auto callee_node = callee_pair.second;
                         if (const llvm::Function *callee = callee_node->getFunction()) {
@@ -92,6 +132,7 @@ struct LCMPass: public llvm::ModulePass {
 			  }
 			}
                     }
+		  }
                 }
                 cur = std::move(next);
             }
