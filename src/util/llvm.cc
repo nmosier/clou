@@ -5,6 +5,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Operator.h>
 #include <llvm/IR/IntrinsicInst.h>
+#include <llvm/IR/DebugInfoMetadata.h>
 
 #include "llvm.h"
 
@@ -223,7 +224,7 @@ locked_raw_ostream cerr() {
 std::mutex errs_mutex;
 
 
-
+#if 0
 llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::DebugLoc& DL) {
     
     std::string s;
@@ -234,7 +235,7 @@ llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::Debu
     char *tok = s_;
     const char *path_ = ::strsep(&tok, ":");
     assert(path_ != nullptr);
-    
+
     std::stringstream path;
     if (const char *src_dir = std::getenv("SRC")) {
         path << src_dir << "/";
@@ -258,6 +259,32 @@ llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::Debu
         
     return os;
 }
+#else
+  llvm::raw_ostream& print_full_debug_info(llvm::raw_ostream& os, const llvm::DebugLoc& DL) {
+    if (DL) {
+        const llvm::DILocation *DIL = DL;
+        os << DIL->getFilename() << ":" << DIL->getLine() << ":" << DIL->getColumn() << ":\n";
+        
+        // try to open file
+        std::stringstream path;
+        path << DIL->getDirectory().str() << "/" << DIL->getFilename().str();
+        std::ifstream ifs;
+        ifs.open(path.str());
+        if (ifs) {
+            // seek to nth line
+            std::string line;
+            for (unsigned i = 1; i <= DIL->getLine() && std::getline(ifs, line); ++i) {}
+            if (ifs) {
+                os << line << "\n";
+                assert(DIL->getColumn() > 0);
+                os << std::string(DIL->getColumn() - 1, ' ') << "^\n";
+            }
+        }
+    }
+    return os;
+}
+
+#endif
 
 unsigned get_min_loop_iterations(const llvm::Loop *L) {
     std::unordered_set<const llvm::BasicBlock *> blocks;
