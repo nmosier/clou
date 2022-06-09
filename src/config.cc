@@ -192,13 +192,15 @@ void initialize_post() {
             throw std::system_error(errno, std::generic_category(), "alarm");
         }
         if (::signal(SIGALRM, [] (int) {
+#if 0
             std::stringstream ss;
             ss << output_dir << "/timeouts.txt";
             std::ofstream ofs {output_dir};
             ofs << "1\n";
             ofs.close();
-            std::cerr << "FILE TIMEOUT, exiting\n";
-            std::exit(1);
+#endif
+            std::cerr << "FILE TIMEOUT: " << cpu_time() << "\n";
+            std::_Exit(1);
         }) == SIG_ERR) {
             throw std::system_error(errno, std::generic_category(), "signal");
         }
