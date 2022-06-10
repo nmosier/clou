@@ -11,12 +11,14 @@ void AEG::construct_attacker_taint() {
     if (use_attacker_control_analysis) {
         for (NodeRef ref : node_range()) {
             Node& node = lookup(ref);
-            
+	    bool taint;
             if (const llvm::Instruction *I = node.inst->get_inst()) {
-                node.attacker_taint.set(attacker_taint.at(I->getFunction()).get(I));
+	      const auto it = attacker_taint.find(I->getFunction());
+	      taint = (it == attacker_taint.end()) ? true : it->second.get(I);
             } else {
-                node.attacker_taint.set(false);
+	      taint = false;
             }
+	    node.attacker_taint.set(taint);
         }
     }
 }
