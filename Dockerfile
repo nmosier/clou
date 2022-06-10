@@ -83,3 +83,5 @@ ENV CXXFLAGS -fPIC
 # RUN make -j$(nproc)
 
 ENV LD_LIBRARY_PATH="${Z3_DIR}/bin:$LD_LIBRARY_PATH"
+
+ENV CLOU_CFLAGS="-Xclang -load -Xclang ${LCM_BUILD}/src/libclou.so"
