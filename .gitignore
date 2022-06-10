@@ -25,3 +25,4 @@ COMMANDS
 *.prof
 Testing/
 results/
+bak/

@@ -1,2 +1,4 @@
 pht*.ll
 stl*[^r].ll
+*_O[0123f]
+*.mem
