@@ -41,7 +41,7 @@ while getopts "hO:T:R:L:A:C:gV" OPTC; do
 	    CLANG="$OPTARG"
 	    ;;
 	g)
-	    DEBUGGER="lldb -- "
+	    DEBUGGER="lldb-12 -- "
 	    ;;
 	V)
 	    VALGRIND="valgrind -- "
