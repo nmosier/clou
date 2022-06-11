@@ -48,7 +48,7 @@ RUN git clone --depth=1 https://github.com/jedisct1/libsodium.git libsodium
 ENV LIBSODIUM_CPPFLAGS="-UHAVE_INLINE_ASM -UHAVE_EMMINTRIN_H -UHAVE_C_VARARRAYS -UHAVE_ALLOCA"
 WORKDIR "$LCM_BUILD/libsodium"
 RUN autoreconf -i
-RUN ./configure --disable-asm CC="$LCM_SCRIPTS/cloucc.sh" CFLAGS="-g -Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/libclou.so" CPPFLAGS="$LIBSODIUM_CPPFLAGS" || ( cat config.log; exit 1)
+RUN ./configure --disable-asm CC="$LCM_SCRIPTS/cloucc.sh" CPPFLAGS="$LIBSODIUM_CPPFLAGS -g -Wno-cpp -Xclang -load -Xclang $LCM_BUILD/src/libclou.so" || ( cat config.log; exit 1)
 RUN mkdir lcm
 
 # Configure openssl
