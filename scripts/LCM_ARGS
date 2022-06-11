@@ -1,6 +1,9 @@
-LOG="$PWD/lcm/logs"
+THREADS="${THREADS-1}"
+CLOU_OUT="${CLOU_OUT-$PWD/lcm}"
+
+LOG="$CLOU_OUT/logs"
 mkdir -p "$LOG"
-export FIFO="$PWD/lcm/fifo"
+export FIFO="$CLOU_OUT/fifo"
 unset API
 
 
@@ -14,6 +17,7 @@ else
     export SRC="/lcm"
 fi
 
-export LCM_ARGS_SH="--aa=transient --fast --batch -o $PWD/lcm --monitor=$FIFO --log $LOG -vv ${API+--functions=$API} --max-trans=250 --window=500 --lsq=50 -j64 --callees"
+
+export LCM_ARGS_SH="--aa=transient --fast --batch -o $CLOU_OUT --monitor=$FIFO --log $LOG -vv ${API+--functions=$API} --max-trans=250 --window=500 --lsq=50 -j$THREADS --callees"
 export LCM_ARGS_V1="$LCM_ARGS_SH --spectre-v1=mode=classic"
 export LCM_ARGS_V4="$LCM_ARGS_SH --spectre-v4=concrete-sourced-stores=no"
