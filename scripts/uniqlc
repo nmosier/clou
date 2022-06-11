@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cat -- "$@" | sort | uniq | wc -l
+
