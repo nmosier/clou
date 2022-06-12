@@ -16,7 +16,7 @@ fi
 NAME="$1"
 
 HOST_ROOT="$PWD"
-GUEST_ROOT="/lcm"
+GUEST_ROOT="/clou"
 
 
 docker run -it --privileged --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined \
