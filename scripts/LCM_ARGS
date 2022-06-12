@@ -14,7 +14,7 @@ elif [[ "$(basename "$PWD")" = openssl ]]; then
     export SRC="$PWD"
     API="$PWD/../../test/openssl_functions.txt"
 else
-    export SRC="/lcm"
+    export SRC="/clou"
 fi
 
 
