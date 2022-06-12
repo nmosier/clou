@@ -26,6 +26,8 @@
 #include "util/timer.h"
 #include "util/algorithm.h"
 
+#define CLOU_ROOT "/clou"
+
 const char *prog;
 
 namespace {
@@ -142,7 +144,7 @@ int main(int argc, char *argv[]) {
     
     // open semaphore
     if (num_threads) {
-        sem_path = "/lcm";
+      sem_path = CLOU_ROOT;
         key_t key;
         union semun {
                 int     val;            /* value for SETVAL */
