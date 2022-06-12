@@ -16,7 +16,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"
 ENV CXX="/usr/bin/clang++-12"
-ENV LCM_DIR="$HOME/lcm"
+ENV LCM_DIR="$HOME/clou"
 ENV LCM_BUILD="$LCM_DIR/build"
 ENV LCM_SCRIPTS="$LCM_DIR/scripts"
 ENV SRC="$LCM_DIR"
