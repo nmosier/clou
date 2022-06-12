@@ -26,7 +26,9 @@
  * [ ] Handle function names
  */
 
-char prog[] = "lcm";
+#define CLOU_ROOT "/clou"
+
+char prog[] = "clou";
 static std::vector<char *> args = {prog};
 
 std::string output_dir;
@@ -360,8 +362,8 @@ int parse_args() {
                 }
                 {
                     key_t key;
-                    if ((key = ::ftok("/lcm", 0)) < 0) {
-                        std::cerr << "ftok: invalid path '/lcm'\n";
+                    if ((key = ::ftok(CLOU_ROOT, 0)) < 0) {
+                        std::cerr << "ftok: invalid path '" CLOU_ROOT "'\n";
                     } else if ((semid = ::semget(key, 0,
 #ifndef __linux__
                                                SEM_R | SEM_A |
