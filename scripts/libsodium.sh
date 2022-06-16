@@ -84,6 +84,7 @@ SCRIPT_DIR=$(realpath ${BASH_SOURCE[0]})
 LCM_ARGS_FILE=$(dirname ${SCRIPT_DIR})/LCM_ARGS
 
 cd "${LCM_BUILD}/libsodium"
+make clean >/dev/null
 CLOU_OUT=$PWD/clou-out
 rm -rf $CLOU_OUT
 mkdir $CLOU_OUT

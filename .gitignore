@@ -26,3 +26,6 @@ COMMANDS
 Testing/
 results/
 bak/
+clou-out/
+*.old
+*.bak
