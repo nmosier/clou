@@ -110,12 +110,24 @@ shift 1
 # $1 -- spectre type
 # returns LCM_ARGS as string
 get_lcm_args() {
+    # special overrides
+    EXTRA=""
+    if [[ "$BENCH" = "donna" && "$1" = "v4" ]]; then
+	EXTRA="--window=350"
+    elif [[ "$BENCH" = "libsodium" && "$1" = "v4" ]]; then
+	if [[ "$TRANSMITTER" = "udt" ]]; then
+	    EXTRA="--window=350"
+	elif [[ "$TRANSMITTER" = "uct" ]]; then
+	    EXTRA="--window=250 -d200"
+	fi
+    fi
+    
     case "$1" in
 	v1)
-	    echo "$LCM_ARGS_V1"
+	    echo "$LCM_ARGS_V1 $EXTRA"
 	    ;;
 	v4)
-	    echo "$LCM_ARGS_V4"
+	    echo "$LCM_ARGS_V4 $EXTRA"
 	    ;;
 	*)
 	    echo "$0: -t: invalid type" >&2
