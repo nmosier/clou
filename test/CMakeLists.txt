@@ -103,3 +103,12 @@ foreach(FWD_SRC ${FWD_SRCS})
   set_tests_properties(${FWD_NAME}f PROPERTIES ENVIRONMENT "OPT=${LLVM_OPT}")
   
 endforeach()
+
+
+file(GLOB NEW_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/new*.c)
+foreach(NEW_SRC ${NEW_SRCS})
+
+  get_filename_component(NEW_NAME ${NEW_SRC} NAME_WLE)
+  set(NEW_ARGS "${DEFAULT_ARGS} --spectre-v1=mode=classic")
+  
+endforeach()
