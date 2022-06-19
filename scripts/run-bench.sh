@@ -21,7 +21,7 @@ Options:
   -j <jobs>      number of parallel compilation jobs [optional, default: 1]
   -J <jobs>      max number of threads across all compilation jobs [optional, default: 1]
   -T <file-to>   file timeout, in seconds [optional, default: 3600]
-  -O <out-dir>   output directory [optional, default: \$PWD/clou-out]
+  -O <out-dir>   output directory [optional, default: \$PWD/<benchmark>-<xmitter>-out]
 Positional arguments: 
   <benchmark>    The benchmark to run. This can be one of: tea, donna, secretbox, ssl3-digest, mee-cbc.
   <clou_arg>...  Additional configuration parameters to pass to Clou. These will be added
@@ -74,11 +74,13 @@ shift $((OPTIND-1))
 # check arguments
 if [[ -z "${SPECTRE_TYPE}" ]]; then
     echo "$0: -t: required" >&2
+    usage >&2
     exit 1
 fi
 
 if [[ $# -lt 1 ]]; then
     echo "$0: missing positional argument <benchmark>" >&2
+    usage >&2
     exit 1
 fi
 
@@ -156,7 +158,7 @@ LCM_ARGS_FILE=/clou/scripts/LCM_ARGS
 
 BENCH_PATH=$(get_bench_path "$BENCH")
 cd "$BENCH_PATH"
-CLOU_OUT="${CLOU_OUT-$PWD/clou-out}"
+CLOU_OUT="${CLOU_OUT-$PWD/$BENCH-$TRANSMITTER-out}"
 rm -rf $CLOU_OUT
 mkdir $CLOU_OUT
 
