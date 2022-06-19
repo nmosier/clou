@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
 set -u
 set -e
 
@@ -32,9 +34,9 @@ EOF
 
 JOBS=1
 THREADS=1
-SPECTRE_TYPE=
+unset SPECTRE_TYPE
 FILE_TIMEOUT=3600
-TRANSMITTER=udt
+unset TRANSMITTER
 while getopts "ht:p:j:J:T:O:x:" OPTC; do
       case $OPTC in
 	  h)
@@ -71,18 +73,29 @@ done
 
 shift $((OPTIND-1))
 
-# check arguments
-if [[ -z "${SPECTRE_TYPE}" ]]; then
-    echo "$0: -t: required" >&2
-    usage >&2
-    exit 1
-fi
-
 if [[ $# -lt 1 ]]; then
     echo "$0: missing positional argument <benchmark>" >&2
     usage >&2
     exit 1
 fi
+
+BENCH="$1"
+shift 1
+
+case "$BENCH" in
+    pht|stl|fwd|new)
+	exec "$SCRIPT_DIR/run-$BENCH.sh" ${SPECTRE_TYPE+-t $SPECTRE_TYPE} ${TRANSMITTER+-x $TRANSMITTER}
+	;;
+    *)
+	;;
+esac	    
+
+# check arguments
+if [[ -z "${SPECTRE_TYPE-x}" -o -z "${TRANSMITTER-x}" ]]; then
+    usage >&2
+    exit 1
+fi
+
 
 # set pattern
 if [[ -z "${PATTERN+a}" ]]; then
@@ -106,8 +119,6 @@ if [[ -z "${PATTERN+a}" ]]; then
     esac
 fi
 
-BENCH="$1"
-shift 1
 
 # $1 -- spectre type
 # returns LCM_ARGS as string
