@@ -36,6 +36,7 @@ while getopts "ht:x:O:" OPTC; do
 	*)
 	    usage >&2
 	    exit 1
+	    ;;
     esac
 done
 
@@ -46,7 +47,9 @@ if [[ $# -ne 0 ]]; then
     exit 1
 fi
 
-if [[ "$SPECTRE_TYPE" != "v1" ]]; then
+if [[ -z "$SPECTRE_TYPE" ]]; then
+    
+elif [[ "$SPECTRE_TYPE" != "v1" ]]; then
     echo "$0: -t: invalid Spectre type '$SPECTRE_TYPE'" >&2
     exit 1
 fi
