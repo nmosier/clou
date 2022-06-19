@@ -48,7 +48,9 @@ if [[ $# -ne 0 ]]; then
 fi
 
 if [[ -z "$SPECTRE_TYPE" ]]; then
-    
+    echo "$0: -t: missing option" >&2
+    usage >&2
+    exit 1
 elif [[ "$SPECTRE_TYPE" != "v1" ]]; then
     echo "$0: -t: invalid Spectre type '$SPECTRE_TYPE'" >&2
     exit 1
