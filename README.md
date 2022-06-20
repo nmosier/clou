@@ -5,7 +5,7 @@ It takes a C source file as input, compiles it to LLVM IR using Clang 12, and an
 Eventually, Clou outputs a list of transmitters and a set of consistent candidate executions that give witness to detected Spectre vulnerabilities.
 Clou is optiimzes to detect universal data transmitters, but it can identify other kinds of transmitters as well.
 
-If you're interested in the theoretical foundation -- leakage containment models -- and implementation details of Clou, see our [ISCA'21 paper](https://doi.org/10.48550/arXiv.2112.10511).
+If you're interested in the theoretical foundation -- leakage containment models -- and implementation details of Clou, see our [ISCA'22 paper](https://doi.org/10.48550/arXiv.2112.10511).
 
 # Installation
 
@@ -83,7 +83,11 @@ $ /clou/scripts/run-bench.sh -h
 For the larger, non-litmus benchmarks (tea, donna, secretbox, ssl3-digest, mee-cbc, libsodium, OpenSSL), `run-bench.sh` will spawn an interactive tmux window with two panes -- one for Clou's compilation/analysis job, and one for Clou's monitor, which shows which functions Clou is currently analyzing. 
 Once the main analysis job is done, you'll have to manually kill the monitor job (e.g., Ctrl+C then Ctrl+D).
 
-## Getting the Results
-TODO: discuss /clou/scripts/transmitters.h
-TODO: discuss runtimes too
-TODO: discuss /clou/scripts/addrs.sh
+## Collecting Results
+Use the script `/clou/scripts/table.sh` to generate a table of results.
+To collect results for all benchmarks, where the output (all output directories of the form `$BENCH-$TYPE-$XMIT-out`) is in directory `$OUTDIR`, use the following command:
+```bash
+/clou/scripts/table.sh -d $OUTDIR -a
+```
+The script will emit warnings for any missing results (e.g., if you forgot to run benchmark `pht` with `TYPE=v1` and `XMIT=uct`.
+
