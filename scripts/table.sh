@@ -95,6 +95,7 @@ END {
 '
 }
 
+echo "BENCHMARK TOOL TIME(dt/ct/udt/uct) BUGS(dt/ct/udt/uct)"
 
 for BENCH in "${BENCHES[@]}"; do
     TYPES="$(get_types "$BENCH")"
