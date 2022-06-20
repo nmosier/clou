@@ -89,5 +89,5 @@ To collect results for all benchmarks, where the output (all output directories 
 ```bash
 /clou/scripts/table.sh -d $OUTDIR -a
 ```
-The script will emit warnings for any missing results (e.g., if you forgot to run benchmark `pht` with `TYPE=v1` and `XMIT=uct`.
+The script will emit warnings for any missing results (e.g., if you forgot to run benchmark `pht` with `TYPE=v1` and `XMIT=uct`) and will produce question marks in the table for those entries.
 
