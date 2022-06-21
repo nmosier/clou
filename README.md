@@ -33,6 +33,8 @@ TODO: link to clou-out explanation
 # Reproducing Results from the Paper
 
 This section describes how to reproduce the results presented in Table 2 of the paper.
+All commands should be run _within_ the Clou docker container.
+
 For each benchmark (i.e., multi-row in the paper), we run Clou multiple times, with different combinations of Spectre detector (Clou-PHT for Spectre v1 or Clou-STL for Spectre v4) and transmitter class (dt, ct, udt, uct).
 The following is a breakdown of the various benchmarks, including the different parameter combinations in cartesian-product notation.
 
