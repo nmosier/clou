@@ -93,3 +93,6 @@ To collect results for all benchmarks, where the output (all output directories 
 ```
 The script will emit warnings for any missing results (e.g., if you forgot to run benchmark `pht` with `TYPE=v1` and `XMIT=uct`) and will produce question marks in the table for those entries.
 
+# Citing Clou
+If you use Clou in your work, we would appreciate it if you cite our paper ([bibtex](cite.bib)):
+> N. Mosier, H. Lachnitt, H. Nemati, C. Trippel, “Axiomatic Hardware-Software Contracts for Security,” in 2022 ACM/IEEE 49th Annual International Symposium on Computer Architecture (ISCA). IEEE, 2022.
