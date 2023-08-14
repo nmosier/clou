@@ -1,0 +1,61 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Clou
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Nicholas
+    family-names: Mosier
+    email: nmosier@stanford.edu
+    affiliation: Stanford University
+    orcid: 'https://orcid.org/0000-0003-3705-8161'
+  - given-names: Hanna
+    family-names: Lachnitt
+    email: lachnitt@stanford.edu
+    affiliation: Stanford University
+    orcid: 'https://orcid.org/0000-0003-3355-7828'
+  - given-names: Hamed
+    family-names: Nemati
+    email: hnnemati@stanford.edu
+    affiliation: Stanford University
+    orcid: 'https://orcid.org/0000-0001-9251-3679'
+  - given-names: Caroline
+    family-names: Trippel
+    email: trippel@stanford.edu
+    affiliation: Stanford University
+    orcid: 'https://orcid.org/0000-0002-5776-1121'
+identifiers:
+  - type: doi
+    value: 10.1145/3470496.3527412
+repository-code: 'https://github.com/nmosier/clou'
+preferred-citation:
+  type: conference-paper
+  title: "Axiomatic Hardware-Software Contracts for Security"
+  authors:    
+   - given-names: Nicholas
+     family-names: Mosier
+     email: nmosier@stanford.edu
+     affiliation: Stanford University
+     orcid: 'https://orcid.org/0000-0003-3705-8161'
+   - given-names: Hanna
+     family-names: Lachnitt
+     email: lachnitt@stanford.edu
+     affiliation: Stanford University
+     orcid: 'https://orcid.org/0000-0003-3355-7828'
+   - given-names: Hamed
+     family-names: Nemati
+     email: hnnemati@stanford.edu
+     affiliation: Stanford University
+     orcid: 'https://orcid.org/0000-0001-9251-3679'
+   - given-names: Caroline
+     family-names: Trippel
+     email: trippel@stanford.edu
+     affiliation: Stanford University
+     orcid: 'https://orcid.org/0000-0002-5776-1121'
+  year: 2022
+  conference:
+    name: 'The 49th Annual International Symposium on Computer Architecture (ISCA ’22)'
