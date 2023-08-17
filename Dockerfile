@@ -11,7 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
     lldb-12 \
     tmux \
     less emacs-nox htop valgrind psmisc \
-    unzip python3-setuptools
+    unzip python3-setuptools bsdmainutils
 
 ENV LLVM_DIR="/usr/lib/llvm-12"
 ENV CC="/usr/bin/clang-12"
